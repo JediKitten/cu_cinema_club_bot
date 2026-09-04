@@ -1,0 +1,193 @@
+from typing import Annotated, Literal
+
+import sqlalchemy as sa
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.auth import CurrentUser
+from app.db import get_session
+from app.models import Attendance, Feedback, Film, Interest, Screening, User
+from app.models.enums import FilmStatus, InterestKind
+from app.schemas import FilmBrief, FilmCard, ReviewOut
+from app.services.settings import SettingsService
+from app.services.tmdb import TmdbError, get_tmdb, poster_url
+
+router = APIRouter(prefix="/api/films", tags=["films"])
+
+SortKey = Literal["recent", "alphabetical", "year", "popular"]
+
+
+def _brief(film: Film) -> FilmBrief:
+    return FilmBrief(
+        id=film.id,
+        tmdb_id=film.tmdb_id,
+        title_ru=film.title_ru,
+        title_orig=film.title_orig,
+        year=film.year,
+        poster_url=poster_url(film.poster_path),
+        genres=list(film.genres or []),
+        in_catalog=True,
+    )
+
+
+@router.get("/search", response_model=list[FilmBrief])
+async def search_films(
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    q: Annotated[str, Query(min_length=2, max_length=200)],
+) -> list[FilmBrief]:
+    """Сначала локальная база, затем добор из TMDB.
+
+    Фильм из TMDB возвращается с id=None: в каталог он попадёт при первой отметке,
+    иначе поиск засорял бы базу всем, что кто-то когда-то набрал.
+    """
+    pattern = f"%{q}%"
+    local = (
+        (
+            await session.execute(
+                sa.select(Film)
+                .where(
+                    Film.status == FilmStatus.ACTIVE,
+                    sa.or_(Film.title_ru.ilike(pattern), Film.title_orig.ilike(pattern)),
+                )
+                .order_by(sa.func.coalesce(Film.ext_votes, 0).desc())
+                .limit(20)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    results = [_brief(film) for film in local]
+    seen_tmdb = {film.tmdb_id for film in local if film.tmdb_id}
+
+    tmdb = get_tmdb()
+    if tmdb.configured and len(results) < 20:
+        try:
+            for item in await tmdb.search(q):
+                if item["id"] in seen_tmdb:
+                    continue
+                release = item.get("release_date") or ""
+                results.append(
+                    FilmBrief(
+                        id=None,
+                        tmdb_id=item["id"],
+                        title_ru=item.get("title") or item.get("original_title") or "Без названия",
+                        title_orig=item.get("original_title"),
+                        year=int(release[:4]) if release[:4].isdigit() else None,
+                        poster_url=poster_url(item.get("poster_path")),
+                        in_catalog=False,
+                    )
+                )
+        except TmdbError:
+            # Каталог не должен падать целиком из-за недоступности TMDB —
+            # локальных результатов достаточно, чтобы продолжить работу.
+            pass
+    return results[:40]
+
+
+@router.get("", response_model=list[FilmBrief])
+async def browse_films(
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    sort: SortKey = "recent",
+    genre: str | None = None,
+    offset: int = 0,
+    limit: Annotated[int, Query(ge=1, le=60)] = 30,
+) -> list[FilmBrief]:
+    """Сортировка по умолчанию — НЕ по популярности (§11): эффект присоединения
+    к большинству убивает хвост. Популярность доступна явным выбором."""
+    stmt = sa.select(Film).where(Film.status == FilmStatus.ACTIVE)
+    if genre:
+        stmt = stmt.where(Film.genres.any(genre))
+
+    order = {
+        "recent": Film.created_at.desc(),
+        "alphabetical": Film.title_ru.asc(),
+        "year": sa.func.coalesce(Film.year, 0).desc(),
+        "popular": sa.func.coalesce(Film.ext_votes, 0).desc(),
+    }[sort]
+    stmt = stmt.order_by(order).offset(offset).limit(limit)
+    return [_brief(film) for film in (await session.execute(stmt)).scalars()]
+
+
+@router.get("/{film_id}", response_model=FilmCard)
+async def film_card(
+    film_id: int,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FilmCard:
+    film = await session.get(Film, film_id)
+    if film is None or film.status == FilmStatus.HIDDEN:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Фильм не найден")
+
+    settings = SettingsService(session)
+    min_votes = int(await settings.get("internal_rating_min_votes"))
+
+    interested_count = (
+        await session.execute(
+            sa.select(sa.func.count(sa.distinct(Interest.user_id))).where(
+                Interest.film_id == film_id, Interest.revoked_at.is_(None)
+            )
+        )
+    ).scalar_one()
+
+    my_kinds = list(
+        (
+            await session.execute(
+                sa.select(Interest.kind).where(
+                    Interest.film_id == film_id,
+                    Interest.user_id == user.id,
+                    Interest.revoked_at.is_(None),
+                )
+            )
+        ).scalars()
+    )
+
+    watched = (
+        await session.execute(
+            sa.select(sa.func.count())
+            .select_from(Attendance)
+            .join(Screening, Screening.id == Attendance.screening_id)
+            .where(Attendance.user_id == user.id, Screening.film_id == film_id)
+        )
+    ).scalar_one() > 0
+
+    rating_row = (
+        await session.execute(
+            sa.select(sa.func.avg(Feedback.film_rating), sa.func.count(Feedback.film_rating)).where(
+                Feedback.film_id == film_id, Feedback.film_rating.is_not(None)
+            )
+        )
+    ).one()
+    avg, votes = rating_row
+
+    reviews = [
+        ReviewOut(
+            author=author,
+            rating=feedback.film_rating,
+            text=feedback.review_text,
+            created_at=feedback.created_at,
+        )
+        for feedback, author in await session.execute(
+            sa.select(Feedback, User.display_name)
+            .join(User, User.id == Feedback.user_id)
+            .where(Feedback.film_id == film_id, Feedback.review_text.is_not(None))
+            .order_by(Feedback.created_at.desc())
+            .limit(20)
+        )
+    ]
+
+    return FilmCard(
+        **_brief(film).model_dump(),
+        runtime_min=film.runtime_min,
+        overview=film.overview,
+        trailer_key=film.trailer_key,
+        ext_rating=film.ext_rating,
+        ext_votes=film.ext_votes,
+        internal_rating=round(float(avg), 2) if votes >= min_votes and avg is not None else None,
+        internal_votes=votes,
+        interested_count=interested_count,
+        my_interests=[InterestKind(k) for k in my_kinds],
+        watched=watched,
+        reviews=reviews,
+    )
