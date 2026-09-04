@@ -239,3 +239,15 @@ async def test_film_request_moderation(client, session):
 
     mine = (await client.get("/api/me/film-requests", headers=author_headers)).json()
     assert mine[0]["resolution_comment"] == "Нет прав на показ"
+
+
+async def test_missing_bot_token_does_not_leak_config(client, monkeypatch):
+    """Ненастроенный сервер отвечает 503 и не называет переменные окружения."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
+    get_config.cache_clear()
+
+    response = await client.post(
+        "/api/auth/telegram", json={"init_data": make_init_data(777020, "Кто-то")}
+    )
+    assert response.status_code == 503
+    assert "TELEGRAM_BOT_TOKEN" not in response.text

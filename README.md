@@ -51,8 +51,12 @@ cd backend && ./venv/bin/alembic upgrade head && cd ..
 Сервер API:
 
 ```bash
-cd backend && ./venv/bin/uvicorn app.main:app --reload
+cd backend && ./venv/bin/uvicorn app.main:app --reload --reload-include ../.env
 ```
+
+`--reload-include ../.env` обязателен: по умолчанию uvicorn следит только за
+`.py`-файлами, а конфигурация читается один раз при старте. Без этого флага правка
+токена в `.env` не подхватится, и приложение будет уверять, что токен не задан.
 
 Mini App (в отдельной вкладке терминала, из корня репозитория):
 

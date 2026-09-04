@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 import sqlalchemy as sa
@@ -6,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_config
 from app.core.auth import CurrentUser, issue_token
-from app.core.telegram_auth import InitDataError, parse_init_data
+from app.core.telegram_auth import BotNotConfigured, InitDataError, parse_init_data
 from app.db import get_session
 from app.models import User
 from app.models.enums import UserRole
 from app.schemas import AuthOut, TelegramAuthIn, UserOut
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -22,6 +25,14 @@ async def login_via_telegram(
     config = get_config()
     try:
         tg_user = parse_init_data(body.init_data, config.telegram_bot_token)
+    except BotNotConfigured as exc:
+        # Причину пишем в лог, наружу отдаём нейтральное: имена переменных
+        # окружения — не дело пользователя.
+        logger.error("Вход невозможен: %s", exc)
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Сервис временно недоступен, попробуйте позже.",
+        ) from exc
     except InitDataError as exc:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc)) from exc
 

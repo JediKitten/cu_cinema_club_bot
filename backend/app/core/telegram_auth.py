@@ -15,7 +15,12 @@ MAX_AUTH_AGE_SECONDS = 24 * 3600
 
 
 class InitDataError(ValueError):
-    pass
+    """Подпись не сошлась, устарела или строка повреждена — вина клиента."""
+
+
+class BotNotConfigured(RuntimeError):
+    """Сервер не настроен. Отделено от InitDataError намеренно: пользователю
+    нельзя показывать имена переменных окружения, а в лог их писать нужно."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +42,7 @@ def parse_init_data(
     init_data: str, bot_token: str, *, max_age: int = MAX_AUTH_AGE_SECONDS
 ) -> TelegramUser:
     if not bot_token:
-        raise InitDataError("TELEGRAM_BOT_TOKEN не задан — проверить подпись невозможно")
+        raise BotNotConfigured("TELEGRAM_BOT_TOKEN не задан — проверить подпись невозможно")
 
     fields = dict(parse_qsl(init_data, keep_blank_values=True))
     received_hash = fields.pop("hash", None)
