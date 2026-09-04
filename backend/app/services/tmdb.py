@@ -55,8 +55,17 @@ class TmdbClient:
                 headers={"Authorization": f"Bearer {self._token}"},
                 timeout=httpx.Timeout(10.0),
             )
-        async with self._semaphore:
-            response = await self._client.get(path, params={"language": self._language, **params})
+        try:
+            async with self._semaphore:
+                response = await self._client.get(
+                    path, params={"language": self._language, **params}
+                )
+        except httpx.HTTPError as exc:
+            # Контракт клиента — «падает только TmdbError». Без этого сетевая
+            # ошибка httpx проходила мимо обработчиков и превращалась в 500,
+            # хотя вызывающий код рассчитывал деградировать без TMDB.
+            raise TmdbError(f"TMDB недоступен: {exc.__class__.__name__}") from exc
+
         if response.status_code >= 400:
             raise TmdbError(f"TMDB {response.status_code}: {response.text[:200]}")
         return response.json()
