@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/films", tags=["films"])
 SortKey = Literal["recent", "alphabetical", "year", "popular"]
 
 
-def _brief(film: Film) -> FilmBrief:
+def _brief(film: Film, marks: dict[int, list[InterestKind]] | None = None) -> FilmBrief:
     return FilmBrief(
         id=film.id,
         tmdb_id=film.tmdb_id,
@@ -27,7 +27,27 @@ def _brief(film: Film) -> FilmBrief:
         poster_url=poster_url(film.poster_path),
         genres=list(film.genres or []),
         in_catalog=True,
+        my_interests=(marks or {}).get(film.id, []),
     )
+
+
+async def _my_marks(
+    session: AsyncSession, user_id: int, films: list[Film]
+) -> dict[int, list[InterestKind]]:
+    """Одним запросом на весь список — иначе каталог давал бы запрос на карточку."""
+    if not films:
+        return {}
+    rows = await session.execute(
+        sa.select(Interest.film_id, Interest.kind).where(
+            Interest.user_id == user_id,
+            Interest.film_id.in_([f.id for f in films]),
+            Interest.revoked_at.is_(None),
+        )
+    )
+    marks: dict[int, list[InterestKind]] = {}
+    for film_id, kind in rows:
+        marks.setdefault(film_id, []).append(InterestKind(kind))
+    return marks
 
 
 @router.get("/search", response_model=list[FilmBrief])
@@ -57,7 +77,8 @@ async def search_films(
         .scalars()
         .all()
     )
-    results = [_brief(film) for film in local]
+    marks = await _my_marks(session, user.id, list(local))
+    results = [_brief(film, marks) for film in local]
     seen_tmdb = {film.tmdb_id for film in local if film.tmdb_id}
 
     tmdb = get_tmdb()
@@ -107,7 +128,9 @@ async def browse_films(
         "popular": sa.func.coalesce(Film.ext_votes, 0).desc(),
     }[sort]
     stmt = stmt.order_by(order).offset(offset).limit(limit)
-    return [_brief(film) for film in (await session.execute(stmt)).scalars()]
+    films = list((await session.execute(stmt)).scalars())
+    marks = await _my_marks(session, user.id, films)
+    return [_brief(film, marks) for film in films]
 
 
 @router.get("/{film_id}", response_model=FilmCard)
@@ -131,17 +154,7 @@ async def film_card(
         )
     ).scalar_one()
 
-    my_kinds = list(
-        (
-            await session.execute(
-                sa.select(Interest.kind).where(
-                    Interest.film_id == film_id,
-                    Interest.user_id == user.id,
-                    Interest.revoked_at.is_(None),
-                )
-            )
-        ).scalars()
-    )
+    marks = await _my_marks(session, user.id, [film])
 
     watched = (
         await session.execute(
@@ -178,7 +191,7 @@ async def film_card(
     ]
 
     return FilmCard(
-        **_brief(film).model_dump(),
+        **_brief(film, marks).model_dump(),
         runtime_min=film.runtime_min,
         overview=film.overview,
         trailer_key=film.trailer_key,
@@ -187,7 +200,6 @@ async def film_card(
         internal_rating=round(float(avg), 2) if votes >= min_votes and avg is not None else None,
         internal_votes=votes,
         interested_count=interested_count,
-        my_interests=[InterestKind(k) for k in my_kinds],
         watched=watched,
         reviews=reviews,
     )

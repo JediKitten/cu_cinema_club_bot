@@ -17,6 +17,9 @@ class Config(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_bot_username: str = ""
+    # HTTPS-адрес Mini App. Telegram не принимает http и localhost, поэтому
+    # в разработке сюда идёт адрес туннеля.
+    miniapp_url: str = ""
 
     tmdb_api_token: str = ""
     tmdb_language: str = "ru-RU"

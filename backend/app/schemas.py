@@ -35,6 +35,8 @@ class FilmBrief(BaseModel):
     poster_url: str | None = None
     genres: list[str] = Field(default_factory=list)
     in_catalog: bool = True
+    # Отметки текущего пользователя: каталог должен показывать кнопки уже нажатыми.
+    my_interests: list[InterestKind] = Field(default_factory=list)
 
 
 class FilmCard(FilmBrief):
@@ -48,7 +50,6 @@ class FilmCard(FilmBrief):
     internal_votes: int = 0
     # Публично видно только ЧИСЛО желающих, никогда не поимённый список (§11).
     interested_count: int = 0
-    my_interests: list[InterestKind] = Field(default_factory=list)
     watched: bool = False
     reviews: list["ReviewOut"] = Field(default_factory=list)
 

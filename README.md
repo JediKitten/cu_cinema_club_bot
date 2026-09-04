@@ -10,51 +10,91 @@
 | 1. Каталог с карточками | ✅ поиск, браузинг, карточка фильма |
 | 1. Импорт TMDB | 🟡 ленивая подгрузка при поиске и отметке; массового импорта нет |
 | 2. Аккаунты, Telegram, роли | 🟡 вход через initData, 4 роли; веб-входа и SSO нет |
+| 2. Telegram Mini App | 🟡 каталог, поиск, карточка, отметки, заявки; админ-экранов нет |
+| 2. Бот | 🟡 `/start` открывает Mini App; уведомлений нет |
 | 3. Этап 1: кнопки, веса, настройки | ✅ включая песочницу весов §13 |
 | 4. Админ-панель | 🟡 два рейтинга §5 и настройки; ручного шорт-листа нет |
 | 5–10 | ⬜ не начато |
 
 ## Запуск
 
-Требуется Python 3.12 и Postgres 16. Все команды ниже — от корня репозитория
-(`cinema-club/`), там же лежит этот файл.
+Требуется Python 3.12 и Postgres 16.
+
+**Все команды ниже выполняются из корня репозитория** — из папки `cinema-club/`,
+той самой, где лежит этот файл. Проверить, что вы в ней: `pwd` должен оканчиваться
+на `/cinema-club`.
 
 Зависимости:
 
 ```bash
-cd cinema-club/backend && python3 -m venv venv && ./venv/bin/pip install -r requirements-dev.txt
+cd backend && python3 -m venv venv && ./venv/bin/pip install -r requirements-dev.txt && cd ..
 ```
 
-База — либо через Docker (`docker compose up -d` в корне), либо локальный Postgres.
+База — либо через Docker (`docker compose up -d`), либо локальный Postgres.
 Оба варианта слушают порт **5433**, поэтому `DATABASE_URL` одинаков. На машине, где
 это писалось, поднят второй вариант: `brew services start postgresql@16`.
 
 Конфигурация:
 
 ```bash
-cd cinema-club && cp .env.example .env
+cp .env.example .env
 ```
 
 Заполнить в `.env`: `TELEGRAM_BOT_TOKEN`, `TMDB_API_TOKEN`, `SECRET_KEY`, `BOOTSTRAP_SUPERADMIN_TG_ID`.
 
-Миграции:
+Миграции (если база уже развёрнута, ответит «already at head» — так и должно быть):
 
 ```bash
-cd cinema-club/backend && ./venv/bin/alembic upgrade head
+cd backend && ./venv/bin/alembic upgrade head && cd ..
 ```
 
-Сервер:
+Сервер API:
 
 ```bash
-cd cinema-club/backend && ./venv/bin/uvicorn app.main:app --reload
+cd backend && ./venv/bin/uvicorn app.main:app --reload
 ```
+
+Mini App (в отдельной вкладке терминала, из корня репозитория):
+
+```bash
+cd miniapp && npm install && npm run dev
+```
+
+Dev-сервер Vite проксирует `/api` на бэкенд, поэтому наружу торчит один порт — 5173.
+
+### HTTPS-туннель
+
+Telegram не принимает `localhost` и `http` — Mini App должен быть доступен по HTTPS.
+В разработке это туннель:
+
+```bash
+ssh -p 443 -R0:localhost:5173 a.pinggy.io
+```
+
+Команда печатает адрес вида `https://xxxxx.free.pinggy.net`. Его нужно:
+
+1. вписать в `.env` как `MINIAPP_URL`;
+2. отдать BotFather: `/myapps` → приложение → `Edit Web App URL`.
+
+Бесплатный туннель живёт 60 минут, и при перезапуске адрес меняется — оба шага
+придётся повторить. Cloudflare Tunnel был бы стабильнее, но его edge-серверы
+недоступны из некоторых сетей.
+
+### Бот
+
+```bash
+cd backend && ./venv/bin/python -m app.bot
+```
+
+Бот отдаёт кнопку, открывающую Mini App. Без запущенного бота `/start` в Telegram
+останется без ответа — API и Mini App сами по себе на сообщения не отвечают.
 
 Документация API: http://localhost:8000/docs
 
 ## Тесты
 
 ```bash
-cd cinema-club/backend && ./venv/bin/python -m pytest -q
+cd backend && ./venv/bin/python -m pytest -q
 ```
 
 26 тестов. Отдельная БД `cinema_test` создаётся автоматически, рабочие данные не трогаются.

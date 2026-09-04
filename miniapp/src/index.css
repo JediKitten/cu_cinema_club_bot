@@ -1,0 +1,309 @@
+/* Цвета берём из темы Telegram. Фолбэки нужны не для красоты: без них приложение
+   нечитаемо в обычном браузере, где переменных --tg-theme-* просто нет. */
+:root {
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --text: var(--tg-theme-text-color, #14171a);
+  --hint: var(--tg-theme-hint-color, #7d8b99);
+  --link: var(--tg-theme-link-color, #2481cc);
+  --button: var(--tg-theme-button-color, #2481cc);
+  --button-text: var(--tg-theme-button-text-color, #ffffff);
+  --surface: var(--tg-theme-secondary-bg-color, #f1f4f7);
+  --border: color-mix(in srgb, var(--hint) 22%, transparent);
+
+  --wishlist: #8b5cf6;
+  --soon: #f59e0b;
+
+  --radius: 12px;
+  --gap: 12px;
+
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+.app {
+  /* Место под таб-бар, чтобы последняя карточка не пряталась под ним. */
+  padding-bottom: 72px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.screen {
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.search input {
+  flex: 1;
+  border: none;
+  background: none;
+  outline: none;
+  min-width: 0;
+}
+
+.search input::placeholder {
+  color: var(--hint);
+}
+
+.film-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  text-align: left;
+  width: 100%;
+}
+
+.poster {
+  width: 64px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--border);
+  display: block;
+}
+
+.poster--empty {
+  display: grid;
+  place-items: center;
+  color: var(--hint);
+  font-size: 22px;
+}
+
+.film-row__title {
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+
+.meta {
+  color: var(--hint);
+  font-size: 13px;
+  margin: 0;
+}
+
+.marks {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.mark {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--hint);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.mark:disabled {
+  opacity: 0.5;
+}
+
+.mark--wishlist.is-on {
+  background: var(--wishlist);
+  border-color: var(--wishlist);
+  color: #fff;
+}
+
+.mark--soon.is-on {
+  background: var(--soon);
+  border-color: var(--soon);
+  color: #1b1b1b;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--hint);
+}
+
+.tabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+
+.tabs button {
+  flex: 1;
+  padding: 12px 4px;
+  color: var(--hint);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.tabs button.is-active {
+  color: var(--link);
+}
+
+.tabs .tab-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+
+.detail__head {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 14px;
+}
+
+.detail__head .poster {
+  width: 110px;
+}
+
+.detail h1 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+
+.ratings {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.rating {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-width: 78px;
+}
+
+.rating b {
+  display: block;
+  font-size: 17px;
+}
+
+.rating span {
+  color: var(--hint);
+  font-size: 11px;
+}
+
+.overview {
+  white-space: pre-wrap;
+}
+
+.review {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.review__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 4px;
+}
+
+.primary {
+  background: var(--button);
+  color: var(--button-text);
+  border-radius: var(--radius);
+  padding: 13px;
+  font-weight: 600;
+  width: 100%;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+}
+
+.field {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  outline: none;
+}
+
+.hint {
+  color: var(--hint);
+  font-size: 13px;
+}
+
+.error {
+  background: color-mix(in srgb, #e5484d 14%, transparent);
+  color: #e5484d;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.center {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--hint);
+}
+
+.link {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.attribution {
+  color: var(--hint);
+  font-size: 11px;
+  text-align: center;
+  padding: 8px 16px 0;
+}
