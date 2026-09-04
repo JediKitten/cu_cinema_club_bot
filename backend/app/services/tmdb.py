@@ -27,7 +27,13 @@ class TmdbError(RuntimeError):
 
 
 def poster_url(poster_path: str | None, size: str = "w342") -> str | None:
-    return f"{IMAGE_BASE}/{size}{poster_path}" if poster_path else None
+    if not poster_path:
+        return None
+    # Кинопоиск отдаёт постеры абсолютной ссылкой на свой CDN, TMDB — только путь.
+    # Храним и то и другое в одном поле, различая по схеме.
+    if poster_path.startswith("http"):
+        return poster_path
+    return f"{IMAGE_BASE}/{size}{poster_path}"
 
 
 class TmdbClient:

@@ -5,41 +5,36 @@
 # должно светиться наружу по HTTPS. Скрипт поднимает туннель, вытаскивает
 # выданный адрес и подставляет его в .env, чтобы не править файл руками.
 #
-# Использование:
-#   scripts/tunnel.sh                 # случайный адрес
-#   scripts/tunnel.sh cu-cinema-club  # постоянный, нужен зарегистрированный SSH-ключ
+# Использование:  scripts/tunnel.sh
 #
-# Постоянный поддомен: добавьте свой ключ на https://console.serveo.net/ssh/keys
-# Тогда адрес перестанет меняться и BotFather не придётся править при каждом
-# перезапуске.
+# Бесплатный туннель живёт около часа и при каждом запуске выдаёт новый адрес —
+# его нужно вставлять в BotFather (/myapps → Edit Web App URL). При первом
+# открытии pinggy показывает страницу-предупреждение: нажать «Enter site»,
+# дальше он запоминает согласие в cookie. Обойти её можно только своим
+# заголовком запроса, а заголовки запроса Telegram мы не контролируем.
+#
+# Serveo и localtunnel пробовались и не подошли: у первого такая же заглушка,
+# второй терял две трети запросов. Cloudflare Tunnel в этой сети не соединяется.
 
 set -euo pipefail
 
 PORT="${PORT:-5173}"
-SUBDOMAIN="${1:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG="$(mktemp -t cinema-tunnel)"
-
-if [ -n "$SUBDOMAIN" ]; then
-  FORWARD="$SUBDOMAIN:80:localhost:$PORT"
-else
-  FORWARD="80:localhost:$PORT"
-fi
 
 echo "Поднимаем туннель на порт $PORT…"
 ssh -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o ServerAliveInterval=30 \
-    -o ExitOnForwardFailure=yes \
-    -R "$FORWARD" serveo.net > "$LOG" 2>&1 &
+    -p 443 -R0:localhost:"$PORT" a.pinggy.io > "$LOG" 2>&1 &
 TUNNEL_PID=$!
 # Туннель живёт ровно столько, сколько скрипт: иначе после Ctrl+C остаётся
-# осиротевший ssh, который держит поддомен и мешает переподключиться.
+# осиротевший ssh, который продолжает держать соединение.
 trap 'kill $TUNNEL_PID 2>/dev/null || true' EXIT
 
 URL=""
-for _ in $(seq 1 30); do
-  URL=$(grep -oE 'https://[a-z0-9.-]+\.(serveousercontent\.com|serveo\.net)' "$LOG" | head -1 || true)
+for _ in $(seq 1 40); do
+  URL=$(grep -oE 'https://[a-z0-9-]+\.free\.pinggy\.net' "$LOG" | head -1 || true)
   [ -n "$URL" ] && break
   kill -0 $TUNNEL_PID 2>/dev/null || { cat "$LOG"; exit 1; }
   sleep 1
@@ -60,8 +55,8 @@ cat <<INFO
 
   Адрес Mini App: $URL
 
-  Вставьте его в BotFather: /myapps → приложение → Edit Web App URL
-  (если адрес не менялся с прошлого раза, шаг можно пропустить)
+  1. Вставьте его в BotFather: /myapps → приложение → Edit Web App URL
+  2. Откройте приложение и нажмите «Enter site» на странице pinggy
 
   Туннель работает, пока открыт этот терминал. Ctrl+C — остановить.
 

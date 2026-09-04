@@ -15,10 +15,40 @@ import sqlalchemy as sa
 
 from app.db import SessionLocal
 from app.models import Film
-from app.services.kinopoisk import KinopoiskError, get_kinopoisk
+from app.services.kinopoisk import KinopoiskError, get_kinopoisk, upsert_from_kinopoisk
 from app.services.tmdb import TmdbError, get_tmdb, upsert_from_tmdb
 
 logger = logging.getLogger("import_top")
+
+
+async def run_kinopoisk(limit: int) -> int:
+    """Каталог целиком из Кинопоиска — когда TMDB недоступен.
+
+    Отличается от основного пути не только источником данных: постеры тоже
+    поедут с CDN Кинопоиска, а он, в отличие от image.tmdb.org, доступен там же,
+    где и сам API.
+    """
+    kinopoisk = get_kinopoisk()
+    if not kinopoisk.configured:
+        raise SystemExit("KINOPOISK_API_TOKEN не задан в .env")
+
+    logger.info("Забираем топ-%d Кинопоиска…", limit)
+    try:
+        docs = await kinopoisk.top250_full(limit)
+    except KinopoiskError as exc:
+        raise SystemExit(f"Не удалось получить список: {exc}") from exc
+
+    imported = 0
+    async with SessionLocal() as session:
+        for doc in docs:
+            film = await upsert_from_kinopoisk(session, doc)
+            imported += 1
+            logger.info("#%-3s %s (%s)", doc.get("top250", "?"), film.title_ru, film.year or "—")
+
+    total = await _count_films()
+    logger.info("Готово. Импортировано: %d. Всего в каталоге: %d", imported, total)
+    await kinopoisk.aclose()
+    return imported
 
 
 async def run(limit: int, delay: float) -> int:
@@ -127,10 +157,19 @@ def main() -> None:
     parser.add_argument(
         "--delay", type=float, default=0.1, help="пауза между запросами к TMDB, секунд"
     )
+    parser.add_argument(
+        "--source",
+        choices=("tmdb", "kinopoisk"),
+        default="tmdb",
+        help="откуда брать данные: tmdb (по §11) или kinopoisk (когда TMDB недоступен)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    asyncio.run(run(args.limit, args.delay))
+    if args.source == "kinopoisk":
+        asyncio.run(run_kinopoisk(args.limit))
+    else:
+        asyncio.run(run(args.limit, args.delay))
 
 
 if __name__ == "__main__":

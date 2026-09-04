@@ -116,6 +116,35 @@ class KinopoiskClient:
         entries.sort(key=lambda e: e.rank)
         return entries[:limit]
 
+    async def top250_full(self, limit: int) -> list[dict]:
+        """Топ-250 с полями, достаточными для карточки, — когда каталог строится
+        прямо из Кинопоиска, без похода в TMDB."""
+        docs: list[dict] = []
+        page, per_page = 1, min(limit, 250)
+
+        while len(docs) < limit:
+            data = await self._request(
+                "/movie",
+                {
+                    "lists": "top250",
+                    "sortField": "top250",
+                    "sortType": "1",
+                    "limit": per_page,
+                    "page": page,
+                    "selectFields": FULL_FIELDS,
+                },
+            )
+            batch = data.get("docs", [])
+            if not batch:
+                break
+            docs.extend(batch)
+            if page >= data.get("pages", page):
+                break
+            page += 1
+
+        docs.sort(key=lambda d: d.get("top250") or 10**6)
+        return docs[:limit]
+
     async def aclose(self) -> None:
         if self._client is not None:
             await self._client.aclose()
@@ -130,3 +159,72 @@ def get_kinopoisk() -> KinopoiskClient:
     if _client is None:
         _client = KinopoiskClient()
     return _client
+
+
+# --- Запись в каталог -------------------------------------------------------
+
+FULL_FIELDS = [
+    "id",
+    "name",
+    "alternativeName",
+    "year",
+    "movieLength",
+    "description",
+    "shortDescription",
+    "genres",
+    "poster",
+    "rating",
+    "votes",
+    "videos",
+    "top250",
+]
+
+
+def film_fields(doc: dict) -> dict:
+    """Документ Кинопоиска → колонки films.
+
+    В poster_path кладём абсолютный URL: у Кинопоиска постеры лежат на своём CDN,
+    и собрать их из пути, как у TMDB, нельзя. poster_url() различает по схеме.
+    """
+    trailers = ((doc.get("videos") or {}).get("trailers")) or []
+    trailer_key = None
+    for video in trailers:
+        url = video.get("url") or ""
+        if "youtube.com" in url or "youtu.be" in url:
+            trailer_key = url.rsplit("/", 1)[-1].split("?v=")[-1].split("&")[0]
+            break
+
+    rating = doc.get("rating") or {}
+    votes = doc.get("votes") or {}
+
+    return {
+        "kp_id": doc["id"],
+        "title_ru": doc.get("name") or doc.get("alternativeName") or "Без названия",
+        "title_orig": doc.get("alternativeName"),
+        "year": doc.get("year"),
+        "runtime_min": doc.get("movieLength"),
+        "overview": doc.get("description") or doc.get("shortDescription") or None,
+        "poster_path": (doc.get("poster") or {}).get("url"),
+        "trailer_key": trailer_key,
+        "genres": [g["name"] for g in doc.get("genres", []) if g.get("name")],
+        "ext_rating": rating.get("kp"),
+        "ext_votes": votes.get("kp"),
+        "kp_rating": rating.get("kp"),
+        "kp_votes": votes.get("kp"),
+    }
+
+
+async def upsert_from_kinopoisk(session, doc: dict):
+    """Идемпотентная запись по kp_id — зеркало upsert_from_tmdb."""
+    from sqlalchemy.dialects.postgresql import insert
+
+    from app.models import Film
+
+    fields = film_fields(doc)
+    stmt = insert(Film).values(**fields)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[Film.kp_id], set_=fields
+    ).returning(Film)
+    film = (await session.execute(stmt)).scalar_one()
+    await session.commit()
+    return film
