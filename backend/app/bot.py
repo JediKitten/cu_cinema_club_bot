@@ -15,6 +15,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    MenuButtonWebApp,
     Message,
     WebAppInfo,
 )
@@ -22,6 +23,9 @@ from aiogram.types import (
 from app.config import get_config
 
 logger = logging.getLogger(__name__)
+
+# Как часто перечитывать .env в поисках нового адреса туннеля.
+URL_WATCH_INTERVAL_SECONDS = 5
 
 WELCOME = (
     "<b>Университетский киноклуб</b>\n\n"
@@ -42,6 +46,17 @@ HELP = (
 )
 
 
+def current_miniapp_url() -> str:
+    """Адрес читается при каждом обращении, а не один раз на старте.
+
+    В разработке он живёт в туннеле и меняется при каждом перезапуске. Пока
+    значение сидело в замыкании, бот после смены адреса продолжал раздавать
+    кнопку на мёртвый туннель, и это выглядело как «бот не работает».
+    """
+    get_config.cache_clear()
+    return get_config().miniapp_url
+
+
 def open_app_keyboard(url: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -50,11 +65,12 @@ def open_app_keyboard(url: str) -> InlineKeyboardMarkup:
     )
 
 
-def build_dispatcher(miniapp_url: str) -> Dispatcher:
+def build_dispatcher() -> Dispatcher:
     dispatcher = Dispatcher()
 
     @dispatcher.message(CommandStart())
     async def start(message: Message) -> None:
+        miniapp_url = current_miniapp_url()
         if not miniapp_url:
             await message.answer(
                 "Приложение ещё не опубликовано: в .env не задан MINIAPP_URL. "
@@ -79,6 +95,34 @@ def build_dispatcher(miniapp_url: str) -> Dispatcher:
     return dispatcher
 
 
+async def apply_menu_button(bot: Bot, url: str) -> None:
+    """Кнопка меню бота ведёт в Mini App.
+
+    Ставится через API, поэтому при смене адреса туннеля BotFather править
+    не нужно — достаточно, чтобы новый адрес попал в .env.
+    """
+    await bot.set_chat_menu_button(
+        menu_button=MenuButtonWebApp(text="Киноклуб", web_app=WebAppInfo(url=url))
+    )
+    logger.info("Кнопка меню обновлена: %s", url)
+
+
+async def watch_miniapp_url(bot: Bot, initial: str) -> None:
+    """Следит за .env и переставляет кнопку меню, когда адрес сменился."""
+    known = initial
+    while True:
+        await asyncio.sleep(URL_WATCH_INTERVAL_SECONDS)
+        url = current_miniapp_url()
+        if url and url != known:
+            known = url
+            try:
+                await apply_menu_button(bot, url)
+            except Exception:
+                # Сеть до Telegram могла моргнуть — пробуем на следующем круге,
+                # ронять бота из-за этого незачем.
+                logger.exception("Не удалось обновить кнопку меню")
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = get_config()
@@ -93,14 +137,22 @@ async def main() -> None:
         token=config.telegram_bot_token,
         default=DefaultBotProperties(parse_mode="HTML"),
     )
-    dispatcher = build_dispatcher(config.miniapp_url)
+    dispatcher = build_dispatcher()
 
     me = await bot.get_me()
-    logger.info("Бот @%s запущен. Mini App: %s", me.username, config.miniapp_url or "не задан")
+    url = current_miniapp_url()
+    logger.info("Бот @%s запущен. Mini App: %s", me.username, url or "не задан")
 
-    # drop_pending_updates: перезапуск в разработке не должен разгребать очередь
-    # сообщений, накопившихся, пока бот лежал.
-    await dispatcher.start_polling(bot, drop_pending_updates=True)
+    if url:
+        await apply_menu_button(bot, url)
+    watcher = asyncio.create_task(watch_miniapp_url(bot, url))
+
+    try:
+        # drop_pending_updates: перезапуск в разработке не должен разгребать очередь
+        # сообщений, накопившихся, пока бот лежал.
+        await dispatcher.start_polling(bot, drop_pending_updates=True)
+    finally:
+        watcher.cancel()
 
 
 if __name__ == "__main__":

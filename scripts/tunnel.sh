@@ -1,65 +1,77 @@
 #!/usr/bin/env bash
-# HTTPS-туннель к dev-серверу Mini App.
+# HTTPS-туннель к dev-серверу Mini App, с автоматическим переподключением.
 #
-# Telegram не принимает localhost и http, поэтому в разработке приложение
-# должно светиться наружу по HTTPS. Скрипт поднимает туннель, вытаскивает
-# выданный адрес и подставляет его в .env, чтобы не править файл руками.
+# Telegram не принимает localhost и http, поэтому в разработке приложение должно
+# светиться наружу по HTTPS. Бесплатный туннель живёт около часа и каждый раз
+# выдаёт новый адрес — скрипт поднимает его заново и записывает адрес в .env.
 #
-# Использование:  scripts/tunnel.sh
+# Править BotFather при этом не нужно: бот следит за .env и сам переставляет
+# кнопку меню через Telegram API (см. watch_miniapp_url в app/bot.py).
+# Достаточно, чтобы бот был запущен.
 #
-# Бесплатный туннель живёт около часа и при каждом запуске выдаёт новый адрес —
-# его нужно вставлять в BotFather (/myapps → Edit Web App URL). При первом
-# открытии pinggy показывает страницу-предупреждение: нажать «Enter site»,
-# дальше он запоминает согласие в cookie. Обойти её можно только своим
-# заголовком запроса, а заголовки запроса Telegram мы не контролируем.
-#
-# Serveo и localtunnel пробовались и не подошли: у первого такая же заглушка,
-# второй терял две трети запросов. Cloudflare Tunnel в этой сети не соединяется.
+# Использование:  scripts/tunnel.sh     (Ctrl+C — остановить)
 
-set -euo pipefail
+set -uo pipefail
 
 PORT="${PORT:-5173}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG="$(mktemp -t cinema-tunnel)"
 
-echo "Поднимаем туннель на порт $PORT…"
-ssh -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o ServerAliveInterval=30 \
-    -p 443 -R0:localhost:"$PORT" a.pinggy.io > "$LOG" 2>&1 &
-TUNNEL_PID=$!
-# Туннель живёт ровно столько, сколько скрипт: иначе после Ctrl+C остаётся
-# осиротевший ssh, который продолжает держать соединение.
-trap 'kill $TUNNEL_PID 2>/dev/null || true' EXIT
+TUNNEL_PID=""
+cleanup() {
+  [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null
+  echo
+  echo "Туннель остановлен."
+  exit 0
+}
+trap cleanup INT TERM
 
-URL=""
-for _ in $(seq 1 40); do
-  URL=$(grep -oE 'https://[a-z0-9-]+\.free\.pinggy\.net' "$LOG" | head -1 || true)
-  [ -n "$URL" ] && break
-  kill -0 $TUNNEL_PID 2>/dev/null || { cat "$LOG"; exit 1; }
-  sleep 1
-done
+attempt=0
+while true; do
+  attempt=$((attempt + 1))
+  LOG="$(mktemp -t cinema-tunnel)"
 
-if [ -z "$URL" ]; then
-  echo "Не удалось получить адрес. Вывод туннеля:" >&2
-  cat "$LOG" >&2
-  exit 1
-fi
+  ssh -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      -o ServerAliveInterval=30 \
+      -p 443 -R0:localhost:"$PORT" a.pinggy.io > "$LOG" 2>&1 &
+  TUNNEL_PID=$!
 
-if [ -f "$ROOT/.env" ]; then
-  sed -i '' "s|^MINIAPP_URL=.*|MINIAPP_URL=$URL|" "$ROOT/.env"
-  echo "MINIAPP_URL в .env обновлён."
-fi
+  URL=""
+  for _ in $(seq 1 40); do
+    URL=$(grep -oE 'https://[a-z0-9-]+\.free\.pinggy\.net' "$LOG" | head -1)
+    [ -n "$URL" ] && break
+    kill -0 "$TUNNEL_PID" 2>/dev/null || break
+    sleep 1
+  done
 
-cat <<INFO
+  if [ -z "$URL" ]; then
+    echo "Попытка $attempt: адрес получить не удалось, повтор через 10 с." >&2
+    tail -3 "$LOG" >&2
+    kill "$TUNNEL_PID" 2>/dev/null
+    rm -f "$LOG"
+    sleep 10
+    continue
+  fi
+
+  if [ -f "$ROOT/.env" ]; then
+    sed -i '' "s|^MINIAPP_URL=.*|MINIAPP_URL=$URL|" "$ROOT/.env"
+  fi
+
+  cat <<INFO
 
   Адрес Mini App: $URL
 
-  1. Вставьте его в BotFather: /myapps → приложение → Edit Web App URL
-  2. Откройте приложение и нажмите «Enter site» на странице pinggy
+  Записан в .env. Бот подхватит его в течение нескольких секунд и сам
+  переставит кнопку меню — BotFather трогать не нужно.
 
-  Туннель работает, пока открыт этот терминал. Ctrl+C — остановить.
+  При первом открытии pinggy покажет предупреждение: нажмите «Enter site».
 
 INFO
 
-wait $TUNNEL_PID
+  # Ждём падения туннеля и поднимаем заново: бесплатный лимит около часа,
+  # а вручную перезапускать каждый час — верный способ забыть.
+  wait "$TUNNEL_PID"
+  rm -f "$LOG"
+  echo "Туннель отвалился, переподключаемся…"
+  sleep 3
+done
