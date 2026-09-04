@@ -16,27 +16,37 @@
 
 ## Запуск
 
-Требуется Python 3.12 и Postgres 16.
+Требуется Python 3.12 и Postgres 16. Все команды ниже — от корня репозитория
+(`cinema-club/`), там же лежит этот файл.
+
+Зависимости:
 
 ```bash
-cd backend && python3 -m venv venv && ./venv/bin/pip install -r requirements-dev.txt
+cd cinema-club/backend && python3 -m venv venv && ./venv/bin/pip install -r requirements-dev.txt
 ```
 
 База — либо через Docker (`docker compose up -d` в корне), либо локальный Postgres.
-Оба варианта слушают порт **5433**, поэтому `DATABASE_URL` одинаков.
+Оба варианта слушают порт **5433**, поэтому `DATABASE_URL` одинаков. На машине, где
+это писалось, поднят второй вариант: `brew services start postgresql@16`.
+
+Конфигурация:
 
 ```bash
-cp .env.example .env
+cd cinema-club && cp .env.example .env
 ```
 
 Заполнить в `.env`: `TELEGRAM_BOT_TOKEN`, `TMDB_API_TOKEN`, `SECRET_KEY`, `BOOTSTRAP_SUPERADMIN_TG_ID`.
 
-```bash
-cd backend && ./venv/bin/alembic upgrade head
-```
+Миграции:
 
 ```bash
-cd backend && ./venv/bin/uvicorn app.main:app --reload
+cd cinema-club/backend && ./venv/bin/alembic upgrade head
+```
+
+Сервер:
+
+```bash
+cd cinema-club/backend && ./venv/bin/uvicorn app.main:app --reload
 ```
 
 Документация API: http://localhost:8000/docs
@@ -44,7 +54,7 @@ cd backend && ./venv/bin/uvicorn app.main:app --reload
 ## Тесты
 
 ```bash
-cd backend && ./venv/bin/python -m pytest -q
+cd cinema-club/backend && ./venv/bin/python -m pytest -q
 ```
 
 26 тестов. Отдельная БД `cinema_test` создаётся автоматически, рабочие данные не трогаются.
