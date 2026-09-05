@@ -220,9 +220,12 @@ async def confirm(
     if screening.status != ScreeningStatus.SCHEDULED:
         raise ScheduleError("Показ отменён")
 
-    round_ = await session.get(Round, screening.round_id)
-    if round_.stage not in (RoundStage.PUBLISHED, RoundStage.RUNNING):
-        raise ScheduleError("Расписание ещё не опубликовано")
+    # Ручное событие живёт вне цикла: оно уже объявлено, и этап цикла к нему
+    # отношения не имеет. Проверять стадию есть смысл только у показов цикла.
+    if screening.round_id is not None:
+        round_ = await session.get(Round, screening.round_id)
+        if round_ is None or round_.stage not in (RoundStage.PUBLISHED, RoundStage.RUNNING):
+            raise ScheduleError("Расписание ещё не опубликовано")
 
     capacity = await _capacity(session, screening)
     existing = (

@@ -281,3 +281,50 @@ async def test_ordinary_user_still_cannot_see_unpublished_round(client, session)
     ).json()
 
     assert schedule["screenings"] == []
+
+
+async def test_confirm_works_for_manual_event(session):
+    """У ручного события нет цикла — проверка его этапа не должна применяться."""
+    from app.models.enums import ConfirmationState
+    from app.services import schedule as sched
+
+    boss = await make_user(session, "Админ")
+    guest = await make_user(session, "Гость")
+    await session.commit()
+
+    event = await events.create(
+        session, starts_at=SOON, actor_id=boss.id, title="Секретный показ", note="Ждите анонса"
+    )
+
+    result = await sched.confirm(session, event.id, guest.id)
+    assert result.state == ConfirmationState.CONFIRMED
+    assert result.confirmed == 1
+
+    # И отменить приход тоже можно.
+    cancelled = await sched.cancel(session, event.id, guest.id, late_cancel_hours=24)
+    assert cancelled.state == ConfirmationState.CANCELLED
+    assert cancelled.confirmed == 0
+
+
+async def test_waitlist_works_for_manual_event(session):
+    """Вместимость зала действует и на события вне цикла."""
+    from app.models import Hall
+    from app.models.enums import ConfirmationState
+    from app.services import schedule as sched
+
+    boss = await make_user(session, "Админ")
+    await session.commit()
+    event = await events.create(session, starts_at=SOON, actor_id=boss.id, title="Малый зал")
+
+    hall = (await session.execute(sa.select(Hall))).scalars().first()
+    hall.capacity = 1
+    await session.commit()
+
+    first = await make_user(session, "Первый")
+    second = await make_user(session, "Второй")
+    await session.commit()
+
+    assert (await sched.confirm(session, event.id, first.id)).state == ConfirmationState.CONFIRMED
+    queued = await sched.confirm(session, event.id, second.id)
+    assert queued.state == ConfirmationState.WAITLIST
+    assert queued.place_in_queue == 1
