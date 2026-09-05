@@ -30,6 +30,9 @@ class Config(BaseSettings):
     bootstrap_superadmin_tg_id: int | None = None
 
     session_ttl_hours: int = 24 * 30
+    # Каталог собранного Mini App. В проде статику отдаёт само приложение,
+    # в разработке её отдаёт dev-сервер Vite и каталога здесь нет.
+    frontend_dir: str = "../miniapp/dist"
 
     @field_validator("bootstrap_superadmin_tg_id", mode="before")
     @classmethod

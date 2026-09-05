@@ -1,112 +1,116 @@
-# Развёртывание на VPS
+# Развёртывание
 
-Ubuntu 22.04/24.04 или Debian 12, права root, домен с A-записью на сервер.
+Боевая установка: `cinema.cu3rd.ru`, сервер `87.120.84.226`, пользователь `kir`.
 
-Telegram требует **валидный** TLS-сертификат: самоподписанный он не примет,
-а на голый IP сертификат не выпустить — домен обязателен.
-
-## Первая установка
-
-**1. Направьте домен на сервер.** A-запись `cinema.example.ru → IP`. Проверьте,
-что она разошлась, иначе certbot не выпустит сертификат:
-
-```bash
-dig +short cinema.example.ru
-```
-
-**2. Залейте код** (локально, из корня проекта):
-
-```bash
-deploy/sync.sh root@IP-сервера
-```
-
-**3. Запустите установку** (на сервере):
-
-```bash
-sudo DOMAIN=cinema.example.ru EMAIL=you@example.ru /opt/cinema-club/deploy/setup.sh
-```
-
-Скрипт ставит Python, Postgres, nginx, Node; заводит системного пользователя
-`cinema`; создаёт базу со случайным паролем; накатывает миграции; собирает
-Mini App; поднимает systemd-юниты; настраивает nginx и выпускает сертификат.
-
-**4. Впишите токены** в `/opt/cinema-club/.env`:
+## Схема
 
 ```
-TELEGRAM_BOT_TOKEN=
-KINOPOISK_API_TOKEN=
-BOOTSTRAP_SUPERADMIN_TG_ID=
+        Telegram
+           │  HTTPS, сертификат Let's Encrypt
+           ▼
+      Caddy на хосте (:80, :443)     ← чужой, общий для нескольких проектов
+           │  reverse_proxy 127.0.0.1:8089
+           ▼
+    ┌──────────────────────────────────┐
+    │ docker compose: cinema-club      │
+    │                                  │
+    │  api  ── статика + /api ── :8089 │
+    │  bot  ── long polling            │
+    │  db   ── postgres:16, том db-data│
+    └──────────────────────────────────┘
 ```
 
-`DATABASE_URL`, `MINIAPP_URL` и `SECRET_KEY` скрипт проставил сам — их не трогайте.
+Машина общая: на ней живут чужой проект новостей (8 контейнеров), VPN и Caddy.
+Отсюда все решения ниже.
 
-```bash
-sudo systemctl restart cinema-api cinema-bot
-```
+**Всё в Docker, на хосте не ставится ничего.** На сервере системный Python 3.8,
+а проекту нужен 3.12. Ставить его через PPA на общую машину — лишний риск;
+в контейнере вопрос не возникает. Node нужен только для сборки фронтенда и
+живёт в первой ступени образа, в рантайм не попадает.
 
-**5. Наполните каталог:**
+**Своя база в своём контейнере.** На хосте порт 5432 занят Postgres чужого
+проекта. Наш `db` наружу не публикуется вовсе — он виден только соседям по сети
+compose, и `docker compose down -v` соседей его не заденет.
 
-```bash
-sudo -u cinema bash -c "cd /opt/cinema-club/backend && \
-    ./venv/bin/python -m app.import_top --source kinopoisk --limit 100"
-```
+**Ни nginx, ни certbot.** Порты 80 и 443 держит Caddy, он же терминирует TLS.
+Статику Mini App отдаёт само приложение (см. конец `backend/app/main.py`) —
+тот же origin, что и API, поэтому фронтенду не нужны ни `VITE_API_URL`, ни CORS.
 
-Адрес Mini App в BotFather править не нужно: бот выставит кнопку меню сам,
-взяв `MINIAPP_URL` из `.env`.
+**Только порт 8089**, привязанный к `127.0.0.1`. Наружу приложение не смотрит.
 
 ## Обновление
 
+Локально, из корня проекта:
+
 ```bash
-deploy/sync.sh root@IP-сервера          # локально
-sudo /opt/cinema-club/deploy/update.sh   # на сервере
+deploy/sync.sh kir@87.120.84.226
 ```
 
-Миграции накатываются до перезапуска API — иначе новый код успел бы обратиться
-к колонкам, которых ещё нет.
+На сервере:
+
+```bash
+cd ~/cinema-club
+sudo docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Миграции накатывает контейнер `api` при старте, до запуска uvicorn — см. его
+`command` в compose. Бот их не трогает: иначе два процесса полезли бы в схему
+одновременно.
+
+## Первая установка на новую машину
+
+Нужен только Docker и обратный прокси, направленный на `127.0.0.1:8089`.
+
+```bash
+deploy/sync.sh kir@адрес
+```
+
+На сервере создать `~/cinema-club/.env` из `.env.example` и заполнить:
+
+| Ключ | Откуда |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | @BotFather → /mybots → API Token |
+| `KINOPOISK_API_TOKEN` | kinopoisk.dev |
+| `BOOTSTRAP_SUPERADMIN_TG_ID` | @userinfobot |
+| `MINIAPP_URL` | адрес сайта, например `https://cinema.cu3rd.ru` |
+| `SECRET_KEY` | `openssl rand -hex 32` |
+| `POSTGRES_PASSWORD` | `openssl rand -hex 24` |
+
+`DATABASE_URL` в `.env` не используется: compose собирает его сам из
+`POSTGRES_PASSWORD` и подставляет контейнерам.
+
+```bash
+chmod 600 .env
+sudo docker compose -f docker-compose.prod.yml up -d --build
+sudo docker compose -f docker-compose.prod.yml exec api \
+    python -m app.import_top --source kinopoisk --limit 100
+```
+
+Адрес Mini App в BotFather выставлять не нужно: бот сам ставит кнопку меню,
+взяв `MINIAPP_URL`.
 
 ## Эксплуатация
 
 ```bash
-systemctl status cinema-api cinema-bot
-journalctl -u cinema-api -f
-journalctl -u cinema-bot -f
+cd ~/cinema-club
+sudo docker compose -f docker-compose.prod.yml ps
+sudo docker compose -f docker-compose.prod.yml logs -f api
+sudo docker compose -f docker-compose.prod.yml logs -f bot
 ```
+
+Контейнеры подняты с `restart: unless-stopped`, а Docker включён в автозагрузку,
+поэтому перезагрузку сервера стек переживает сам.
 
 Бэкап базы:
 
 ```bash
-sudo -u postgres pg_dump cinema | gzip > cinema-$(date +%F).sql.gz
+sudo docker compose -f docker-compose.prod.yml exec -T db \
+    pg_dump -U cinema cinema | gzip > cinema-$(date +%F).sql.gz
 ```
-
-## Как это устроено
-
-```
-        Telegram
-           │  HTTPS, валидный сертификат
-           ▼
-    nginx :443  ──────────────┐
-      │                       │
-      │ /  → miniapp/dist     │ /api/ → 127.0.0.1:8000
-      │   (статика)           ▼
-      │                  cinema-api (uvicorn, 2 воркера)
-      │                       │
-      │                       ▼
-      │                  Postgres :5432 (только localhost)
-      │                       ▲
-      └── cinema-bot ─────────┘
-             │
-        long polling к Telegram
-```
-
-Фронтенд и API живут на одном origin, поэтому фронтенду не нужен ни
-`VITE_API_URL`, ни CORS. Наружу открыты только 80 и 443; API и Postgres
-слушают localhost.
 
 ## Что стоит сделать потом
 
-* **Порт SSH и вход по ключу.** Установка этого не трогает.
-* **Автообновление сертификата.** certbot ставит таймер сам, проверить:
-  `systemctl list-timers | grep certbot`.
-* **Бэкапы по расписанию.** Команда выше в cron, с выгрузкой за пределы сервера.
-* **`X-Frame-Options` не ставится намеренно** — Telegram открывает Mini App
+* **Вход по SSH-ключу** вместо пароля.
+* **Бэкапы по расписанию** — команда выше в cron, с выгрузкой за пределы машины.
+* **`X-Frame-Options` не выставляется намеренно** — Telegram открывает Mini App
   во фрейме, и этот заголовок сломал бы запуск.

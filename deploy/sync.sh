@@ -8,7 +8,7 @@
 set -euo pipefail
 
 TARGET="${1:-}"
-APP_DIR="${APP_DIR:-/opt/cinema-club}"
+APP_DIR="${APP_DIR:-cinema-club}"
 
 if [ -z "$TARGET" ]; then
   echo "Укажите сервер: $0 root@адрес" >&2
@@ -28,8 +28,8 @@ rsync -az --delete \
   --exclude 'backend/__pycache__' \
   --exclude '**/__pycache__' \
   --exclude 'miniapp/node_modules' \
-  --exclude 'miniapp/dist' \
+  --exclude "miniapp/dist" \
   "$ROOT/" "$TARGET:$APP_DIR/"
 
 echo "Код залит в $TARGET:$APP_DIR"
-echo "Дальше на сервере:  sudo $APP_DIR/deploy/update.sh"
+echo "Дальше на сервере:  cd ~/cinema-club && sudo docker compose -f docker-compose.prod.yml up -d --build"

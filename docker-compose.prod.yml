@@ -1,0 +1,68 @@
+# Прод-развёртывание. Хост даёт только Docker и Caddy — больше ничего ставить
+# не нужно, системный Python и чужие контейнеры не затрагиваются.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+name: cinema-club
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cinema
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?нужен POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: cinema
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # Порт наружу не публикуем: база видна только соседям по сети compose.
+    # На хосте 5432 уже занят чужим проектом, и конфликтовать с ним нельзя.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cinema -d cinema"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cinema:${POSTGRES_PASSWORD}@db:5432/cinema
+    depends_on:
+      db:
+        condition: service_healthy
+    # Миграции накатывает только API. Если бы это делал и бот, два процесса
+    # полезли бы в схему одновременно.
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+        --workers 2 --proxy-headers --forwarded-allow-ips '*'
+    # Только на localhost: наружу смотрит Caddy, он же терминирует TLS.
+    ports:
+      - "127.0.0.1:8089:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5).status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cinema:${POSTGRES_PASSWORD}@db:5432/cinema
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "app.bot"]
+
+volumes:
+  db-data:

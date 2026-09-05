@@ -1,0 +1,13 @@
+.git
+.env
+.db_password
+.pgdata
+deploy
+docs
+scripts
+backend/venv
+backend/tests
+backend/__pycache__
+**/__pycache__
+miniapp/node_modules
+miniapp/dist
