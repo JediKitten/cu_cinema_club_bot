@@ -42,15 +42,13 @@ export function History() {
               {row.title} {row.year && <span className="hint">({row.year})</span>}
             </p>
             <p className="meta">{dayLabel(row.starts_at)}</p>
-            {row.status === "cancelled" ? (
-              <p className="meta">Показ отменён</p>
-            ) : (
-              <p className="meta">
-                пришли {row.came}
-                {row.expected !== null && ` из ожидаемых ${row.expected}`}
-                {row.rating !== null && ` · оценка ${row.rating}`}
-              </p>
-            )}
+            {/* Сюда попадают только состоявшиеся показы: отменённые никто
+                не смотрел, и их сервер в этот список не отдаёт. */}
+            <p className="meta">
+              пришли {row.came}
+              {row.expected !== null && ` из ожидаемых ${row.expected}`}
+              {row.rating !== null && ` · оценка ${row.rating}`}
+            </p>
           </div>
         </div>
       ))}

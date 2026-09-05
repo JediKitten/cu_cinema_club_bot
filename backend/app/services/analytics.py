@@ -288,7 +288,11 @@ async def top_rated(session: AsyncSession, min_votes: int, limit: int = 10) -> l
 
 
 async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
-    """Календарь прошедших показов (§18, пункт 10)."""
+    """Календарь прошедших показов (§18, пункт 10).
+
+    Только состоявшиеся: отменённый показ никто не смотрел, и во вкладке
+    «Что уже смотрели» он лишь путает. Отмены видны в аналитике отдельно.
+    """
     rows = await session.execute(
         sa.select(
             Screening.id,
@@ -305,7 +309,7 @@ async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
         .join(Slot, Slot.id == Screening.slot_id)
         .outerjoin(Attendance, Attendance.screening_id == Screening.id)
         .outerjoin(Feedback, Feedback.screening_id == Screening.id)
-        .where(Screening.status != ScreeningStatus.SCHEDULED)
+        .where(Screening.status == ScreeningStatus.COMPLETED)
         .group_by(Screening.id, Film.title_ru, Film.year, Film.poster_path, Slot.starts_at)
         .order_by(Slot.starts_at.desc())
         .limit(limit)

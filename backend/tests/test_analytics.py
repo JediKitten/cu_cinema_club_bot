@@ -132,6 +132,20 @@ async def test_attendance_by_weekday(session):
     assert overview.by_weekday[weekday] == 1.0
 
 
+async def test_past_screenings_exclude_cancelled(session):
+    """Отменённый показ никто не смотрел — в истории клуба ему не место."""
+    round_, films, slots, boss, _ = await voted_round(session)
+    cancelled = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+    await sched.cancel_screening(session, cancelled.id, "не смогли", boss.id)
+
+    assert await analytics.past_screenings(session) == []
+
+    # А в аналитике отмена видна отдельно.
+    overview = await analytics.overview(session, long_wait_days=90)
+    assert overview.screenings_cancelled == 1
+
+
 async def test_past_screenings_exclude_upcoming(session):
     round_, films, slots, boss, voters = await voted_round(session)
     held = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
