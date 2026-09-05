@@ -10,6 +10,7 @@ from app.models import Feedback, Film, Interest, User
 from app.models.enums import FilmStatus
 from app.schemas import FilmBrief, FilmCard, ReviewOut
 from app.services import interests as marks_service
+from app.services import matching
 from app.services.interests import MarkState
 from app.services.settings import SettingsService
 from app.services.tmdb import TmdbError, get_tmdb, poster_url
@@ -76,6 +77,11 @@ async def search_films(
     marks = await _my_marks(session, user.id, list(local))
     results = [_brief(film, marks) for film in local]
     seen_tmdb = {film.tmdb_id for film in local if film.tmdb_id}
+    # Каталог наполнен из Кинопоиска, у этих фильмов tmdb_id пуст. Отсеивать
+    # дубли только по нему нельзя: тот же фильм из TMDB показался бы вторым.
+    seen_titles: set[tuple[str, int]] = set()
+    for film in local:
+        seen_titles |= matching.keys(film.title_ru, film.title_orig, film.year)
 
     tmdb = get_tmdb()
     if tmdb.configured and len(results) < 20:
@@ -84,13 +90,16 @@ async def search_films(
                 if item["id"] in seen_tmdb:
                     continue
                 release = item.get("release_date") or ""
+                year = int(release[:4]) if release[:4].isdigit() else None
+                if matching.keys(item.get("title"), item.get("original_title"), year) & seen_titles:
+                    continue
                 results.append(
                     FilmBrief(
                         id=None,
                         tmdb_id=item["id"],
                         title_ru=item.get("title") or item.get("original_title") or "Без названия",
                         title_orig=item.get("original_title"),
-                        year=int(release[:4]) if release[:4].isdigit() else None,
+                        year=year,
                         poster_url=poster_url(item.get("poster_path")),
                         in_catalog=False,
                     )

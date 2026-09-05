@@ -379,3 +379,81 @@ async def test_blocked_evening_is_reported(client, session):
     slot = next(s for s in unblocked.json()["slots"] if s["id"] == slot_id)
     assert slot["blocked"] is False
     assert slot["blocked_reason"] is None
+
+
+async def test_search_does_not_duplicate_films_across_sources(client, session, monkeypatch):
+    """Каталог наполнен из Кинопоиска — у фильмов пуст tmdb_id, и тот же фильм
+    из TMDB показывался вторым."""
+    session.add(
+        Film(title_ru="Бойцовский клуб", title_orig="Fight Club", year=1999, tmdb_id=None)
+    )
+    await session.commit()
+
+    async def fake_search(self, query, page=1):
+        return [
+            {
+                "id": 550,
+                "title": "Бойцовский клуб",
+                "original_title": "Fight Club",
+                "release_date": "1999-10-15",
+                "poster_path": "/x.jpg",
+            },
+            {
+                "id": 999,
+                "title": "Другой фильм",
+                "original_title": "Something Else",
+                "release_date": "2001-01-01",
+                "poster_path": None,
+            },
+        ]
+
+    from app.services.tmdb import TmdbClient
+
+    monkeypatch.setattr(TmdbClient, "search", fake_search)
+    monkeypatch.setattr(TmdbClient, "configured", property(lambda self: True))
+
+    auth = await login(client, 777040, "Ищущий")
+    found = (
+        await client.get(
+            "/api/films/search?q=клуб", headers={"Authorization": f"Bearer {auth['token']}"}
+        )
+    ).json()
+
+    titles = [f["title_ru"] for f in found]
+    assert titles.count("Бойцовский клуб") == 1
+    # Фильм из каталога, а не из TMDB: у него есть id и его можно открыть.
+    assert found[0]["id"] is not None
+    assert "Другой фильм" in titles
+
+
+async def test_watched_works_for_film_not_yet_in_catalog(client, session, monkeypatch):
+    """Кнопка «Просмотрено» должна работать и на результате поиска TMDB."""
+
+    async def fake_movie(self, tmdb_id):
+        return {
+            "id": tmdb_id,
+            "title": "Новинка",
+            "original_title": "Newcomer",
+            "release_date": "2025-05-01",
+            "genres": [],
+            "credits": {"crew": []},
+            "videos": {"results": []},
+        }
+
+    from app.services.tmdb import TmdbClient
+
+    monkeypatch.setattr(TmdbClient, "movie", fake_movie)
+    monkeypatch.setattr(TmdbClient, "configured", property(lambda self: True))
+
+    auth = await login(client, 777041, "Зритель")
+    headers = {"Authorization": f"Bearer {auth['token']}"}
+
+    marked = await client.post(
+        "/api/watched", json={"watched": True, "tmdb_id": 12345}, headers=headers
+    )
+    assert marked.status_code == 200
+    body = marked.json()
+    assert body["watched"] is True
+    # Фильм завёлся в каталоге в этот же момент.
+    assert body["film"]["id"] is not None
+    assert body["film"]["title_ru"] == "Новинка"

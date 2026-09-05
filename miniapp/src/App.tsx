@@ -14,7 +14,7 @@ type Tab = "catalog" | "mine" | "vote" | "admin" | "more";
 const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: "catalog", icon: "🎞", label: "Каталог" },
   { key: "mine", icon: "★", label: "Мои" },
-  { key: "vote", icon: "📅", label: "Неделя" },
+  { key: "vote", icon: "📅", label: "Расписание" },
   { key: "admin", icon: "⚙", label: "Клуб" },
   { key: "more", icon: "☰", label: "Ещё" },
 ];

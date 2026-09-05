@@ -18,8 +18,9 @@ export function WatchedButton({
 }) {
   const [busy, setBusy] = useState(false);
 
-  // У фильма, найденного в TMDB, ещё нет id — отмечать нечего.
-  if (film.id === null) return null;
+  // Фильм из TMDB отмечать можно: в каталог он попадёт в этот же момент.
+  // Не за что зацепиться только у карточки совсем без идентификаторов.
+  if (film.id === null && film.tmdb_id === null) return null;
 
   async function toggle(event: React.MouseEvent) {
     // Кнопка лежит внутри кликабельной строки каталога.
@@ -28,7 +29,7 @@ export function WatchedButton({
     setBusy(true);
     haptic();
     try {
-      const state = await setWatched(film.id!, !film.watched);
+      const state = await setWatched(film, !film.watched);
       onChange(state.kinds, state.film);
     } catch (error) {
       showMessage(error instanceof ApiError ? error.message : "Не удалось сохранить");

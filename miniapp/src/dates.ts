@@ -58,3 +58,14 @@ const WEEKDAYS_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 export function weekdayShort(iso: string): string {
   return WEEKDAYS_SHORT[new Date(iso).getDay()];
 }
+
+/** Сдвиг на неделю: «2026-09-14» → «2026-09-21».
+ *
+ * Считаем через UTC-полночь: локальная полночь в дни перехода на летнее время
+ * сдвигается, и прибавление 7×24 часов может дать субботу или воскресенье.
+ */
+export function shiftWeek(weekStartIso: string, weeks: number): string {
+  const date = new Date(`${weekStartIso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + weeks * 7);
+  return date.toISOString().slice(0, 10);
+}

@@ -264,6 +264,9 @@ class ScheduleOut(BaseModel):
     stage: str
     published: bool
     screenings: list[ScreeningOut] = Field(default_factory=list)
+    # Есть ли что показать в соседних неделях — по ним рисуются стрелки.
+    has_prev: bool = False
+    has_next: bool = False
 
 
 class AssignIn(BaseModel):

@@ -642,3 +642,33 @@ h3 {
   padding-top: 8px;
   background: linear-gradient(transparent, var(--bg) 40%);
 }
+
+/* --- Листание недель -------------------------------------------------------- */
+
+.week-nav {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 8px;
+}
+
+.week-nav > b {
+  text-align: center;
+}
+
+.week-nav__arrow {
+  height: 34px;
+  border-radius: 10px;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--link);
+  background: var(--bg);
+}
+
+.week-nav__arrow:disabled {
+  opacity: 0.3;
+  color: var(--hint);
+}

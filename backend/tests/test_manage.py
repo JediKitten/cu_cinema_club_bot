@@ -223,7 +223,8 @@ async def test_search_finds_by_name_and_username(session):
 
 async def test_secret_event_visible_before_the_cycle_is_published(client, session):
     """Анонс не должен прятаться за этапом цикла: иначе его не увидит никто."""
-    from datetime import date
+    from datetime import date, time
+    from zoneinfo import ZoneInfo
 
     from app.services import rounds as rounds_service
 
@@ -231,15 +232,15 @@ async def test_secret_event_visible_before_the_cycle_is_published(client, sessio
     boss_headers = {"Authorization": f"Bearer {boss_auth['token']}"}
 
     # Цикл в самом начале — показы ещё не опубликованы.
-    await rounds_service.open_round(session, date(2026, 9, 14), boss_auth["user"]["id"])
+    week = date(2026, 9, 14)
+    await rounds_service.open_round(session, week, boss_auth["user"]["id"])
 
+    # Событие внутри той же недели, что и цикл, — оно должно быть видно сразу.
+    moscow = ZoneInfo("Europe/Moscow")
+    when = datetime.combine(date(2026, 9, 16), time(19, 0), tzinfo=moscow)
     created = await client.post(
         "/api/admin/events",
-        json={
-            "starts_at": (datetime.now(UTC) + timedelta(days=4)).isoformat(),
-            "title": "Секретный показ",
-            "note": "ждите анонса",
-        },
+        json={"starts_at": when.isoformat(), "title": "Секретный показ", "note": "ждите анонса"},
         headers=boss_headers,
     )
     assert created.status_code == 201
@@ -247,7 +248,8 @@ async def test_secret_event_visible_before_the_cycle_is_published(client, sessio
     viewer = await login(client, 777099, "Обычный участник")
     schedule = (
         await client.get(
-            "/api/schedule", headers={"Authorization": f"Bearer {viewer['token']}"}
+            f"/api/schedule?week={week}",
+            headers={"Authorization": f"Bearer {viewer['token']}"},
         )
     ).json()
 
@@ -255,6 +257,40 @@ async def test_secret_event_visible_before_the_cycle_is_published(client, sessio
     assert "Секретный показ" in titles
     assert schedule["screenings"][0]["note"] == "ждите анонса"
     assert schedule["screenings"][0]["is_manual"] is True
+
+
+async def test_events_belong_to_their_week(client, session):
+    """Листание по неделям: событие видно на своей неделе и не видно на соседней."""
+    from datetime import date, time
+    from zoneinfo import ZoneInfo
+
+    boss = await login(client, 777001, "Главный")
+    headers = {"Authorization": f"Bearer {boss['token']}"}
+
+    moscow = ZoneInfo("Europe/Moscow")
+    when = datetime.combine(date(2026, 9, 16), time(19, 0), tzinfo=moscow)
+    await client.post(
+        "/api/admin/events",
+        json={"starts_at": when.isoformat(), "title": "Своё событие"},
+        headers=headers,
+    )
+
+    on_week = (await client.get("/api/schedule?week=2026-09-14", headers=headers)).json()
+    assert [s["film"]["title_ru"] for s in on_week["screenings"]] == ["Своё событие"]
+
+    next_week = (await client.get("/api/schedule?week=2026-09-21", headers=headers)).json()
+    assert next_week["screenings"] == []
+    # Слева есть что показать — стрелка «назад» должна быть активна.
+    assert next_week["has_prev"] is True
+
+
+async def test_any_date_is_snapped_to_its_monday(client, session):
+    """Неделя задаётся понедельником: середина недели должна вести туда же."""
+    boss = await login(client, 777001, "Главный")
+    headers = {"Authorization": f"Bearer {boss['token']}"}
+
+    wednesday = (await client.get("/api/schedule?week=2026-09-16", headers=headers)).json()
+    assert wednesday["week_start"] == "2026-09-14"
 
 
 async def test_ordinary_user_still_cannot_see_unpublished_round(client, session):

@@ -105,11 +105,18 @@ export const addInterest = (film: FilmBrief, kind: InterestKind) =>
 export const removeInterest = (filmId: number) =>
   request<InterestState>(`/api/films/${filmId}/interest`, { method: "DELETE" });
 
-export const setWatched = (filmId: number, watched: boolean) =>
-  request<InterestState>(`/api/films/${filmId}/watched`, {
-    method: "POST",
-    body: JSON.stringify({ watched }),
-  });
+// Фильма из поиска TMDB ещё нет в каталоге — тогда отмечаем по tmdb_id,
+// и бэкенд заводит карточку в этот момент.
+export const setWatched = (film: FilmBrief, watched: boolean) =>
+  film.id
+    ? request<InterestState>(`/api/films/${film.id}/watched`, {
+        method: "POST",
+        body: JSON.stringify({ watched }),
+      })
+    : request<InterestState>("/api/watched", {
+        method: "POST",
+        body: JSON.stringify({ watched, tmdb_id: film.tmdb_id }),
+      });
 
 export const createFilmRequest = (payload: {
   raw_title: string;
@@ -163,7 +170,8 @@ export const getMatrix = () => request<Matrix>("/api/round/matrix");
 
 // --- Этап 3: расписание и подтверждения ------------------------------------
 
-export const getSchedule = () => request<Schedule>("/api/schedule");
+export const getSchedule = (week?: string) =>
+  request<Schedule>(week ? `/api/schedule?week=${week}` : "/api/schedule");
 
 export const confirmScreening = (id: number) =>
   request<ConfirmResult>(`/api/schedule/screenings/${id}/confirm`, { method: "POST" });

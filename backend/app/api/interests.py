@@ -27,6 +27,9 @@ router = APIRouter(prefix="/api", tags=["interests"])
 
 class WatchedIn(BaseModel):
     watched: bool = True
+    # Фильма может ещё не быть в каталоге: он попадёт туда по этому id,
+    # ровно как при первой отметке интереса.
+    tmdb_id: int | None = None
 
 
 async def _resolve_film(session: AsyncSession, film_id: int | None, tmdb_id: int | None) -> Film:
@@ -123,6 +126,22 @@ async def remove_interest(
     """Снимает отметку любого вида: состояние одно, выбирать нечего."""
     film = await _resolve_film(session, film_id, None)
     mark = await marks.clear_mark(session, user.id, film_id, await _ttl(session))
+    return _out(film, mark)
+
+
+@router.post("/watched", response_model=InterestOut)
+async def set_watched_by_tmdb(
+    body: WatchedIn,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> InterestOut:
+    """«Просмотрено» для фильма, которого ещё нет в каталоге.
+
+    Отдельный маршрут, потому что id ещё не существует: фильм заводится здесь,
+    как и при первой отметке интереса.
+    """
+    film = await _resolve_film(session, None, body.tmdb_id)
+    mark = await marks.set_watched(session, user.id, film.id, body.watched, await _ttl(session))
     return _out(film, mark)
 
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ApiError, confirmScreening, declineScreening } from "../api";
 import { Poster } from "../components/FilmRow";
-import { dayLabel, timeLabel, weekLabel } from "../dates";
+import { dayLabel, timeLabel } from "../dates";
 import { haptic, showMessage } from "../telegram";
 import type { Schedule, Screening } from "../types";
 import { Attend } from "./Attend";
@@ -57,13 +57,11 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
   const cancelled = schedule.screenings.filter((s) => s.status === "cancelled");
 
   return (
-    <div className="screen">
-      <div className="round-head">
-        <b>Показы {weekLabel(schedule.week_start)}</b>
-        <p className="meta">Отметьте, на какие сеансы придёте.</p>
-      </div>
-
-      {active.length === 0 && <p className="hint">На этой неделе показов нет.</p>}
+    <>
+      {active.length === 0 && (
+        <p className="hint">На этой неделе показов нет.</p>
+      )}
+      {active.length > 0 && <p className="hint">Отметьте, на какие сеансы придёте.</p>}
 
       {active.map((screening) => {
         const going = screening.my_state === "confirmed";
@@ -126,6 +124,6 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
           ))}
         </>
       )}
-    </div>
+    </>
   );
 }

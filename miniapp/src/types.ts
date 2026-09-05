@@ -177,6 +177,9 @@ export type Schedule = {
   stage: RoundStage;
   published: boolean;
   screenings: Screening[];
+  /** Есть ли что показать в соседних неделях — по ним рисуются стрелки. */
+  has_prev: boolean;
+  has_next: boolean;
 };
 
 export type ConfirmResult = {

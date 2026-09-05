@@ -1,7 +1,8 @@
 """Этап 3 — расписание и подтверждения (§7)."""
 
-from datetime import date
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import CurrentUser, RequireAdmin, RequireModerator
 from app.db import get_session
 from app.models import Confirmation, Film, FilmVote, Hall, Round, Screening, Slot
-from app.models.enums import ConfirmationState, RoundStage
+from app.models.enums import ConfirmationState, RoundStage, ScreeningStatus
 from app.schemas import (
     AssignIn,
     CancelIn,
@@ -21,7 +22,6 @@ from app.schemas import (
     ScreeningOut,
     SlotOut,
 )
-from app.services import events as events_service
 from app.services import rounds as rounds_service
 from app.services import schedule as schedule_service
 from app.services.schedule import ScheduleError
@@ -57,15 +57,65 @@ def _film_brief(film: Film) -> FilmBrief:
     )
 
 
-async def _manual_rows(session: AsyncSession):
-    """События, назначенные вручную. Они вне цикла, поэтому подтягиваются отдельно."""
-    events = await events_service.upcoming(session)
+async def _week_bounds(session: AsyncSession, week: date) -> tuple[datetime, datetime]:
+    """Границы недели в UTC.
+
+    Неделя задана датой понедельника в локальной зоне вуза, а времена слотов
+    хранятся в UTC — поэтому переводим явно, а не прибавляем смещение.
+    """
+    tz = ZoneInfo(str(await SettingsService(session).get("display_timezone")))
+    start = datetime.combine(week, time.min, tzinfo=tz)
+    return start.astimezone(UTC), (start + timedelta(days=7)).astimezone(UTC)
+
+
+async def _manual_rows(session: AsyncSession, week: date):
+    """Ручные события этой недели. Они вне цикла, поэтому подтягиваются отдельно."""
+    start, end = await _week_bounds(session, week)
+    rows = await session.execute(
+        sa.select(Screening, Slot)
+        .join(Slot, Slot.id == Screening.slot_id)
+        .where(
+            Screening.is_manual.is_(True),
+            Screening.status != ScreeningStatus.CANCELLED,
+            Slot.starts_at >= start,
+            Slot.starts_at < end,
+        )
+        .order_by(Slot.starts_at)
+    )
     out = []
-    for event in events:
-        slot = await session.get(Slot, event.slot_id)
+    for event, slot in rows:
         film = await session.get(Film, event.film_id) if event.film_id else None
         out.append((event, film, slot))
     return out
+
+
+async def _neighbours(session: AsyncSession, week: date) -> tuple[bool, bool]:
+    """Есть ли что показать в соседних неделях — по ним рисуются стрелки.
+
+    Считаем и циклы, и ручные события: неделя с одним лишь анонсом тоже стоит
+    того, чтобы на неё можно было пролистать.
+    """
+    start, end = await _week_bounds(session, week)
+
+    async def any_screening(before: bool) -> bool:
+        condition = Slot.starts_at < start if before else Slot.starts_at >= end
+        found = await session.scalar(
+            sa.select(Screening.id)
+            .join(Slot, Slot.id == Screening.slot_id)
+            .where(Screening.status != ScreeningStatus.CANCELLED, condition)
+            .limit(1)
+        )
+        return found is not None
+
+    async def any_round(before: bool) -> bool:
+        condition = Round.week_start < week if before else Round.week_start > week
+        found = await session.scalar(sa.select(Round.id).where(condition).limit(1))
+        return found is not None
+
+    return (
+        await any_screening(True) or await any_round(True),
+        await any_screening(False) or await any_round(False),
+    )
 
 
 async def _round_or_404(session: AsyncSession) -> Round:
@@ -73,20 +123,6 @@ async def _round_or_404(session: AsyncSession) -> Round:
     if round_ is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Активного цикла нет")
     return round_
-
-
-async def _build(session: AsyncSession, round_: Round, user_id: int) -> ScheduleOut:
-    rows = await schedule_service.screenings_of(session, round_)
-    rows += await _manual_rows(session)
-    rows.sort(key=lambda item: item[2].starts_at)
-    out = await _to_out(session, rows, round_, user_id)
-    return ScheduleOut(
-        round_id=round_.id,
-        week_start=round_.week_start,
-        stage=round_.stage,
-        published=round_.stage in (RoundStage.PUBLISHED, RoundStage.RUNNING, RoundStage.CLOSED),
-        screenings=out,
-    )
 
 
 async def _to_out(
@@ -180,42 +216,74 @@ async def _to_out(
     return out
 
 
-@router.get("", response_model=ScheduleOut)
-async def schedule(
-    user: CurrentUser, session: Annotated[AsyncSession, Depends(get_session)]
+async def _week_view(
+    session: AsyncSession, week: date, user, *, force_show: bool = False
 ) -> ScheduleOut:
-    """Расписание недели.
+    """Расписание одной недели — общий сбор для всех, кто его отдаёт.
 
-    Показы цикла до публикации видны только тем, кто его составляет. Ручные
-    события — всем и всегда: они анонсируются отдельно от цикла, и прятать их
-    за его этапом значило бы не показать анонс вовсе.
+    force_show нужен админским действиям: после расстановки показ должен быть
+    виден составителю сразу, не дожидаясь публикации.
     """
-    round_ = await rounds_service.active_round(session)
+    round_ = (
+        await session.execute(sa.select(Round).where(Round.week_start == week))
+    ).scalar_one_or_none()
+
     unpublished = round_ is not None and round_.stage in (
         RoundStage.COLLECTING,
         RoundStage.SHORTLIST_REVIEW,
         RoundStage.SLOT_VOTING,
     )
-    hide_round = unpublished and user.role.rank < 1  # ниже модератора
+    hide_round = unpublished and user.role.rank < 1 and not force_show  # ниже модератора
 
-    if round_ is None or hide_round:
-        return await _events_only(session, round_, user.id)
-    return await _build(session, round_, user.id)
+    rows = []
+    if round_ is not None and not hide_round:
+        rows += await schedule_service.screenings_of(session, round_)
+    rows += await _manual_rows(session, week)
+    rows.sort(key=lambda item: item[2].starts_at)
 
-
-async def _events_only(
-    session: AsyncSession, round_: Round | None, user_id: int
-) -> ScheduleOut:
-    """Только ручные события: цикла нет или он ещё не дошёл до публикации."""
-    built = await _to_out(session, await _manual_rows(session), round_, user_id)
+    has_prev, has_next = await _neighbours(session, week)
     return ScheduleOut(
         round_id=round_.id if round_ else 0,
-        week_start=round_.week_start if round_ else date.today(),
+        week_start=week,
         stage=round_.stage if round_ else "collecting",
-        # Показы цикла ещё не опубликованы, но события показать надо.
-        published=bool(built),
-        screenings=built,
+        published=round_ is not None
+        and round_.stage in (RoundStage.PUBLISHED, RoundStage.RUNNING, RoundStage.CLOSED),
+        screenings=await _to_out(session, rows, round_, user.id),
+        has_prev=has_prev,
+        has_next=has_next,
     )
+
+
+@router.get("", response_model=ScheduleOut)
+async def schedule(
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    week: date | None = None,
+) -> ScheduleOut:
+    """Расписание недели. Без параметра — та неделя, что сейчас в работе.
+
+    Показы цикла до публикации видны только тем, кто его составляет. Ручные
+    события — всем и всегда: они анонсируются отдельно от цикла, и прятать их
+    за его этапом значило бы не показать анонс вовсе.
+    """
+    week = _monday(week) if week else await _default_week(session)
+    return await _week_view(session, week, user)
+
+
+def _monday(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+async def _default_week(session: AsyncSession) -> date:
+    """Неделя, которую логично показать при открытии.
+
+    Это неделя активного цикла, а если его нет — текущая: пустой экран
+    «показов нет» понятнее, чем экран без даты.
+    """
+    round_ = await rounds_service.active_round(session)
+    if round_ is not None:
+        return round_.week_start
+    return _monday(date.today())
 
 
 # --- Расстановка (модератор и выше) ----------------------------------------
@@ -232,7 +300,7 @@ async def assign(
         await schedule_service.assign(session, round_, body.film_id, body.slot_id, admin.id)
     except ScheduleError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _build(session, round_, admin.id)
+    return await _week_view(session, round_.week_start, admin, force_show=True)
 
 
 @router.delete("/screenings/{screening_id}", response_model=ScheduleOut)
@@ -246,7 +314,7 @@ async def unassign(
         await schedule_service.unassign(session, round_, screening_id, admin.id)
     except ScheduleError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _build(session, round_, admin.id)
+    return await _week_view(session, round_.week_start, admin, force_show=True)
 
 
 @router.post("/publish", response_model=ScheduleOut)
@@ -258,7 +326,7 @@ async def publish(
         await schedule_service.publish_schedule(session, round_, admin.id)
     except ScheduleError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _build(session, round_, admin.id)
+    return await _week_view(session, round_.week_start, admin, force_show=True)
 
 
 @router.post("/screenings/{screening_id}/move", response_model=ScheduleOut)
@@ -274,7 +342,7 @@ async def move(
         await schedule_service.move_screening(session, screening_id, body.slot_id, admin.id)
     except ScheduleError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _build(session, round_, admin.id)
+    return await _week_view(session, round_.week_start, admin, force_show=True)
 
 
 @router.post("/screenings/{screening_id}/cancel", response_model=ScheduleOut)
@@ -289,7 +357,7 @@ async def cancel_screening(
         await schedule_service.cancel_screening(session, screening_id, body.reason, admin.id)
     except ScheduleError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _build(session, round_, admin.id)
+    return await _week_view(session, round_.week_start, admin, force_show=True)
 
 
 # --- Подтверждения (все) ---------------------------------------------------

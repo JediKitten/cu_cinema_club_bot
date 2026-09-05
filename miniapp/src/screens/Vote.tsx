@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, getBallot, saveAvailability, saveVotes } from "../api";
 import { Poster } from "../components/FilmRow";
-import { dayLabel, timeLabel, weekLabel } from "../dates";
+import { dayLabel, timeLabel } from "../dates";
 import { haptic } from "../telegram";
 import type { Ballot } from "../types";
 
@@ -62,17 +62,14 @@ export function Vote() {
     );
   }
 
-  if (error && !ballot) return <div className="screen"><div className="error">{error}</div></div>;
+  if (error && !ballot) return <div className="error">{error}</div>;
   if (!ballot) return <div className="center">Загрузка…</div>;
 
   const noEvenings = ballot.my_film_ids.length > 0 && ballot.my_slot_ids.length === 0;
 
   return (
-    <div className="screen">
-      <div className="round-head">
-        <b>Неделя {weekLabel(ballot.week_start)}</b>
-        <p className="meta">Выберите фильмы и вечера — расписание соберём из ответов.</p>
-      </div>
+    <>
+      <p className="hint">Выберите фильмы и вечера — расписание соберём из ответов.</p>
 
       {error && <div className="error">{error}</div>}
 
@@ -127,6 +124,6 @@ export function Vote() {
           </button>
         );
       })}
-    </div>
+    </>
   );
 }
