@@ -90,8 +90,15 @@ export const addInterest = (film: FilmBrief, kind: InterestKind) =>
         body: JSON.stringify({ kind, tmdb_id: film.tmdb_id }),
       });
 
-export const removeInterest = (filmId: number, kind: InterestKind) =>
-  request<InterestState>(`/api/films/${filmId}/interest?kind=${kind}`, { method: "DELETE" });
+// Вид не передаём: состояние одно, снимать нечего кроме него.
+export const removeInterest = (filmId: number) =>
+  request<InterestState>(`/api/films/${filmId}/interest`, { method: "DELETE" });
+
+export const setWatched = (filmId: number, watched: boolean) =>
+  request<InterestState>(`/api/films/${filmId}/watched`, {
+    method: "POST",
+    body: JSON.stringify({ watched }),
+  });
 
 export const createFilmRequest = (payload: {
   raw_title: string;

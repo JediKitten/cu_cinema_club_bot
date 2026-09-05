@@ -59,6 +59,8 @@ class RevokeReason(StrEnum):
     MANUAL = "manual"
     EXPIRED = "expired"
     WATCHED = "watched"
+    # Нажата вторая кнопка: состояния взаимоисключающие, прежнее снимается.
+    SUPERSEDED = "superseded"
 
 
 class RoundStage(StrEnum):

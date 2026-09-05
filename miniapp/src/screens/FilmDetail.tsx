@@ -3,7 +3,7 @@ import { getFilm } from "../api";
 import { Poster } from "../components/FilmRow";
 import { MarkButtons } from "../components/MarkButtons";
 import { useTelegramBackButton } from "../telegram";
-import type { FilmCard, InterestKind } from "../types";
+import type { FilmBrief, FilmCard, InterestKind } from "../types";
 
 type Props = { filmId: number; onBack(): void };
 
@@ -32,8 +32,10 @@ export function FilmDetail({ filmId, onBack }: Props) {
     .filter(Boolean)
     .join(" · ");
 
-  function updateMarks(kinds: InterestKind[]) {
-    setFilm((current) => (current ? { ...current, my_interests: kinds } : current));
+  function updateMarks(kinds: InterestKind[], updated: FilmBrief) {
+    // Берём всё, что вернул сервер: вместе с отметкой меняются «Просмотрено»
+    // и признак истёкшего срока — обновляя только kinds, мы бы их потеряли.
+    setFilm((current) => (current ? { ...current, ...updated, my_interests: kinds } : current));
   }
 
   return (

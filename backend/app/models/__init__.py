@@ -1,5 +1,5 @@
 from app.models.base import Base
-from app.models.catalog import Film, FilmRequest, TmdbSyncState
+from app.models.catalog import Film, FilmRequest, TmdbSyncState, Watch
 from app.models.cycle import (
     Attendance,
     AutopilotProposal,
@@ -40,4 +40,5 @@ __all__ = [
     "Slot",
     "TmdbSyncState",
     "User",
+    "Watch",
 ]

@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
 from app.db import get_session
-from app.models import Attendance, Feedback, Film, Interest, Screening, User
-from app.models.enums import FilmStatus, InterestKind
+from app.models import Feedback, Film, Interest, User
+from app.models.enums import FilmStatus
 from app.schemas import FilmBrief, FilmCard, ReviewOut
+from app.services import interests as marks_service
+from app.services.interests import MarkState
 from app.services.settings import SettingsService
 from app.services.tmdb import TmdbError, get_tmdb, poster_url
 
@@ -17,7 +19,8 @@ router = APIRouter(prefix="/api/films", tags=["films"])
 SortKey = Literal["recent", "alphabetical", "year", "popular"]
 
 
-def _brief(film: Film, marks: dict[int, list[InterestKind]] | None = None) -> FilmBrief:
+def _brief(film: Film, marks: dict[int, MarkState] | None = None) -> FilmBrief:
+    mark = (marks or {}).get(film.id) or MarkState(None, None, None, False, False)
     return FilmBrief(
         id=film.id,
         tmdb_id=film.tmdb_id,
@@ -28,27 +31,19 @@ def _brief(film: Film, marks: dict[int, list[InterestKind]] | None = None) -> Fi
         genres=list(film.genres or []),
         directors=list(film.directors or []),
         in_catalog=True,
-        my_interests=(marks or {}).get(film.id, []),
+        my_interests=[mark.effective_kind] if mark.effective_kind else [],
+        can_renew_soon=mark.can_renew_soon,
+        soon_expires_at=mark.expires_at,
+        watched=mark.watched,
     )
 
 
 async def _my_marks(
     session: AsyncSession, user_id: int, films: list[Film]
-) -> dict[int, list[InterestKind]]:
+) -> dict[int, MarkState]:
     """Одним запросом на весь список — иначе каталог давал бы запрос на карточку."""
-    if not films:
-        return {}
-    rows = await session.execute(
-        sa.select(Interest.film_id, Interest.kind).where(
-            Interest.user_id == user_id,
-            Interest.film_id.in_([f.id for f in films]),
-            Interest.revoked_at.is_(None),
-        )
-    )
-    marks: dict[int, list[InterestKind]] = {}
-    for film_id, kind in rows:
-        marks.setdefault(film_id, []).append(InterestKind(kind))
-    return marks
+    ttl = int(await SettingsService(session).get("soon_ttl_days"))
+    return await marks_service.marks_for_films(session, user_id, [f.id for f in films], ttl)
 
 
 @router.get("/search", response_model=list[FilmBrief])
@@ -157,15 +152,6 @@ async def film_card(
 
     marks = await _my_marks(session, user.id, [film])
 
-    watched = (
-        await session.execute(
-            sa.select(sa.func.count())
-            .select_from(Attendance)
-            .join(Screening, Screening.id == Attendance.screening_id)
-            .where(Attendance.user_id == user.id, Screening.film_id == film_id)
-        )
-    ).scalar_one() > 0
-
     rating_row = (
         await session.execute(
             sa.select(sa.func.avg(Feedback.film_rating), sa.func.count(Feedback.film_rating)).where(
@@ -201,6 +187,5 @@ async def film_card(
         internal_rating=round(float(avg), 2) if votes >= min_votes and avg is not None else None,
         internal_votes=votes,
         interested_count=interested_count,
-        watched=watched,
         reviews=reviews,
     )

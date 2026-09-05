@@ -18,13 +18,13 @@ class Interest(Base, CreatedAtMixin):
     __table_args__ = (
         sa.Index("ix_interests_film_active", "film_id", "revoked_at"),
         sa.Index("ix_interests_user_active", "user_id", "revoked_at"),
-        # Одна активная отметка каждого типа на пару (пользователь, фильм).
-        # Частичный уникальный индекс: снятые отметки не мешают поставить заново.
+        # Одна активная отметка на пару (пользователь, фильм) — «Желаемое» и
+        # «Ближайшее» взаимоисключающие, вместе стоять не могут.
+        # Частичный индекс: снятые отметки не мешают поставить заново.
         sa.Index(
             "uq_interests_active",
             "user_id",
             "film_id",
-            "kind",
             unique=True,
             postgresql_where=sa.text("revoked_at IS NULL"),
         ),

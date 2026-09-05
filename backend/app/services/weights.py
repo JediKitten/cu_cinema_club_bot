@@ -43,29 +43,59 @@ def age_days_expr(created_at: ColumnElement, at: ColumnElement | None = None) ->
     return sa.extract("epoch", now - created_at) / 86400.0
 
 
-def interest_weight_expr(params: WeightParams, at: ColumnElement | None = None) -> ColumnElement:
+def interest_weight_expr(
+    params: WeightParams, at: ColumnElement | None = None
+) -> ColumnElement:
     """Вес одной отметки на момент `at` (по умолчанию — сейчас)."""
     age = age_days_expr(Interest.created_at, at)
 
-    wishlist = sa.func.greatest(
-        sa.literal(params.wishlist_weight_floor),
-        sa.literal(params.wishlist_base_weight)
-        * sa.func.power(sa.literal(0.5), age / sa.literal(params.wishlist_half_life_days)),
-    )
+    def decay(age_expr: ColumnElement) -> ColumnElement:
+        return sa.func.greatest(
+            sa.literal(params.wishlist_weight_floor),
+            sa.literal(params.wishlist_base_weight)
+            * sa.func.power(
+                sa.literal(0.5), age_expr / sa.literal(params.wishlist_half_life_days)
+            ),
+        )
 
-    # SOON не затухает, но сгорает. Крон снимает истёкшие отметки, однако формула
-    # не полагается на его пунктуальность: просроченная отметка весит ноль
-    # независимо от того, успел ли крон её отозвать.
+    ttl = sa.literal(float(params.soon_ttl_days))
+
+    # «Ближайшее» держит свой вес весь срок, а потом не сгорает, а становится
+    # «Желаемым»: вес падает до базового и дальше затухает. Возраст для затухания
+    # отсчитывается от момента истечения, а не от постановки отметки, — иначе
+    # свежепротухшая отметка сразу оказалась бы наполовину затухшей.
+    # Строгое «<»: ровно в момент истечения отметка уже считается «Желаемым».
+    # Иначе SQL и Python расходились бы на границе — формула держала бы вес 3,
+    # а интерфейс уже показывал бы «Желаемое».
     soon = sa.case(
-        (age <= sa.literal(float(params.soon_ttl_days)), sa.literal(params.soon_weight)),
-        else_=sa.literal(0.0),
+        (age < ttl, sa.literal(params.soon_weight)),
+        else_=decay(age - ttl),
     )
 
     return sa.case(
-        (Interest.kind == InterestKind.WISHLIST, wishlist),
+        (Interest.kind == InterestKind.WISHLIST, decay(age)),
         (Interest.kind == InterestKind.SOON, soon),
         else_=sa.literal(0.0),
     )
+
+
+def is_expired_soon_expr(params: WeightParams) -> ColumnElement:
+    """Отметка «Ближайшее», у которой вышел срок.
+
+    Такая отметка уже ведёт себя как «Желаемое», но пользователю мы предлагаем
+    продлить её — поэтому интерфейсу нужно отличать её от обычного «Желаемого».
+    """
+    return sa.and_(
+        Interest.kind == InterestKind.SOON,
+        age_days_expr(Interest.created_at) >= sa.literal(float(params.soon_ttl_days)),
+    )
+
+
+def effective_kind(kind: InterestKind, age_days: float, params: WeightParams) -> InterestKind:
+    """Та же логика для кода на Python: чем отметка является сейчас."""
+    if kind == InterestKind.SOON and age_days >= params.soon_ttl_days:
+        return InterestKind.WISHLIST
+    return kind
 
 
 def active_interest_clause(at: ColumnElement | None = None) -> ColumnElement:

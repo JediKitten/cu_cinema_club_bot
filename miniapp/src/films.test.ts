@@ -14,6 +14,9 @@ function film(over: Partial<FilmBrief>): FilmBrief {
     directors: [],
     in_catalog: true,
     my_interests: [],
+    can_renew_soon: false,
+    soon_expires_at: null,
+    watched: false,
     ...over,
   };
 }

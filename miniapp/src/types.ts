@@ -21,7 +21,12 @@ export type FilmBrief = {
   directors: string[];
   /** false — фильм найден в TMDB, но в каталог попадёт только при первой отметке. */
   in_catalog: boolean;
+  /** Не больше одного элемента: состояния взаимоисключающие. */
   my_interests: InterestKind[];
+  /** Срок «Ближайшего» вышел — можно поставить заново. */
+  can_renew_soon: boolean;
+  soon_expires_at: string | null;
+  watched: boolean;
 };
 
 export type Review = {

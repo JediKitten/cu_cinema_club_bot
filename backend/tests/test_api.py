@@ -84,6 +84,7 @@ async def test_anonymous_request_rejected(client):
 
 
 async def test_interest_flow(client, session):
+    """Три состояния и переходы между ними через HTTP (§4, уточнение клуба)."""
     film = Film(title_ru="Сталкер", title_orig="Stalker", year=1979)
     session.add(film)
     await session.commit()
@@ -97,25 +98,59 @@ async def test_interest_flow(client, session):
     assert created.status_code == 201
     assert created.json()["kinds"] == ["wishlist"]
 
-    # Обе кнопки независимы — ставим вторую, ожидаем обе.
-    both = await client.post(
+    # Вторая кнопка вытесняет первую: вместе состояния стоять не могут.
+    switched = await client.post(
         f"/api/films/{film.id}/interest", json={"kind": "soon"}, headers=headers
     )
-    assert sorted(both.json()["kinds"]) == ["soon", "wishlist"]
-    assert both.json()["expires_at"] is not None
+    assert switched.json()["kinds"] == ["soon"]
+    assert switched.json()["expires_at"] is not None
 
-    # Повторное нажатие не должно быть ошибкой.
+    # Повторное нажатие той же кнопки ничего не ломает.
     again = await client.post(
         f"/api/films/{film.id}/interest", json={"kind": "soon"}, headers=headers
     )
     assert again.status_code == 201
+    assert again.json()["kinds"] == ["soon"]
 
     card = (await client.get(f"/api/films/{film.id}", headers=headers)).json()
     assert card["interested_count"] == 1
+    assert card["my_interests"] == ["soon"]
     assert card["internal_rating"] is None  # оценок нет — рейтинг скрыт (§11)
 
-    removed = await client.delete(f"/api/films/{film.id}/interest?kind=soon", headers=headers)
-    assert removed.json()["kinds"] == ["wishlist"]
+    removed = await client.delete(f"/api/films/{film.id}/interest", headers=headers)
+    assert removed.json()["kinds"] == []
+
+
+async def test_watched_is_independent_of_marks(client, session):
+    """«Просмотрено» не мешает хотеть пересмотреть."""
+    film = Film(title_ru="Солярис", year=1972)
+    session.add(film)
+    await session.commit()
+
+    auth = await login(client, 777015, "Зритель")
+    headers = {"Authorization": f"Bearer {auth['token']}"}
+
+    watched = await client.post(
+        f"/api/films/{film.id}/watched", json={"watched": True}, headers=headers
+    )
+    assert watched.json()["watched"] is True
+    assert watched.json()["kinds"] == []
+
+    marked = await client.post(
+        f"/api/films/{film.id}/interest", json={"kind": "wishlist"}, headers=headers
+    )
+    assert marked.json()["watched"] is True
+    assert marked.json()["kinds"] == ["wishlist"]
+
+    card = (await client.get(f"/api/films/{film.id}", headers=headers)).json()
+    assert card["watched"] is True
+    assert card["my_interests"] == ["wishlist"]
+
+    unwatched = await client.post(
+        f"/api/films/{film.id}/watched", json={"watched": False}, headers=headers
+    )
+    assert unwatched.json()["watched"] is False
+    assert unwatched.json()["kinds"] == ["wishlist"]  # отметка не пострадала
 
 
 async def test_soon_limit_enforced(client, session):

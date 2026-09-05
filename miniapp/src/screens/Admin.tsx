@@ -219,13 +219,18 @@ export function Admin() {
                   {slotLabel(slot)}
                 </p>
                 <p className="meta">
-                  {slot.hall_name} · до {slot.hall_capacity} мест
+                  {slot.blocked ? "Закрыт" : "Открыт"} · {slot.hall_name} · до{" "}
+                  {slot.hall_capacity} мест
                   {slot.blocked_reason && ` · ${slot.blocked_reason}`}
                 </p>
               </div>
+              {/* На кнопке — действие, а не текущее состояние. Раньше здесь было
+                  «Открыт»/«Закрыт», и это читалось как команда: вечера закрывали,
+                  думая, что открывают. Состояние теперь видно по строке слева. */}
               <button
-                className={`mark ${slot.blocked ? "is-on mark--soon" : ""}`}
+                className={`mark ${slot.blocked ? "mark--wishlist is-on" : "mark--soon is-on"}`}
                 disabled={busy}
+                title={slot.blocked ? "Вернуть вечер в расписание" : "Убрать вечер из расписания"}
                 onClick={() =>
                   act(
                     () =>
@@ -238,7 +243,7 @@ export function Admin() {
                   )
                 }
               >
-                {slot.blocked ? "Закрыт" : "Открыт"}
+                {slot.blocked ? "Открыть" : "Закрыть"}
               </button>
             </div>
           ))}

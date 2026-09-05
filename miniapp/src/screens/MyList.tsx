@@ -29,7 +29,9 @@ export function MyList({ onOpen }: Props) {
         current.filter((item) => kinds.length > 0 || !isSameFilm(item.film, updated)),
         updated,
         (item) => item.film,
-        (item) => ({ ...item, kinds, film: { ...item.film, my_interests: kinds } }),
+        // Сервер вернул фильм целиком — переносим и «Просмотрено», и признак
+        // истёкшего срока, а не одни только отметки.
+        (item) => ({ ...item, kinds, film: { ...item.film, ...updated, my_interests: kinds } }),
       ),
     );
   }

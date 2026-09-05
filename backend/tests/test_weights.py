@@ -109,25 +109,52 @@ async def test_soon_does_not_decay_inside_ttl(session):
     assert await weight_of(session, day13.id) == pytest.approx(PARAMS.soon_weight)
 
 
-async def test_expired_soon_weighs_nothing_even_if_cron_lagged(session):
-    """Отметка просрочена, но крон её ещё не снял — она уже не должна весить."""
+async def test_expired_soon_decays_as_wishlist(session):
+    """Через ttl «Ближайшее» не сгорает, а становится «Желаемым» (§4, уточнение клуба).
+
+    Вес падает с soon_weight до базового и дальше затухает, причём отсчёт
+    затухания идёт от момента истечения: иначе отметка обесценилась бы дважды.
+    """
     user = await make_user(session, "expired")
     film = await make_film(session, "expired film")
-    interest = await add_interest(session, user, film, InterestKind.SOON, 15)
+    # Чуть за срок: ровно на границе результат зависел бы от того, насколько
+    # now() в Postgres (время начала транзакции) разошлось со временем Python.
+    interest = await add_interest(
+        session, user, film, InterestKind.SOON, PARAMS.soon_ttl_days + 0.01
+    )
 
-    assert await weight_of(session, interest.id) == pytest.approx(0.0)
+    assert await weight_of(session, interest.id) == pytest.approx(
+        PARAMS.wishlist_base_weight, rel=1e-3
+    )
 
 
-async def test_both_buttons_stack(session):
+async def test_expired_soon_keeps_decaying(session):
+    user = await make_user(session, "long expired")
+    film = await make_film(session, "long expired film")
+    interest = await add_interest(
+        session, user, film, InterestKind.SOON, PARAMS.soon_ttl_days + 180
+    )
+
+    assert await weight_of(session, interest.id) == pytest.approx(
+        PARAMS.wishlist_base_weight / 2, rel=1e-3
+    )
+
+
+async def test_marks_are_mutually_exclusive(session):
+    """Оба состояния сразу невозможны: вторая кнопка снимает первую."""
+    from app.services import interests as marks
+
     user = await make_user(session, "both")
     film = await make_film(session, "both film")
-    await add_interest(session, user, film, InterestKind.WISHLIST, 0)
-    await add_interest(session, user, film, InterestKind.SOON, 0)
     await session.commit()
 
+    await marks.set_mark(session, user.id, film.id, InterestKind.WISHLIST, 14, 10)
+    await marks.set_mark(session, user.id, film.id, InterestKind.SOON, 14, 10)
+
     ranked = await rank_by_weight(session, PARAMS, long_wait_days=90)
-    assert ranked[0].weight == pytest.approx(PARAMS.wishlist_base_weight + PARAMS.soon_weight)
-    assert ranked[0].wishlist_count == 1
+    # Вес только от «Ближайшего»: складывать больше нечего.
+    assert ranked[0].weight == pytest.approx(PARAMS.soon_weight)
+    assert ranked[0].wishlist_count == 0
     assert ranked[0].soon_count == 1
 
 

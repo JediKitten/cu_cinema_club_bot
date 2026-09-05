@@ -1,26 +1,32 @@
-"""Этап 1 — интерес (§4).
+"""Этап 1 — интерес (§4, с уточнением клуба).
 
-Обе кнопки независимы: можно поставить и «Желаемое», и «Ближайшее» одновременно,
-веса складываются.
+Относительно каждого фильма у пользователя ровно одно из трёх состояний:
+ничего, «Желаемое», «Ближайшее». Кнопки взаимоисключающие. «Просмотрено»
+живёт отдельно и отметке не мешает.
 """
 
-from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
 from app.db import get_session
 from app.models import Film, Interest
-from app.models.enums import FilmStatus, InterestKind, RevokeReason
+from app.models.enums import FilmStatus, InterestKind
 from app.schemas import FilmBrief, InterestIn, InterestOut
+from app.services import interests as marks
+from app.services.interests import InterestError, MarkState
 from app.services.settings import SettingsService
 from app.services.tmdb import TmdbError, ensure_film, poster_url
 
 router = APIRouter(prefix="/api", tags=["interests"])
+
+
+class WatchedIn(BaseModel):
+    watched: bool = True
 
 
 async def _resolve_film(session: AsyncSession, film_id: int | None, tmdb_id: int | None) -> Film:
@@ -38,6 +44,37 @@ async def _resolve_film(session: AsyncSession, film_id: int | None, tmdb_id: int
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"TMDB недоступен: {exc}") from exc
 
 
+def brief(film: Film, mark: MarkState) -> FilmBrief:
+    return FilmBrief(
+        id=film.id,
+        tmdb_id=film.tmdb_id,
+        title_ru=film.title_ru,
+        title_orig=film.title_orig,
+        year=film.year,
+        poster_url=poster_url(film.poster_path),
+        genres=list(film.genres or []),
+        directors=list(film.directors or []),
+        my_interests=[mark.effective_kind] if mark.effective_kind else [],
+        can_renew_soon=mark.can_renew_soon,
+        soon_expires_at=mark.expires_at,
+        watched=mark.watched,
+    )
+
+
+def _out(film: Film, mark: MarkState) -> InterestOut:
+    return InterestOut(
+        film=brief(film, mark),
+        kinds=[mark.effective_kind] if mark.effective_kind else [],
+        expires_at=mark.expires_at,
+        can_renew_soon=mark.can_renew_soon,
+        watched=mark.watched,
+    )
+
+
+async def _ttl(session: AsyncSession) -> int:
+    return int(await SettingsService(session).get("soon_ttl_days"))
+
+
 @router.post("/films/{film_id}/interest", response_model=InterestOut, status_code=201)
 async def add_interest_by_id(
     film_id: int,
@@ -45,7 +82,8 @@ async def add_interest_by_id(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> InterestOut:
-    return await _add(session, user.id, await _resolve_film(session, film_id, None), body.kind)
+    film = await _resolve_film(session, film_id, None)
+    return await _set(session, user.id, film, body.kind)
 
 
 @router.post("/interests", response_model=InterestOut, status_code=201)
@@ -55,109 +93,51 @@ async def add_interest(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> InterestOut:
     film = await _resolve_film(session, None, body.tmdb_id)
-    return await _add(session, user.id, film, body.kind)
+    return await _set(session, user.id, film, body.kind)
 
 
-async def _add(session: AsyncSession, user_id: int, film: Film, kind: InterestKind) -> InterestOut:
-    settings = SettingsService(session)
-    values = await settings.all()
-
-    if kind == InterestKind.SOON:
-        active_soon = (
-            await session.execute(
-                sa.select(sa.func.count())
-                .select_from(Interest)
-                .where(
-                    Interest.user_id == user_id,
-                    Interest.kind == InterestKind.SOON,
-                    Interest.revoked_at.is_(None),
-                )
-            )
-        ).scalar_one()
-        limit = int(values["soon_limit_per_user"])
-        if active_soon >= limit:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                f"Лимит «Ближайших» — {limit}. Снимите отметку с другого фильма.",
-            )
-
-    film_id = film.id
-    session.add(Interest(user_id=user_id, film_id=film_id, kind=kind))
+async def _set(
+    session: AsyncSession, user_id: int, film: Film, kind: InterestKind
+) -> InterestOut:
+    values = await SettingsService(session).all()
     try:
-        await session.commit()
-    except IntegrityError:
-        # Частичный уникальный индекс: отметка уже стоит. Повторное нажатие —
-        # не ошибка пользователя, отдаём текущее состояние.
-        await session.rollback()
-        # Откат обесценивает все объекты сессии независимо от expire_on_commit,
-        # поэтому film нужно перечитать, а не переиспользовать.
-        film = await session.get(Film, film_id)
-    return await _state(session, user_id, film, values)
+        mark = await marks.set_mark(
+            session,
+            user_id,
+            film.id,
+            kind,
+            soon_ttl_days=int(values["soon_ttl_days"]),
+            soon_limit=int(values["soon_limit_per_user"]),
+        )
+    except InterestError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return _out(film, mark)
 
 
 @router.delete("/films/{film_id}/interest", response_model=InterestOut)
 async def remove_interest(
     film_id: int,
-    kind: InterestKind,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> InterestOut:
+    """Снимает отметку любого вида: состояние одно, выбирать нечего."""
+    film = await _resolve_film(session, film_id, None)
+    mark = await marks.clear_mark(session, user.id, film_id, await _ttl(session))
+    return _out(film, mark)
+
+
+@router.post("/films/{film_id}/watched", response_model=InterestOut)
+async def set_watched(
+    film_id: int,
+    body: WatchedIn,
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> InterestOut:
     film = await _resolve_film(session, film_id, None)
-    await session.execute(
-        sa.update(Interest)
-        .where(
-            Interest.user_id == user.id,
-            Interest.film_id == film_id,
-            Interest.kind == kind,
-            Interest.revoked_at.is_(None),
-        )
-        .values(revoked_at=sa.func.now(), revoke_reason=RevokeReason.MANUAL)
+    mark = await marks.set_watched(
+        session, user.id, film_id, body.watched, await _ttl(session)
     )
-    await session.commit()
-    return await _state(session, user.id, film, await SettingsService(session).all())
-
-
-async def _state(session: AsyncSession, user_id: int, film: Film, values: dict) -> InterestOut:
-    rows = (
-        (
-            await session.execute(
-                sa.select(Interest)
-                .where(
-                    Interest.user_id == user_id,
-                    Interest.film_id == film.id,
-                    Interest.revoked_at.is_(None),
-                )
-                .order_by(Interest.created_at)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    expires_at = next(
-        (
-            row.created_at + timedelta(days=int(values["soon_ttl_days"]))
-            for row in rows
-            if row.kind == InterestKind.SOON
-        ),
-        None,
-    )
-    return InterestOut(
-        film=FilmBrief(
-            id=film.id,
-            tmdb_id=film.tmdb_id,
-            title_ru=film.title_ru,
-            title_orig=film.title_orig,
-            year=film.year,
-            poster_url=poster_url(film.poster_path),
-            genres=list(film.genres or []),
-            directors=list(film.directors or []),
-            my_interests=[row.kind for row in rows],
-        ),
-        kinds=[row.kind for row in rows],
-        created_at=rows[0].created_at if rows else datetime.now(UTC),
-        expires_at=expires_at,
-    )
+    return _out(film, mark)
 
 
 @router.get("/me/interests", response_model=list[InterestOut])
@@ -165,18 +145,18 @@ async def my_interests(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[InterestOut]:
-    values = await SettingsService(session).all()
+    ttl = await _ttl(session)
     films = (
         (
             await session.execute(
                 sa.select(Film)
                 .join(Interest, Interest.film_id == Film.id)
                 .where(Interest.user_id == user.id, Interest.revoked_at.is_(None))
-                .distinct()
                 .order_by(Film.title_ru)
             )
         )
         .scalars()
         .all()
     )
-    return [await _state(session, user.id, film, values) for film in films]
+    states = await marks.marks_for_films(session, user.id, [f.id for f in films], ttl)
+    return [_out(film, states[film.id]) for film in films]

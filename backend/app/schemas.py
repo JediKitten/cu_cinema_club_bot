@@ -36,8 +36,14 @@ class FilmBrief(BaseModel):
     genres: list[str] = Field(default_factory=list)
     directors: list[str] = Field(default_factory=list)
     in_catalog: bool = True
-    # Отметки текущего пользователя: каталог должен показывать кнопки уже нажатыми.
+    # Состояний три и они взаимоисключающие, поэтому список — либо пустой, либо
+    # ровно из одного элемента. Здесь то, чем отметка ЯВЛЯЕТСЯ сейчас: у
+    # истёкшего «Ближайшего» это уже «Желаемое».
     my_interests: list[InterestKind] = Field(default_factory=list)
+    # Срок «Ближайшего» вышел — предлагаем поставить его заново (§4).
+    can_renew_soon: bool = False
+    soon_expires_at: datetime | None = None
+    watched: bool = False
 
 
 class FilmCard(FilmBrief):
@@ -51,7 +57,6 @@ class FilmCard(FilmBrief):
     internal_votes: int = 0
     # Публично видно только ЧИСЛО желающих, никогда не поимённый список (§11).
     interested_count: int = 0
-    watched: bool = False
     reviews: list["ReviewOut"] = Field(default_factory=list)
 
 
@@ -69,9 +74,11 @@ class InterestIn(BaseModel):
 
 class InterestOut(BaseModel):
     film: FilmBrief
-    kinds: list[InterestKind]
-    created_at: datetime
+    # Не больше одного элемента: состояния взаимоисключающие.
+    kinds: list[InterestKind] = Field(default_factory=list)
     expires_at: datetime | None = None
+    can_renew_soon: bool = False
+    watched: bool = False
 
 
 class FilmRequestIn(BaseModel):

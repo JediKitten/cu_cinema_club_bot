@@ -94,3 +94,21 @@ class TmdbSyncState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()
     )
+
+
+class Watch(Base, CreatedAtMixin):
+    """«Просмотрено» — отдельно от интереса (§8, расширено по просьбе клуба).
+
+    Не отметка и веса не несёт: посмотренный фильм можно оставить в «Желаемом»,
+    чтобы сходить снова. Поэтому отдельная таблица, а не третий вид Interest.
+    """
+
+    __tablename__ = "watches"
+    __table_args__ = (sa.UniqueConstraint("user_id", "film_id", name="uq_watch"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id"), index=True)
+    film_id: Mapped[int] = mapped_column(sa.ForeignKey("films.id"), index=True)
+    # manual — отметил сам, attendance — зафиксирован приход на сеанс.
+    source: Mapped[str] = mapped_column(sa.String(16), default="manual", server_default="manual")
+    screening_id: Mapped[int | None] = mapped_column(sa.ForeignKey("screenings.id"))

@@ -431,3 +431,9 @@ h3 {
 .matrix__total {
   font-weight: 600;
 }
+
+.mark--watched.is-on {
+  background: color-mix(in srgb, var(--hint) 30%, transparent);
+  border-color: transparent;
+  color: var(--text);
+}
