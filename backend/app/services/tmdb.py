@@ -112,9 +112,7 @@ def _trailer_key(payload: dict) -> str | None:
 def _directors(payload: dict) -> list[str]:
     crew = (payload.get("credits") or {}).get("crew", [])
     return [
-        person["name"]
-        for person in crew
-        if person.get("job") == "Director" and person.get("name")
+        person["name"] for person in crew if person.get("job") == "Director" and person.get("name")
     ]
 
 

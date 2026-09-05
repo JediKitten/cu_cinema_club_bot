@@ -251,3 +251,30 @@ async def test_missing_bot_token_does_not_leak_config(client, monkeypatch):
     )
     assert response.status_code == 503
     assert "TELEGRAM_BOT_TOKEN" not in response.text
+
+
+async def test_directors_reach_the_client(client, session):
+    """Поле есть в схеме со значением по умолчанию, поэтому забытая передача
+    в ответе выглядит не как ошибка, а как фильм без режиссёра."""
+    film = Film(
+        title_ru="Сталкер",
+        title_orig="Stalker",
+        year=1979,
+        directors=["Андрей Тарковский"],
+    )
+    session.add(film)
+    await session.commit()
+
+    auth = await login(client, 777030, "Зритель")
+    headers = {"Authorization": f"Bearer {auth['token']}"}
+
+    card = (await client.get(f"/api/films/{film.id}", headers=headers)).json()
+    assert card["directors"] == ["Андрей Тарковский"]
+
+    listing = (await client.get("/api/films", headers=headers)).json()
+    assert listing[0]["directors"] == ["Андрей Тарковский"]
+
+    marked = await client.post(
+        f"/api/films/{film.id}/interest", json={"kind": "wishlist"}, headers=headers
+    )
+    assert marked.json()["film"]["directors"] == ["Андрей Тарковский"]

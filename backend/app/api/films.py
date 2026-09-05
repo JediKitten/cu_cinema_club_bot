@@ -26,6 +26,7 @@ def _brief(film: Film, marks: dict[int, list[InterestKind]] | None = None) -> Fi
         year=film.year,
         poster_url=poster_url(film.poster_path),
         genres=list(film.genres or []),
+        directors=list(film.directors or []),
         in_catalog=True,
         my_interests=(marks or {}).get(film.id, []),
     )

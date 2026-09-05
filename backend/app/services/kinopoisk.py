@@ -232,9 +232,7 @@ async def upsert_from_kinopoisk(session, doc: dict):
 
     fields = film_fields(doc)
     stmt = insert(Film).values(**fields)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[Film.kp_id], set_=fields
-    ).returning(Film)
+    stmt = stmt.on_conflict_do_update(index_elements=[Film.kp_id], set_=fields).returning(Film)
     film = (await session.execute(stmt)).scalar_one()
     await session.commit()
     return film

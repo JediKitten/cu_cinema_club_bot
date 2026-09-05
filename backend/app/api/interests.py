@@ -151,6 +151,7 @@ async def _state(session: AsyncSession, user_id: int, film: Film, values: dict) 
             year=film.year,
             poster_url=poster_url(film.poster_path),
             genres=list(film.genres or []),
+            directors=list(film.directors or []),
             my_interests=[row.kind for row in rows],
         ),
         kinds=[row.kind for row in rows],
