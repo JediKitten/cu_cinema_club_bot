@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { browseFilms, searchFilms } from "../api";
 import { FilmRow } from "../components/FilmRow";
 import type { FilmBrief, InterestKind } from "../types";
+import { replaceFilm } from "../films";
 
 type Props = { onOpen(film: FilmBrief): void };
 
@@ -51,10 +52,11 @@ export function Catalog({ onOpen }: Props) {
 
   function handleMarks(kinds: InterestKind[], updated: FilmBrief) {
     setFilms((current) =>
-      current.map((film) =>
-        film.tmdb_id === updated.tmdb_id || (film.id !== null && film.id === updated.id)
-          ? { ...film, ...updated, my_interests: kinds }
-          : film,
+      replaceFilm(
+        current,
+        updated,
+        (film) => film,
+        (film) => ({ ...film, ...updated, my_interests: kinds }),
       ),
     );
   }

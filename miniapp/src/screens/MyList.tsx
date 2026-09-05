@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { myInterests } from "../api";
 import { FilmRow } from "../components/FilmRow";
 import type { FilmBrief, InterestKind, InterestState } from "../types";
+import { isSameFilm, replaceFilm } from "../films";
 
 type Props = { onOpen(film: FilmBrief): void };
 
@@ -23,14 +24,13 @@ export function MyList({ onOpen }: Props) {
 
   function handleMarks(kinds: InterestKind[], updated: FilmBrief) {
     setItems((current) =>
-      current
+      replaceFilm(
         // Фильм без отметок в этом списке больше не место.
-        .filter((item) => item.film.id !== updated.id || kinds.length > 0)
-        .map((item) =>
-          item.film.id === updated.id
-            ? { ...item, kinds, film: { ...item.film, my_interests: kinds } }
-            : item,
-        ),
+        current.filter((item) => kinds.length > 0 || !isSameFilm(item.film, updated)),
+        updated,
+        (item) => item.film,
+        (item) => ({ ...item, kinds, film: { ...item.film, my_interests: kinds } }),
+      ),
     );
   }
 
