@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getFilm } from "../api";
 import { Poster } from "../components/FilmRow";
 import { MarkButtons } from "../components/MarkButtons";
+import { WatchedButton } from "../components/WatchedButton";
 import { useTelegramBackButton } from "../telegram";
 import type { FilmBrief, FilmCard, InterestKind } from "../types";
 
@@ -40,7 +41,8 @@ export function FilmDetail({ filmId, onBack }: Props) {
 
   return (
     <div className="screen detail">
-      <div className="detail__head">
+      <div className="detail__head film-row--watchable">
+        <WatchedButton film={film} onChange={updateMarks} />
         <Poster url={film.poster_url} />
         <div>
           <h1>{film.title_ru}</h1>

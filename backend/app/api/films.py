@@ -106,13 +106,16 @@ async def search_films(
 async def browse_films(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-    sort: SortKey = "recent",
+    sort: SortKey = "popular",
     genre: str | None = None,
     offset: int = 0,
     limit: Annotated[int, Query(ge=1, le=60)] = 30,
 ) -> list[FilmBrief]:
-    """Сортировка по умолчанию — НЕ по популярности (§11): эффект присоединения
-    к большинству убивает хвост. Популярность доступна явным выбором."""
+    """Сортировка по умолчанию — по популярности.
+
+    §11 просит обратного: эффект присоединения к большинству убивает хвост
+    каталога. Изменено по решению клуба, см. «Отступления от спека» в README.
+    """
     stmt = sa.select(Film).where(Film.status == FilmStatus.ACTIVE)
     if genre:
         stmt = stmt.where(Film.genres.any(genre))

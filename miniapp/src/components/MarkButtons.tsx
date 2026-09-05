@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ApiError, addInterest, removeInterest, setWatched } from "../api";
-import { haptic, webApp } from "../telegram";
+import { ApiError, addInterest, removeInterest } from "../api";
+import { haptic, showMessage } from "../telegram";
 import { markButtons } from "../marks";
 import type { FilmBrief, InterestKind } from "../types";
 
@@ -48,7 +48,7 @@ export function MarkButtons({ film, kinds, onChange, full = false }: Props) {
       onChange(state.kinds, state.film);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : "Не удалось сохранить";
-      webApp()?.showAlert(message) ?? alert(message);
+      showMessage(message);
     } finally {
       setBusy(false);
     }
@@ -62,11 +62,6 @@ export function MarkButtons({ film, kinds, onChange, full = false }: Props) {
     // «Ближайшее»: там та же кнопка означает «продлить».
     const isActive = current === kind && !(kind === "soon" && canRenew);
     void run(() => (isActive ? removeInterest(film.id!) : addInterest(film, kind)));
-  }
-
-  function pressWatched(event: React.MouseEvent) {
-    event.stopPropagation();
-    void run(() => setWatched(film.id!, !film.watched));
   }
 
   return (
@@ -83,17 +78,6 @@ export function MarkButtons({ film, kinds, onChange, full = false }: Props) {
         </button>
       ))}
 
-      {/* Только для фильмов из каталога: у найденного в TMDB ещё нет id. */}
-      {film.id !== null && (
-        <button
-          className={`mark mark--watched ${film.watched ? "is-on" : ""}`}
-          disabled={busy}
-          onClick={pressWatched}
-          title="Не влияет на отметки: посмотренное можно оставить в желаемом"
-        >
-          {film.watched ? "✓ " : ""}Просмотрено
-        </button>
-      )}
     </div>
   );
 }

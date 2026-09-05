@@ -13,10 +13,13 @@ import type {
   Matrix,
   PastScreening,
   Rankings,
+  Role,
   Round,
+  Setting,
   Schedule,
   ScreeningCode,
   Slot,
+  TeamMember,
   User,
 } from "./types";
 
@@ -219,3 +222,33 @@ export const getAttendees = (screeningId: number) =>
 export const getAnalytics = () => request<Analytics>("/api/admin/analytics");
 
 export const getPastScreenings = () => request<PastScreening[]>("/api/screenings/past");
+
+// --- Управление клубом ------------------------------------------------------
+
+export const getSettings = () => request<Setting[]>("/api/admin/settings");
+
+export const saveSettings = (values: Record<string, unknown>) =>
+  request<Setting[]>("/api/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ values }),
+  });
+
+export const getTeam = () => request<TeamMember[]>("/api/admin/team");
+
+export const findUsers = (query: string) =>
+  request<TeamMember[]>(`/api/admin/users?q=${encodeURIComponent(query)}`);
+
+export const setUserRole = (userId: number, role: Role) =>
+  request<TeamMember>(`/api/admin/users/${userId}/role`, {
+    method: "PUT",
+    body: JSON.stringify({ role }),
+  });
+
+export const getGrantableRoles = () => request<Role[]>("/api/admin/roles");
+
+export const createEvent = (payload: {
+  starts_at: string;
+  film_id: number | null;
+  title: string | null;
+  note: string | null;
+}) => request<{ id: number }>("/api/admin/events", { method: "POST", body: JSON.stringify(payload) });

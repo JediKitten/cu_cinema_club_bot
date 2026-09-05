@@ -20,6 +20,7 @@ from app.schemas import (
     ScreeningOut,
     SlotOut,
 )
+from app.services import events as events_service
 from app.services import rounds as rounds_service
 from app.services import schedule as schedule_service
 from app.services.schedule import ScheduleError
@@ -27,6 +28,19 @@ from app.services.settings import SettingsService
 from app.services.tmdb import poster_url
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
+
+
+def _placeholder(screening: Screening) -> FilmBrief:
+    """Событие без фильма: название ещё не объявлено («ждите анонса»)."""
+    return FilmBrief(
+        id=None,
+        tmdb_id=None,
+        title_ru=screening.title or "Событие клуба",
+        title_orig=None,
+        year=None,
+        poster_url=None,
+        in_catalog=False,
+    )
 
 
 def _film_brief(film: Film) -> FilmBrief:
@@ -42,6 +56,17 @@ def _film_brief(film: Film) -> FilmBrief:
     )
 
 
+async def _manual_rows(session: AsyncSession):
+    """События, назначенные вручную. Они вне цикла, поэтому подтягиваются отдельно."""
+    events = await events_service.upcoming(session)
+    out = []
+    for event in events:
+        slot = await session.get(Slot, event.slot_id)
+        film = await session.get(Film, event.film_id) if event.film_id else None
+        out.append((event, film, slot))
+    return out
+
+
 async def _round_or_404(session: AsyncSession) -> Round:
     round_ = await rounds_service.active_round(session)
     if round_ is None:
@@ -51,6 +76,8 @@ async def _round_or_404(session: AsyncSession) -> Round:
 
 async def _build(session: AsyncSession, round_: Round, user_id: int) -> ScheduleOut:
     rows = await schedule_service.screenings_of(session, round_)
+    rows += await _manual_rows(session)
+    rows.sort(key=lambda item: item[2].starts_at)
     halls = {hall.id: hall for hall in (await session.execute(sa.select(Hall))).scalars()}
 
     ids = [screening.id for screening, _, _ in rows]
@@ -110,7 +137,7 @@ async def _build(session: AsyncSession, round_: Round, user_id: int) -> Schedule
         out.append(
             ScreeningOut(
                 id=screening.id,
-                film=_film_brief(film),
+                film=_film_brief(film) if film else _placeholder(screening),
                 slot=SlotOut(
                     id=slot.id,
                     starts_at=slot.starts_at,
@@ -123,6 +150,8 @@ async def _build(session: AsyncSession, round_: Round, user_id: int) -> Schedule
                 status=screening.status,
                 expected_attendance=screening.expected_attendance,
                 cancel_reason=screening.cancel_reason,
+                is_manual=screening.is_manual,
+                note=screening.note,
                 my_state=confirmation.state if confirmation else None,
                 my_place_in_queue=place,
                 confirmed=counts.get(screening.id, 0),

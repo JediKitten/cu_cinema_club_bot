@@ -9,7 +9,7 @@ import {
   unassignScreening,
 } from "../api";
 import { dayLabel, timeLabel } from "../dates";
-import { webApp } from "../telegram";
+import { showMessage } from "../telegram";
 import { RunScreening } from "../screens/RunScreening";
 import type { FilmBrief, Schedule, Screening, Slot } from "../types";
 
@@ -94,7 +94,7 @@ export function ScheduleBuilder({ shortlist }: Props) {
                 if (reason && reason.trim().length >= 3) {
                   void act(() => cancelScreening(screening.id, reason.trim()));
                 } else if (reason !== null) {
-                  webApp()?.showAlert("Причину нужно указать") ?? alert("Причину нужно указать");
+                  showMessage("Причину нужно указать");
                 }
               }}
             >

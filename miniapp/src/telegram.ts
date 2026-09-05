@@ -74,3 +74,17 @@ export function useTelegramBackButton(visible: boolean, onBack: () => void): () 
     button.hide();
   };
 }
+
+/** Показать сообщение пользователю.
+ *
+ * Раньше здесь было `webApp()?.showAlert(m) ?? alert(m)`, и это давало два окна
+ * подряд: showAlert ничего не возвращает, поэтому `??` срабатывал всегда.
+ */
+export function showMessage(message: string): void {
+  const app = webApp();
+  if (app?.showAlert) {
+    app.showAlert(message);
+  } else {
+    alert(message);
+  }
+}

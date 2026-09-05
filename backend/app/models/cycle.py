@@ -80,7 +80,8 @@ class Slot(Base):
     __table_args__ = (sa.UniqueConstraint("round_id", "hall_id", "starts_at", name="uq_slot_slot"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    round_id: Mapped[int] = mapped_column(sa.ForeignKey("rounds.id"), index=True)
+    # Пусто у слотов ручных событий: они назначаются вне недельного цикла.
+    round_id: Mapped[int | None] = mapped_column(sa.ForeignKey("rounds.id"), index=True)
     hall_id: Mapped[int] = mapped_column(sa.ForeignKey("halls.id"))
     starts_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     duration_min: Mapped[int] = mapped_column(default=180, server_default="180")
@@ -122,9 +123,16 @@ class Screening(Base, CreatedAtMixin):
     __tablename__ = "screenings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    round_id: Mapped[int] = mapped_column(sa.ForeignKey("rounds.id"), index=True)
-    film_id: Mapped[int] = mapped_column(sa.ForeignKey("films.id"), index=True)
+    # Оба поля пусты у ручных событий: они не принадлежат циклу, а фильм может
+    # быть ещё не объявлен («ждите анонса»).
+    round_id: Mapped[int | None] = mapped_column(sa.ForeignKey("rounds.id"), index=True)
+    film_id: Mapped[int | None] = mapped_column(sa.ForeignKey("films.id"), index=True)
     slot_id: Mapped[int] = mapped_column(sa.ForeignKey("slots.id"))
+    # Назначено администратором вручную, в обход алгоритма.
+    is_manual: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    # Заголовок и подпись — для события без фильма.
+    title: Mapped[str | None] = mapped_column(sa.String(200))
+    note: Mapped[str | None] = mapped_column(sa.Text)
     status: Mapped[ScreeningStatus] = mapped_column(
         enum_col(ScreeningStatus, "screening_status"),
         default=ScreeningStatus.SCHEDULED,
@@ -146,12 +154,16 @@ class Screening(Base, CreatedAtMixin):
             postgresql_where=sa.text("status <> 'cancelled'"),
         ),
         # Один фильм не более одного раза за цикл (§6).
+        # Один фильм не более одного раза за цикл (§6). Ручные события сюда
+        # не попадают: у них нет ни цикла, ни обязательного фильма.
         sa.Index(
             "uq_screening_round_film",
             "round_id",
             "film_id",
             unique=True,
-            postgresql_where=sa.text("status <> 'cancelled'"),
+            postgresql_where=sa.text(
+                "status <> 'cancelled' AND round_id IS NOT NULL AND film_id IS NOT NULL"
+            ),
         ),
     )
 

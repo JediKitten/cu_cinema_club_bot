@@ -263,3 +263,26 @@ export type PastScreening = {
   came: number;
   rating: number | null;
 };
+
+// --- Управление клубом ------------------------------------------------------
+
+export type Role = "user" | "moderator" | "admin" | "superadmin";
+
+export type TeamMember = {
+  id: number;
+  display_name: string;
+  tg_username: string | null;
+  role: Role;
+};
+
+export type Setting = {
+  key: string;
+  value: unknown;
+  type: "float" | "int" | "bool" | "time" | "weekday_time" | "str";
+  group: string;
+  label: string;
+  help: string | null;
+  min: number | null;
+  max: number | null;
+  affects_weights: boolean;
+};

@@ -245,6 +245,10 @@ class ScreeningOut(BaseModel):
     status: str
     expected_attendance: int | None = None
     cancel_reason: str | None = None
+    # Назначено вручную, вне алгоритма.
+    is_manual: bool = False
+    # Подпись к событию без фильма: «ждите анонса».
+    note: str | None = None
     # Состояние текущего пользователя по этому показу.
     my_state: str | None = None
     my_place_in_queue: int | None = None
@@ -375,3 +379,31 @@ class PastScreeningOut(BaseModel):
     expected: int | None
     came: int
     rating: float | None
+
+
+# --- Ручные события и роли --------------------------------------------------
+
+
+class EventIn(BaseModel):
+    """Событие вне цикла: фильм необязателен, время любое."""
+
+    starts_at: datetime
+    film_id: int | None = None
+    title: str | None = Field(default=None, max_length=200)
+    note: str | None = Field(default=None, max_length=1000)
+    duration_min: int = Field(default=180, ge=30, le=600)
+
+
+class RevealIn(BaseModel):
+    film_id: int
+
+
+class TeamMember(BaseModel):
+    id: int
+    display_name: str
+    tg_username: str | None = None
+    role: UserRole
+
+
+class RoleIn(BaseModel):
+    role: UserRole

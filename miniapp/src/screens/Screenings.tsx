@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ApiError, confirmScreening, declineScreening } from "../api";
 import { Poster } from "../components/FilmRow";
 import { dayLabel, timeLabel, weekLabel } from "../dates";
-import { haptic, webApp } from "../telegram";
+import { haptic, showMessage } from "../telegram";
 import type { Schedule, Screening } from "../types";
 import { Attend } from "./Attend";
 
@@ -43,7 +43,7 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
       });
     } catch (error) {
       const message = error instanceof ApiError ? error.message : "Не удалось сохранить";
-      webApp()?.showAlert(message) ?? alert(message);
+      showMessage(message);
     } finally {
       setBusy(null);
     }

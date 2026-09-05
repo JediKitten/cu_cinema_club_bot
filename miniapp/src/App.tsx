@@ -63,7 +63,7 @@ export default function App() {
           {tab === "catalog" && <Catalog onOpen={openFilm} />}
           {tab === "mine" && <MyList onOpen={openFilm} />}
           {tab === "vote" && <Week />}
-          {tab === "admin" && <Admin />}
+          {tab === "admin" && <Admin role={user.role} />}
           {tab === "more" && <More user={user} />}
         </>
       )}

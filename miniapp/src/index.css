@@ -578,3 +578,67 @@ h3 {
 .funnel-row > span:last-child {
   text-align: right;
 }
+
+/* --- «Просмотрено» в углу карточки ----------------------------------------- */
+
+.film-row--watchable {
+  position: relative;
+}
+
+.watched-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  color: var(--hint);
+  /* Над названием: длинные заголовки иначе заезжают под кнопку. */
+  z-index: 2;
+  background: var(--bg);
+}
+
+.watched-dot.is-on {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+
+.watched-dot:disabled {
+  opacity: 0.5;
+}
+
+/* Освобождаем место под кнопку, чтобы заголовок под неё не подлезал. */
+.film-row--watchable .film-row__title,
+.film-row--watchable h1 {
+  padding-right: 38px;
+}
+
+/* --- Панель параметров ------------------------------------------------------ */
+
+.setting {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting label {
+  font-size: 14px;
+}
+
+.setting__pair {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+}
+
+.sticky-actions {
+  position: sticky;
+  bottom: 8px;
+  padding-top: 8px;
+  background: linear-gradient(transparent, var(--bg) 40%);
+}

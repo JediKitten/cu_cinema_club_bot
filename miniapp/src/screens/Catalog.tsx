@@ -6,20 +6,20 @@ import { replaceFilm } from "../films";
 
 type Props = { onOpen(film: FilmBrief): void };
 
-type Sort = "recent" | "alphabetical" | "year" | "popular";
+type Sort = "popular" | "alphabetical" | "year";
 
+// Популярность первой и по умолчанию — по решению клуба. §11 просил обратного:
+// такая сортировка усиливает эффект присоединения к большинству и прячет хвост
+// каталога. Компромисс: остальные порядки рядом, в один тап.
 const SORTS: { key: Sort; label: string }[] = [
-  { key: "recent", label: "Новое в клубе" },
+  { key: "popular", label: "По популярности" },
   { key: "alphabetical", label: "По алфавиту" },
   { key: "year", label: "По году" },
-  // Популярность — только явным выбором (§11): сортировка по ней по умолчанию
-  // усиливает эффект присоединения к большинству.
-  { key: "popular", label: "По популярности" },
 ];
 
 export function Catalog({ onOpen }: Props) {
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<Sort>("recent");
+  const [sort, setSort] = useState<Sort>("popular");
   const [films, setFilms] = useState<FilmBrief[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

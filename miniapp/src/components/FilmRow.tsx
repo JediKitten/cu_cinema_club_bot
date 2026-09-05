@@ -1,4 +1,5 @@
 import { MarkButtons } from "./MarkButtons";
+import { WatchedButton } from "./WatchedButton";
 import type { FilmBrief, InterestKind } from "../types";
 
 type Props = {
@@ -19,7 +20,8 @@ export function FilmRow({ film, onOpen, onMarksChange }: Props) {
   const subtitle = [film.year, film.title_orig].filter(Boolean).join(" · ");
 
   return (
-    <div className="film-row">
+    <div className="film-row film-row--watchable">
+      <WatchedButton film={film} onChange={onMarksChange} />
       <Poster url={film.poster_url} />
       <div>
         {/* Карточка открывается только у фильмов из каталога: у найденного в TMDB

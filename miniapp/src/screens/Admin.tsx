@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { Analytics } from "../components/Analytics";
+import { EventPanel } from "../components/EventPanel";
+import { SettingsPanel } from "../components/SettingsPanel";
+import { TeamPanel } from "../components/TeamPanel";
 import { Matrix } from "../components/Matrix";
 import { ScheduleBuilder } from "../components/ScheduleBuilder";
 import {
@@ -37,7 +40,18 @@ function slotLabel(slot: Slot): string {
   return `${weekday}, ${at.getDate()}.${String(at.getMonth() + 1).padStart(2, "0")} ${time}`;
 }
 
-export function Admin() {
+type Section = "round" | "events" | "stats" | "team" | "settings";
+
+const SECTIONS: { key: Section; label: string; superadminOnly?: boolean }[] = [
+  { key: "round", label: "Цикл" },
+  { key: "events", label: "События" },
+  { key: "stats", label: "Аналитика" },
+  { key: "team", label: "Команда" },
+  { key: "settings", label: "Параметры", superadminOnly: true },
+];
+
+export function Admin({ role }: { role: string }) {
+  const [section, setSection] = useState<Section>("round");
   const [round, setRound] = useState<Round | null>(null);
   const [rankings, setRankings] = useState<Rankings | null>(null);
   const [tab, setTab] = useState<Tab>("coverage");
@@ -92,11 +106,29 @@ export function Admin() {
     round !== null &&
     JSON.stringify(picked) !== JSON.stringify(round.shortlist.map((i) => i.film_id));
 
+  const sections = SECTIONS.filter((s) => !s.superadminOnly || role === "superadmin");
+
   return (
     <div className="screen">
+      <div className="tabs-inline">
+        {sections.map((item) => (
+          <button
+            key={item.key}
+            className={`mark ${section === item.key ? "is-on mark--wishlist" : ""}`}
+            onClick={() => setSection(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {section === "team" && <TeamPanel />}
+      {section === "settings" && <SettingsPanel />}
+      {section === "events" && <EventPanel onCreated={() => setSection("round")} />}
+      {section === "stats" && <Analytics />}
       {error && <div className="error">{error}</div>}
 
-      {round === null ? (
+      {section === "round" && (round === null ? (
         <>
           <p className="hint">Активного цикла нет. Откройте цикл на следующую неделю.</p>
           <button
@@ -219,9 +251,6 @@ export function Admin() {
             </>
           )}
 
-          <h3>Аналитика</h3>
-          <Analytics />
-
           <h3>Вечера</h3>
           <p className="hint">Заблокированные вечера автопилот не использует.</p>
           {round.slots.map((slot) => (
@@ -260,7 +289,7 @@ export function Admin() {
             </div>
           ))}
         </>
-      )}
+      ))}
     </div>
   );
 }
