@@ -1,5 +1,6 @@
 """Этап 3 — расписание и подтверждения (§7)."""
 
+from datetime import date
 from typing import Annotated
 
 import sqlalchemy as sa
@@ -78,6 +79,19 @@ async def _build(session: AsyncSession, round_: Round, user_id: int) -> Schedule
     rows = await schedule_service.screenings_of(session, round_)
     rows += await _manual_rows(session)
     rows.sort(key=lambda item: item[2].starts_at)
+    out = await _to_out(session, rows, round_, user_id)
+    return ScheduleOut(
+        round_id=round_.id,
+        week_start=round_.week_start,
+        stage=round_.stage,
+        published=round_.stage in (RoundStage.PUBLISHED, RoundStage.RUNNING, RoundStage.CLOSED),
+        screenings=out,
+    )
+
+
+async def _to_out(
+    session: AsyncSession, rows: list, round_: Round | None, user_id: int
+) -> list[ScreeningOut]:
     halls = {hall.id: hall for hall in (await session.execute(sa.select(Hall))).scalars()}
 
     ids = [screening.id for screening, _, _ in rows]
@@ -91,17 +105,19 @@ async def _build(session: AsyncSession, round_: Round, user_id: int) -> Schedule
             )
         ).scalars()
     }
-    voted_films = set(
-        (
-            await session.execute(
-                sa.select(FilmVote.film_id).where(
-                    FilmVote.round_id == round_.id, FilmVote.user_id == user_id
+    voted_films: set[int] = set()
+    if round_ is not None:
+        voted_films = set(
+            (
+                await session.execute(
+                    sa.select(FilmVote.film_id).where(
+                        FilmVote.round_id == round_.id, FilmVote.user_id == user_id
+                    )
                 )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
     counts = dict(
         (
             await session.execute(
@@ -156,29 +172,50 @@ async def _build(session: AsyncSession, round_: Round, user_id: int) -> Schedule
                 my_place_in_queue=place,
                 confirmed=counts.get(screening.id, 0),
                 capacity=hall.capacity,
-                invited=film.id in voted_films,
+                # У ручного события фильма может не быть — голосовать было не за что.
+                invited=film is not None and film.id in voted_films,
             )
         )
 
-    return ScheduleOut(
-        round_id=round_.id,
-        week_start=round_.week_start,
-        stage=round_.stage,
-        published=round_.stage in (RoundStage.PUBLISHED, RoundStage.RUNNING, RoundStage.CLOSED),
-        screenings=out,
-    )
+    return out
 
 
 @router.get("", response_model=ScheduleOut)
 async def schedule(
     user: CurrentUser, session: Annotated[AsyncSession, Depends(get_session)]
 ) -> ScheduleOut:
-    """Расписание недели. До публикации видно только тем, кто его составляет."""
-    round_ = await _round_or_404(session)
-    if round_.stage in (RoundStage.COLLECTING, RoundStage.SHORTLIST_REVIEW, RoundStage.SLOT_VOTING):
-        if user.role.rank < 1:  # ниже модератора
-            raise HTTPException(status.HTTP_409_CONFLICT, "Расписание ещё не опубликовано")
+    """Расписание недели.
+
+    Показы цикла до публикации видны только тем, кто его составляет. Ручные
+    события — всем и всегда: они анонсируются отдельно от цикла, и прятать их
+    за его этапом значило бы не показать анонс вовсе.
+    """
+    round_ = await rounds_service.active_round(session)
+    unpublished = round_ is not None and round_.stage in (
+        RoundStage.COLLECTING,
+        RoundStage.SHORTLIST_REVIEW,
+        RoundStage.SLOT_VOTING,
+    )
+    hide_round = unpublished and user.role.rank < 1  # ниже модератора
+
+    if round_ is None or hide_round:
+        return await _events_only(session, round_, user.id)
     return await _build(session, round_, user.id)
+
+
+async def _events_only(
+    session: AsyncSession, round_: Round | None, user_id: int
+) -> ScheduleOut:
+    """Только ручные события: цикла нет или он ещё не дошёл до публикации."""
+    built = await _to_out(session, await _manual_rows(session), round_, user_id)
+    return ScheduleOut(
+        round_id=round_.id if round_ else 0,
+        week_start=round_.week_start if round_ else date.today(),
+        stage=round_.stage if round_ else "collecting",
+        # Показы цикла ещё не опубликованы, но события показать надо.
+        published=bool(built),
+        screenings=built,
+    )
 
 
 # --- Расстановка (модератор и выше) ----------------------------------------

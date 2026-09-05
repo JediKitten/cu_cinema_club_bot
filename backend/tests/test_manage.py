@@ -10,6 +10,7 @@ from app.models.enums import ScreeningStatus, UserRole
 from app.services import events, roles
 from app.services.events import EventError
 from app.services.roles import RoleError
+from tests.conftest import login
 from tests.test_weights import make_film, make_user
 
 SOON = datetime.now(UTC) + timedelta(days=3)
@@ -218,3 +219,65 @@ async def test_search_finds_by_name_and_username(session):
     assert [u.id for u in await roles.search(session, "Петров")] == [user.id]
     assert [u.id for u in await roles.search(session, "vany")] == [user.id]
     assert await roles.search(session, "нетакого") == []
+
+
+async def test_secret_event_visible_before_the_cycle_is_published(client, session):
+    """Анонс не должен прятаться за этапом цикла: иначе его не увидит никто."""
+    from datetime import date
+
+    from app.services import rounds as rounds_service
+
+    boss_auth = await login(client, 777001, "Главный")
+    boss_headers = {"Authorization": f"Bearer {boss_auth['token']}"}
+
+    # Цикл в самом начале — показы ещё не опубликованы.
+    await rounds_service.open_round(session, date(2026, 9, 14), boss_auth["user"]["id"])
+
+    created = await client.post(
+        "/api/admin/events",
+        json={
+            "starts_at": (datetime.now(UTC) + timedelta(days=4)).isoformat(),
+            "title": "Секретный показ",
+            "note": "ждите анонса",
+        },
+        headers=boss_headers,
+    )
+    assert created.status_code == 201
+
+    viewer = await login(client, 777099, "Обычный участник")
+    schedule = (
+        await client.get(
+            "/api/schedule", headers={"Authorization": f"Bearer {viewer['token']}"}
+        )
+    ).json()
+
+    titles = [item["film"]["title_ru"] for item in schedule["screenings"]]
+    assert "Секретный показ" in titles
+    assert schedule["screenings"][0]["note"] == "ждите анонса"
+    assert schedule["screenings"][0]["is_manual"] is True
+
+
+async def test_ordinary_user_still_cannot_see_unpublished_round(client, session):
+    """Показы цикла до публикации остаются скрытыми."""
+    from datetime import date
+
+    from app.models import Film
+    from app.services import rounds as rounds_service
+
+    film = Film(title_ru="Не для чужих глаз")
+    session.add(film)
+    await session.commit()
+
+    boss = await login(client, 777001, "Главный")
+    boss_id = boss["user"]["id"]
+    round_ = await rounds_service.open_round(session, date(2026, 9, 14), boss_id)
+    await rounds_service.set_shortlist(session, round_, [film.id], boss_id)
+
+    viewer = await login(client, 777098, "Обычный")
+    schedule = (
+        await client.get(
+            "/api/schedule", headers={"Authorization": f"Bearer {viewer['token']}"}
+        )
+    ).json()
+
+    assert schedule["screenings"] == []
