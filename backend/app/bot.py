@@ -8,6 +8,8 @@
 
 import asyncio
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
@@ -21,11 +23,22 @@ from aiogram.types import (
 )
 
 from app.config import get_config
+from app.db import SessionLocal
+from app.services import notify, reminders
+from app.services.settings import SettingsService
 
 logger = logging.getLogger(__name__)
 
 # Как часто перечитывать .env в поисках нового адреса туннеля.
 URL_WATCH_INTERVAL_SECONDS = 5
+
+# Очередь уведомлений разгребается часто: приглашение после публикации должно
+# приходить сразу, а не через минуты.
+NOTIFY_INTERVAL_SECONDS = 5
+
+# Напоминания и предупреждения о недоборе. Окно допуска в reminders.py — полчаса,
+# поэтому проход раз в пять минут ничего не пропускает.
+JOBS_INTERVAL_SECONDS = 300
 
 WELCOME = (
     "<b>Университетский киноклуб</b>\n\n"
@@ -123,6 +136,41 @@ async def watch_miniapp_url(bot: Bot, initial: str) -> None:
                 logger.exception("Не удалось обновить кнопку меню")
 
 
+async def notification_loop(bot: Bot) -> None:
+    """Отправляет накопившиеся уведомления.
+
+    Отдельно от их создания: так падение бота не теряет уведомление — оно
+    просто уйдёт следующим проходом.
+    """
+    while True:
+        try:
+            async with SessionLocal() as session:
+                tz = ZoneInfo(str(await SettingsService(session).get("display_timezone")))
+
+                def to_local(value: datetime, tz: ZoneInfo = tz) -> str:
+                    return value.astimezone(tz).strftime("%d.%m в %H:%M")
+
+                sent = await notify.deliver(session, bot, to_local)
+                if sent:
+                    logger.info("Отправлено уведомлений: %d", sent)
+        except Exception:
+            # Цикл обязан пережить любую ошибку: иначе одна неудача навсегда
+            # останавливает всю рассылку.
+            logger.exception("Сбой при отправке уведомлений")
+        await asyncio.sleep(NOTIFY_INTERVAL_SECONDS)
+
+
+async def jobs_loop() -> None:
+    """Периодические задачи: напоминания, предупреждения о недоборе (§7)."""
+    while True:
+        try:
+            async with SessionLocal() as session:
+                await reminders.run_all(session)
+        except Exception:
+            logger.exception("Сбой в фоновых задачах")
+        await asyncio.sleep(JOBS_INTERVAL_SECONDS)
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = get_config()
@@ -145,14 +193,19 @@ async def main() -> None:
 
     if url:
         await apply_menu_button(bot, url)
-    watcher = asyncio.create_task(watch_miniapp_url(bot, url))
+    background = [
+        asyncio.create_task(watch_miniapp_url(bot, url)),
+        asyncio.create_task(notification_loop(bot)),
+        asyncio.create_task(jobs_loop()),
+    ]
 
     try:
         # drop_pending_updates: перезапуск в разработке не должен разгребать очередь
         # сообщений, накопившихся, пока бот лежал.
         await dispatcher.start_polling(bot, drop_pending_updates=True)
     finally:
-        watcher.cancel()
+        for task in background:
+            task.cancel()
 
 
 if __name__ == "__main__":

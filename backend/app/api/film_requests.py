@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, RequireAdmin
 from app.db import get_session
-from app.models import FilmRequest, Notification
+from app.models import FilmRequest
 from app.models.enums import FilmRequestStatus, NotificationKind
 from app.schemas import FilmRequestIn, FilmRequestOut
+from app.services import notify
 from app.services.tmdb import TmdbError, ensure_film
 
 router = APIRouter(prefix="/api", tags=["film-requests"])
@@ -96,18 +97,17 @@ async def resolve_request(
     request.resolved_at = sa.func.now()
 
     # Автора заявки уведомляем о результате (§4).
-    session.add(
-        Notification(
-            user_id=request.user_id,
-            kind=NotificationKind.FILM_REQUEST_RESOLVED,
-            dedup_key=f"film_request:{request.id}",
-            payload={
-                "request_id": request.id,
-                "approved": body.approve,
-                "comment": body.comment,
-                "film_id": request.resolved_film_id,
-            },
-        )
+    await notify.queue(
+        session,
+        request.user_id,
+        NotificationKind.FILM_REQUEST_RESOLVED,
+        dedup_key=f"film_request:{request.id}",
+        payload={
+            "request_id": request.id,
+            "approved": body.approve,
+            "comment": body.comment,
+            "film_id": request.resolved_film_id,
+        },
     )
     await session.commit()
     await session.refresh(request)

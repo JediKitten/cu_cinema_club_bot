@@ -18,7 +18,6 @@ from app.models import (
     Film,
     FilmVote,
     Hall,
-    Notification,
     Round,
     Screening,
     Slot,
@@ -29,6 +28,7 @@ from app.models.enums import (
     RoundStage,
     ScreeningStatus,
 )
+from app.services import notify
 from app.services.voting import build_matrix
 
 
@@ -160,15 +160,14 @@ async def publish_schedule(session: AsyncSession, round_: Round, actor_id: int) 
             .all()
         )
         for user_id in voters:
-            session.add(
-                Notification(
-                    user_id=user_id,
-                    kind=NotificationKind.SCHEDULE_PUBLISHED,
-                    # Ключ идемпотентности: повторная публикация не должна
-                    # рассылать людям второе приглашение на тот же сеанс.
-                    dedup_key=f"published:{screening.id}:{user_id}",
-                    payload={"screening_id": screening.id, "film_id": screening.film_id},
-                )
+            # Ключ идемпотентности: повторная публикация не должна рассылать
+            # людям второе приглашение на тот же сеанс.
+            await notify.queue(
+                session,
+                user_id,
+                NotificationKind.SCHEDULE_PUBLISHED,
+                dedup_key=f"published:{screening.id}:{user_id}",
+                payload={"screening_id": screening.id, "film_id": screening.film_id},
             )
 
     session.add(
@@ -349,13 +348,12 @@ async def promote_from_waitlist(session: AsyncSession, screening_id: int) -> int
     )
     for confirmation in queue:
         confirmation.state = ConfirmationState.CONFIRMED
-        session.add(
-            Notification(
-                user_id=confirmation.user_id,
-                kind=NotificationKind.WAITLIST_PROMOTED,
-                dedup_key=f"promoted:{screening_id}:{confirmation.user_id}",
-                payload={"screening_id": screening_id},
-            )
+        await notify.queue(
+            session,
+            confirmation.user_id,
+            NotificationKind.WAITLIST_PROMOTED,
+            dedup_key=f"promoted:{screening_id}:{confirmation.user_id}",
+            payload={"screening_id": screening_id},
         )
     await session.commit()
     return len(queue)
@@ -488,13 +486,12 @@ async def _notify_affected(
 
     stamp = datetime.now(UTC).isoformat(timespec="seconds")
     for user_id in set(users):
-        session.add(
-            Notification(
-                user_id=user_id,
-                kind=kind,
-                dedup_key=f"{kind}:{screening.id}:{user_id}:{stamp}",
-                payload={"screening_id": screening.id, **payload},
-            )
+        await notify.queue(
+            session,
+            user_id,
+            kind,
+            dedup_key=f"{kind}:{screening.id}:{user_id}:{stamp}",
+            payload={"screening_id": screening.id, **payload},
         )
 
 
