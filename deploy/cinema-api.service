@@ -1,0 +1,31 @@
+[Unit]
+Description=Киноклуб — API
+# Postgres поднимается дольше, чем сеть: без этого API стартует раньше базы,
+# падает на первом запросе и уходит в цикл рестартов.
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=exec
+User=cinema
+Group=cinema
+WorkingDirectory=/opt/cinema-club/backend
+ExecStart=/opt/cinema-club/backend/venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers \
+    --forwarded-allow-ips 127.0.0.1
+Restart=always
+RestartSec=3
+
+# Наружу API не смотрит — его проксирует nginx, поэтому слушаем только localhost.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cinema-club
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

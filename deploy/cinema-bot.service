@@ -1,0 +1,25 @@
+[Unit]
+Description=Киноклуб — Telegram-бот
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=cinema
+Group=cinema
+WorkingDirectory=/opt/cinema-club/backend
+ExecStart=/opt/cinema-club/backend/venv/bin/python -m app.bot
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cinema-club
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

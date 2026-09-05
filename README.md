@@ -90,8 +90,8 @@ Telegram мы не контролируем.
 Проверены и отвергнуты: serveo (такая же заглушка), localtunnel (теряет две трети
 запросов), Cloudflare Tunnel (в этой сети не соединяется — обрыв на TLS-рукопожатии).
 
-Для настоящей эксплуатации туннель не годится: нужен статический хостинг для
-`miniapp/dist` и публичный адрес для API.
+Туннель — только для разработки. Развёртывание на сервер описано в
+[deploy/README.md](deploy/README.md).
 
 ### Стартовый каталог
 
@@ -124,6 +124,16 @@ cd backend && ./venv/bin/python -m app.bot
 останется без ответа — API и Mini App сами по себе на сообщения не отвечают.
 
 Документация API: http://localhost:8000/docs
+
+## Развёртывание
+
+Установка на VPS (Ubuntu/Debian, домен, TLS, systemd, nginx) — в
+[deploy/README.md](deploy/README.md). Коротко:
+
+```bash
+deploy/sync.sh root@IP-сервера                                  # локально
+sudo DOMAIN=cinema.example.ru /opt/cinema-club/deploy/setup.sh   # на сервере
+```
 
 ## Тесты
 

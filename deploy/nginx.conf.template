@@ -1,0 +1,52 @@
+# Конфиг nginx для киноклуба. DOMAIN_PLACEHOLDER заменяется скриптом setup.sh.
+#
+# TLS-секцию дописывает certbot при выпуске сертификата — здесь только HTTP,
+# чтобы certbot смог пройти проверку и сам добавить редирект на HTTPS.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name DOMAIN_PLACEHOLDER;
+
+    # Собранный Mini App. Тот же origin, что и API, — поэтому фронтенду
+    # не нужен ни VITE_API_URL, ни CORS.
+    root /opt/cinema-club/miniapp/dist;
+    index index.html;
+
+    # Telegram грузит Mini App во фрейме, поэтому X-Frame-Options здесь не ставим:
+    # он сломал бы запуск. Остальные заголовки безопасности уместны.
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    location = /health {
+        proxy_pass http://127.0.0.1:8000/health;
+        access_log off;
+    }
+
+    # Ассеты Vite содержат хеш в имени — их можно кэшировать намертво.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # SPA: любой неизвестный путь отдаёт index.html, маршрутизация на клиенте.
+    # index.html не кэшируем, иначе после деплоя пользователи останутся
+    # со старой сборкой и ссылками на удалённые ассеты.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+}
