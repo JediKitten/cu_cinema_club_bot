@@ -662,3 +662,32 @@ h3 {
   font-size: 14px;
   font-weight: 600;
 }
+
+.matrix__link {
+  padding: 0;
+  font: inherit;
+  color: var(--link);
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Пригласительная ссылка ------------------------------------------------- */
+
+.invite {
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 12px;
+  width: 100%;
+}
+
+.invite__link {
+  font-size: 13px;
+  /* Ссылка длинная: пусть лучше прокручивается, чем ломает вёрстку. */
+  overflow-x: auto;
+  white-space: nowrap;
+}

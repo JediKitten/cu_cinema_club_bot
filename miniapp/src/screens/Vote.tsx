@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError, getBallot, saveAvailability, saveVotes } from "../api";
 import { Poster } from "../components/FilmRow";
 import { dayLabel, timeLabel } from "../dates";
+import { useOpenFilm } from "../filmOpener";
 import { haptic } from "../telegram";
 import type { Ballot } from "../types";
 
@@ -15,6 +16,7 @@ export function Vote() {
   const [closed, setClosed] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const openFilm = useOpenFilm();
 
   useEffect(() => {
     getBallot()
@@ -85,7 +87,24 @@ export function Vote() {
             onClick={() => film.id && toggle("film", film.id)}
             disabled={busy}
           >
-            <Poster url={film.poster_url} />
+            {/* Строка целиком — это выбор, поэтому карточку открывает постер:
+                иначе нажатие означало бы сразу два разных действия. */}
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(event) => {
+                event.stopPropagation();
+                openFilm(film);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.stopPropagation();
+                  openFilm(film);
+                }
+              }}
+            >
+              <Poster url={film.poster_url} />
+            </span>
             <div>
               <p className="film-row__title">{film.title_ru}</p>
               <p className="meta">

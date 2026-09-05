@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useOpenFilmById } from "../filmOpener";
 import { Analytics } from "../components/Analytics";
 import { EventPanel } from "../components/EventPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
@@ -52,6 +53,7 @@ const SECTIONS: { key: Section; label: string; superadminOnly?: boolean }[] = [
 
 export function Admin({ role }: { role: string }) {
   const [section, setSection] = useState<Section>("round");
+  const openFilm = useOpenFilmById();
   const [round, setRound] = useState<Round | null>(null);
   const [rankings, setRankings] = useState<Rankings | null>(null);
   const [tab, setTab] = useState<Tab>("coverage");
@@ -176,7 +178,11 @@ export function Admin({ role }: { role: string }) {
           {rows.map((row) => {
             const chosen = picked.includes(row.film_id);
             return (
-              <div className="film-row" key={row.film_id}>
+              <div
+                className="film-row film-row--clickable"
+                key={row.film_id}
+                onClick={() => openFilm(row.film_id, row.title_ru)}
+              >
                 <Poster url={row.poster_url} />
                 <div>
                   <p className="film-row__title">{row.title_ru}</p>
@@ -192,7 +198,10 @@ export function Admin({ role }: { role: string }) {
                     <button
                       className={`mark ${chosen ? "is-on mark--wishlist" : ""}`}
                       disabled={locked}
-                      onClick={() => toggle(row.film_id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggle(row.film_id);
+                      }}
                     >
                       {chosen ? "✓ В шорт-листе" : "В шорт-лист"}
                     </button>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getMatrix } from "../api";
 import { weekdayShort } from "../dates";
+import { useOpenFilm } from "../filmOpener";
 import type { Matrix as MatrixData } from "../types";
 
 /** Матрица «фильм × слот» (§6).
@@ -9,6 +10,7 @@ import type { Matrix as MatrixData } from "../types";
  * Это и есть ожидаемая явка, если поставить показ сюда.
  */
 export function Matrix() {
+  const openFilm = useOpenFilm();
   const [data, setData] = useState<MatrixData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,7 +61,9 @@ export function Matrix() {
             {data.films.map((film) => (
               <tr key={film.id}>
                 <th className="matrix__film" title={film.title_ru}>
-                  {film.title_ru}
+                  <button className="matrix__link" onClick={() => openFilm(film)}>
+                    {film.title_ru}
+                  </button>
                 </th>
                 {data.slots.map((slot) => {
                   const value = cells.get(`${film.id}:${slot.id}`) ?? 0;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ApiError, confirmScreening, declineScreening } from "../api";
 import { Poster } from "../components/FilmRow";
 import { dayLabel, timeLabel } from "../dates";
+import { useOpenFilm } from "../filmOpener";
 import { haptic, showMessage } from "../telegram";
 import type { Schedule, Screening } from "../types";
 import { Attend } from "./Attend";
@@ -16,6 +17,7 @@ function started(screening: Screening): boolean {
 export function Screenings({ schedule, onChange }: { schedule: Schedule; onChange(s: Schedule): void }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [attending, setAttending] = useState<Screening | null>(null);
+  const openFilm = useOpenFilm();
 
   async function toggle(screening: Screening) {
     if (busy !== null) return;
@@ -69,7 +71,11 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
         const full = screening.confirmed >= screening.capacity;
 
         return (
-          <div className="film-row" key={screening.id}>
+          <div
+            className={`film-row ${screening.film.id ? "film-row--clickable" : ""}`}
+            key={screening.id}
+            onClick={() => screening.film.id && openFilm(screening.film)}
+          >
             <Poster url={screening.film.poster_url} />
             <div>
               <p className="film-row__title">{screening.film.title_ru}</p>
@@ -88,13 +94,22 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
                 <button
                   className={`mark ${going ? "mark--going is-on" : queued ? "mark--soon is-on" : ""}`}
                   disabled={busy !== null}
-                  onClick={() => toggle(screening)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void toggle(screening);
+                  }}
                 >
                   {going ? "✓ Приду" : queued ? "В очереди" : full ? "Встать в очередь" : "Приду"}
                 </button>
                 {started(screening) && (
                   // Окно отметки открыто — предлагаем ввести код с экрана (§8).
-                  <button className="mark mark--wishlist is-on" onClick={() => setAttending(screening)}>
+                  <button
+                    className="mark mark--wishlist is-on"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setAttending(screening);
+                    }}
+                  >
                     Я на месте
                   </button>
                 )}
@@ -113,7 +128,12 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
         <>
           <h3>Отменены</h3>
           {cancelled.map((screening) => (
-            <div className="film-row" key={screening.id} style={{ opacity: 0.65 }}>
+            <div
+              className={`film-row ${screening.film.id ? "film-row--clickable" : ""}`}
+              key={screening.id}
+              style={{ opacity: 0.65 }}
+              onClick={() => screening.film.id && openFilm(screening.film)}
+            >
               <Poster url={screening.film.poster_url} />
               <div>
                 <p className="film-row__title">{screening.film.title_ru}</p>

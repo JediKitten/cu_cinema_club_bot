@@ -296,6 +296,7 @@ async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
     rows = await session.execute(
         sa.select(
             Screening.id,
+            Film.id.label("film_id"),
             Film.title_ru,
             Film.year,
             Film.poster_path,
@@ -310,13 +311,14 @@ async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
         .outerjoin(Attendance, Attendance.screening_id == Screening.id)
         .outerjoin(Feedback, Feedback.screening_id == Screening.id)
         .where(Screening.status == ScreeningStatus.COMPLETED)
-        .group_by(Screening.id, Film.title_ru, Film.year, Film.poster_path, Slot.starts_at)
+        .group_by(Screening.id, Film.id, Film.title_ru, Film.year, Film.poster_path, Slot.starts_at)
         .order_by(Slot.starts_at.desc())
         .limit(limit)
     )
     return [
         {
             "screening_id": sid,
+            "film_id": film_id,
             "title": title,
             "year": year,
             "poster_path": poster,
@@ -326,7 +328,7 @@ async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
             "came": came,
             "rating": round(float(rating), 2) if rating is not None else None,
         }
-        for sid, title, year, poster, starts_at, status, expected, came, rating in rows
+        for sid, film_id, title, year, poster, starts_at, status, expected, came, rating in rows
     ]
 
 

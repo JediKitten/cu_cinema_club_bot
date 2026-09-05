@@ -6,6 +6,7 @@ import { FilmDetail } from "./screens/FilmDetail";
 import { More } from "./screens/More";
 import { Week } from "./screens/Week";
 import { MyList } from "./screens/MyList";
+import { FilmOpenerProvider } from "./filmOpener";
 import { initTelegram } from "./telegram";
 import type { FilmBrief, User } from "./types";
 
@@ -56,7 +57,9 @@ export default function App() {
     initTelegram();
     login()
       .then(setUser)
-      .catch((e) => setAuthError(e instanceof Error ? e.message : "Не удалось войти"));
+      .catch((e) =>
+        setAuthError(e instanceof Error ? e.message : "Не удалось войти"),
+      );
   }, []);
 
   if (authError) {
@@ -64,8 +67,8 @@ export default function App() {
       <div className="center">
         <p>{authError}</p>
         <p className="hint">
-          Приложение работает только внутри Telegram: вход подтверждается подписью,
-          которую выдаёт сам мессенджер.
+          Приложение работает только внутри Telegram: вход подтверждается
+          подписью, которую выдаёт сам мессенджер.
         </p>
       </div>
     );
@@ -78,42 +81,46 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      {/* Вкладка остаётся смонтированной под карточкой: иначе возврат из фильма
+    <FilmOpenerProvider value={open}>
+      <div className="app">
+        {/* Вкладка остаётся смонтированной под карточкой: иначе возврат из фильма
           терял бы поисковый запрос, выдачу и место прокрутки. */}
-      {tab === "catalog" && <Catalog onOpen={open} />}
-      {tab === "mine" && <MyList onOpen={open} />}
-      {tab === "vote" && <Week />}
-      {tab === "admin" && <Admin role={user.role} />}
-      {tab === "more" && <More user={user} />}
+        {tab === "catalog" && <Catalog onOpen={open} />}
+        {tab === "mine" && <MyList onOpen={open} />}
+        {tab === "vote" && <Week />}
+        {tab === "admin" && <Admin role={user.role} />}
+        {tab === "more" && <More user={user} />}
 
-      {openFilm !== null && (
-        // Карточка накрывает список, а не заменяет его: список под ней жив
-        // и вернётся ровно таким, каким был.
-        <div className="overlay">
-          <FilmDetail
-            filmId={openFilm.id}
-            tmdbId={openFilm.tmdb_id}
-            onBack={() => setOpenFilm(null)}
-          />
-        </div>
-      )}
+        {openFilm !== null && (
+          // Карточка накрывает список, а не заменяет его: список под ней жив
+          // и вернётся ровно таким, каким был.
+          <div className="overlay">
+            <FilmDetail
+              filmId={openFilm.id}
+              tmdbId={openFilm.tmdb_id}
+              onBack={() => setOpenFilm(null)}
+            />
+          </div>
+        )}
 
-      {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
-      {openFilm === null && (
-        <nav className="tabs">
-          {TABS.filter((item) => item.key !== "admin" || ADMIN_ROLES.has(user.role)).map((item) => (
-            <button
-              key={item.key}
-              className={tab === item.key ? "is-active" : ""}
-              onClick={() => setTab(item.key)}
-            >
-              <span className="tab-icon">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      )}
-    </div>
+        {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
+        {openFilm === null && (
+          <nav className="tabs">
+            {TABS.filter(
+              (item) => item.key !== "admin" || ADMIN_ROLES.has(user.role),
+            ).map((item) => (
+              <button
+                key={item.key}
+                className={tab === item.key ? "is-active" : ""}
+                onClick={() => setTab(item.key)}
+              >
+                <span className="tab-icon">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        )}
+      </div>
+    </FilmOpenerProvider>
   );
 }

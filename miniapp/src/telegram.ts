@@ -90,17 +90,15 @@ export function showMessage(message: string): void {
   }
 }
 
-/** Открыть окно «Поделиться» в самом Telegram.
+/** Переслать ссылку через Telegram.
  *
+ * Отправляем только адрес, без приписанного текста: сообщение с текстом
+ * выглядело как пересылка чужого поста, а нужно просто дать ссылку.
  * Обычный window.open из webview не работает — нужен openTelegramLink.
- * Вне Telegram остаётся копирование в буфер.
  */
-export function shareLink(url: string, text: string): boolean {
+export function shareLink(url: string): boolean {
   const app = webApp();
-  const share = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
-  if (app?.openTelegramLink) {
-    app.openTelegramLink(share);
-    return true;
-  }
-  return false;
+  if (!app?.openTelegramLink) return false;
+  app.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}`);
+  return true;
 }

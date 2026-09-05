@@ -9,6 +9,7 @@ import {
   unassignScreening,
 } from "../api";
 import { dayLabel, timeLabel } from "../dates";
+import { useOpenFilm } from "../filmOpener";
 import { showMessage } from "../telegram";
 import { RunScreening } from "../screens/RunScreening";
 import type { FilmBrief, Schedule, Screening, Slot } from "../types";
@@ -29,6 +30,7 @@ export function ScheduleBuilder({ shortlist }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState<Screening | null>(null);
+  const openFilm = useOpenFilm();
 
   async function reload() {
     const [next, free] = await Promise.all([getSchedule(), getFreeSlots()]);
@@ -70,7 +72,12 @@ export function ScheduleBuilder({ shortlist }: Props) {
       {error && <div className="error">{error}</div>}
 
       {placed.map((screening) => (
-        <div className="film-row" key={screening.id} style={{ gridTemplateColumns: "1fr auto" }}>
+        <div
+          className={`film-row ${screening.film.id ? "film-row--clickable" : ""}`}
+          key={screening.id}
+          style={{ gridTemplateColumns: "1fr auto" }}
+          onClick={() => screening.film.id && openFilm(screening.film)}
+        >
           <div>
             <p className="film-row__title">{screening.film.title_ru}</p>
             <p className="meta">
@@ -82,13 +89,20 @@ export function ScheduleBuilder({ shortlist }: Props) {
           </div>
           {schedule.published ? (
             <div className="marks" style={{ marginTop: 0 }}>
-            <button className="mark mark--wishlist is-on" onClick={() => setRunning(screening)}>
+            <button
+              className="mark mark--wishlist is-on"
+              onClick={(event) => {
+                event.stopPropagation();
+                setRunning(screening);
+              }}
+            >
               Провести
             </button>
             <button
               className="mark"
               disabled={busy}
-              onClick={() => {
+              onClick={(event) => {
+                event.stopPropagation();
                 // Комментарий обязателен: он уходит всем, кто собирался прийти.
                 const reason = prompt("Причина отмены — она уйдёт всем, кто собирался прийти:");
                 if (reason && reason.trim().length >= 3) {
@@ -102,7 +116,14 @@ export function ScheduleBuilder({ shortlist }: Props) {
             </button>
             </div>
           ) : (
-            <button className="mark" disabled={busy} onClick={() => act(() => unassignScreening(screening.id))}>
+            <button
+              className="mark"
+              disabled={busy}
+              onClick={(event) => {
+                event.stopPropagation();
+                void act(() => unassignScreening(screening.id));
+              }}
+            >
               Снять
             </button>
           )}

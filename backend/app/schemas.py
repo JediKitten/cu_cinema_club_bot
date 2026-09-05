@@ -378,6 +378,7 @@ class AnalyticsOut(BaseModel):
 
 class PastScreeningOut(BaseModel):
     screening_id: int
+    film_id: int
     title: str
     year: int | None
     poster_url: str | None

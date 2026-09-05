@@ -54,6 +54,7 @@ async def past(
     return [
         PastScreeningOut(
             screening_id=row["screening_id"],
+            film_id=row["film_id"],
             title=row["title"],
             year=row["year"],
             poster_url=poster_url(row["poster_path"]),

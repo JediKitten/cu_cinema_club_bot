@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getPastScreenings } from "../api";
 import { Poster } from "../components/FilmRow";
 import { dayLabel } from "../dates";
+import { useOpenFilmById } from "../filmOpener";
 import type { PastScreening } from "../types";
 
 /** Календарь прошедших показов (§18, пункт 10).
@@ -10,6 +11,7 @@ import type { PastScreening } from "../types";
  * Ожидаемая явка рядом с фактической показывает, насколько прогноз сошёлся.
  */
 export function History() {
+  const openFilm = useOpenFilmById();
   const [rows, setRows] = useState<PastScreening[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,7 +37,11 @@ export function History() {
     <div className="screen">
       <h3>Что уже смотрели</h3>
       {rows.map((row) => (
-        <div className="film-row" key={row.screening_id}>
+        <div
+          className="film-row film-row--clickable"
+          key={row.screening_id}
+          onClick={() => openFilm(row.film_id, row.title)}
+        >
           <Poster url={row.poster_url} />
           <div>
             <p className="film-row__title">

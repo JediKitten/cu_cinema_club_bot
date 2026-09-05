@@ -261,6 +261,7 @@ export type Analytics = {
 
 export type PastScreening = {
   screening_id: number;
+  film_id: number;
   title: string;
   year: number | null;
   poster_url: string | null;
