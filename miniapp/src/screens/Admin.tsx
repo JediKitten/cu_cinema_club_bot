@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Matrix } from "../components/Matrix";
 import {
   blockSlot,
   getRankings,
@@ -199,6 +200,13 @@ export function Admin() {
                   )}
                 </>
               )}
+            </>
+          )}
+
+          {(round.stage === "slot_voting" || round.stage === "schedule_review") && (
+            <>
+              <h3>Матрица «фильм × вечер»</h3>
+              <Matrix />
             </>
           )}
 

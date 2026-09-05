@@ -188,3 +188,41 @@ class ShortlistIn(BaseModel):
 class BlockSlotIn(BaseModel):
     blocked: bool
     reason: str | None = Field(default=None, max_length=500)
+
+
+# --- Этап 2: голосование (§6) ----------------------------------------------
+
+
+class BallotOut(BaseModel):
+    """То, что видит пользователь на этапе 2: шорт-лист, вечера и свой выбор."""
+
+    round_id: int
+    week_start: date
+    films: list[FilmBrief]
+    slots: list[SlotOut]
+    my_film_ids: list[int] = Field(default_factory=list)
+    my_slot_ids: list[int] = Field(default_factory=list)
+
+
+class VotesIn(BaseModel):
+    film_ids: list[int] = Field(default_factory=list)
+
+
+class AvailabilityIn(BaseModel):
+    slot_ids: list[int] = Field(default_factory=list)
+
+
+class MatrixCell(BaseModel):
+    film_id: int
+    slot_id: int
+    count: int
+
+
+class MatrixOut(BaseModel):
+    films: list[FilmBrief]
+    slots: list[SlotOut]
+    cells: list[MatrixCell]
+    # Маргинальные суммы: популярность фильма и загруженность вечера (§6).
+    film_votes: dict[int, int] = Field(default_factory=dict)
+    slot_free: dict[int, int] = Field(default_factory=dict)
+    voters_without_evening: int = 0

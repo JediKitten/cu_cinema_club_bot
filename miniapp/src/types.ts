@@ -124,3 +124,25 @@ export type Rankings = {
   by_weight: RankRow[];
   by_coverage: RankRow[];
 };
+
+// --- Этап 2: голосование (§6) ----------------------------------------------
+
+export type Ballot = {
+  round_id: number;
+  week_start: string;
+  films: FilmBrief[];
+  slots: Slot[];
+  my_film_ids: number[];
+  my_slot_ids: number[];
+};
+
+export type MatrixCell = { film_id: number; slot_id: number; count: number };
+
+export type Matrix = {
+  films: FilmBrief[];
+  slots: Slot[];
+  cells: MatrixCell[];
+  film_votes: Record<number, number>;
+  slot_free: Record<number, number>;
+  voters_without_evening: number;
+};

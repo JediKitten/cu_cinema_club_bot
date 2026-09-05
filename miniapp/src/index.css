@@ -334,3 +334,100 @@ h3 {
   margin: 16px 0 0;
   font-size: 16px;
 }
+
+/* --- Этап 2: выбор фильмов и вечеров --------------------------------------- */
+
+.choice {
+  position: relative;
+  border: 1px solid transparent;
+  align-items: center;
+  cursor: pointer;
+}
+
+.choice.is-on {
+  border-color: var(--link);
+  background: color-mix(in srgb, var(--link) 12%, var(--surface));
+}
+
+.choice__tick {
+  /* Место под галочку занято всегда: иначе строка дёргается при выборе. */
+  min-width: 22px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--link);
+  align-self: center;
+}
+
+.slot-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  text-align: left;
+  width: 100%;
+}
+
+.film-row.choice {
+  grid-template-columns: 64px 1fr auto;
+}
+
+.warn {
+  background: color-mix(in srgb, var(--soon) 16%, transparent);
+  color: var(--soon);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+/* --- Матрица «фильм × слот» ------------------------------------------------ */
+
+.matrix-scroll {
+  overflow-x: auto;
+  /* Инерционный скролл в webview Telegram. */
+  -webkit-overflow-scrolling: touch;
+}
+
+.matrix {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.matrix th,
+.matrix td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.matrix thead th {
+  font-weight: 600;
+  color: var(--hint);
+}
+
+.matrix__sub {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--hint);
+}
+
+.matrix__film {
+  text-align: left;
+  font-weight: 500;
+  /* Названия длинные — режем, полное видно в подсказке. */
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: sticky;
+  left: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.matrix__total {
+  font-weight: 600;
+}

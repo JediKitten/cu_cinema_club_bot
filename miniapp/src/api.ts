@@ -1,10 +1,12 @@
 import { getInitData } from "./telegram";
 import type {
+  Ballot,
   FilmBrief,
   FilmCard,
   FilmRequest,
   InterestKind,
   InterestState,
+  Matrix,
   Rankings,
   Round,
   User,
@@ -122,3 +124,21 @@ export const blockSlot = (slotId: number, blocked: boolean, reason?: string) =>
     method: "POST",
     body: JSON.stringify({ blocked, reason: reason ?? null }),
   });
+
+// --- Этап 2: голосование ---------------------------------------------------
+
+export const getBallot = () => request<Ballot>("/api/round/ballot");
+
+export const saveVotes = (filmIds: number[]) =>
+  request<Ballot>("/api/round/votes", {
+    method: "PUT",
+    body: JSON.stringify({ film_ids: filmIds }),
+  });
+
+export const saveAvailability = (slotIds: number[]) =>
+  request<Ballot>("/api/round/availability", {
+    method: "PUT",
+    body: JSON.stringify({ slot_ids: slotIds }),
+  });
+
+export const getMatrix = () => request<Matrix>("/api/round/matrix");

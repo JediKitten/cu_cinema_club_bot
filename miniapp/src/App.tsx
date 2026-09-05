@@ -4,15 +4,17 @@ import { Admin } from "./screens/Admin";
 import { Catalog } from "./screens/Catalog";
 import { FilmDetail } from "./screens/FilmDetail";
 import { More } from "./screens/More";
+import { Vote } from "./screens/Vote";
 import { MyList } from "./screens/MyList";
 import { initTelegram } from "./telegram";
 import type { FilmBrief, User } from "./types";
 
-type Tab = "catalog" | "mine" | "admin" | "more";
+type Tab = "catalog" | "mine" | "vote" | "admin" | "more";
 
 const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: "catalog", icon: "🎞", label: "Каталог" },
   { key: "mine", icon: "★", label: "Мои" },
+  { key: "vote", icon: "📅", label: "Неделя" },
   { key: "admin", icon: "⚙", label: "Клуб" },
   { key: "more", icon: "☰", label: "Ещё" },
 ];
@@ -60,6 +62,7 @@ export default function App() {
         <>
           {tab === "catalog" && <Catalog onOpen={openFilm} />}
           {tab === "mine" && <MyList onOpen={openFilm} />}
+          {tab === "vote" && <Vote />}
           {tab === "admin" && <Admin />}
           {tab === "more" && <More user={user} />}
         </>
