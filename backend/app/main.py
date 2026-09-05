@@ -6,7 +6,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import admin, auth, film_requests, films, interests, rounds, schedule, voting
+from app.api import (
+    admin,
+    attendance,
+    auth,
+    film_requests,
+    films,
+    interests,
+    rounds,
+    schedule,
+    voting,
+)
 from app.config import get_config
 from app.services.tmdb import get_tmdb
 
@@ -44,6 +54,7 @@ app.include_router(admin.router)
 app.include_router(rounds.router)
 app.include_router(voting.router)
 app.include_router(schedule.router)
+app.include_router(attendance.router)
 
 
 @app.get("/health", tags=["ops"])

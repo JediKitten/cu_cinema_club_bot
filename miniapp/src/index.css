@@ -452,3 +452,104 @@ h3 {
 .assign select {
   appearance: none;
 }
+
+/* --- Этап 4: код и оценка --------------------------------------------------- */
+
+.code-input {
+  font-size: 30px;
+  letter-spacing: 8px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.rating-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rating-dot {
+  flex: 1 1 40px;
+  min-width: 40px;
+  padding: 10px 0;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.rating-dot.is-on {
+  background: var(--button);
+  border-color: var(--button);
+  color: var(--button-text);
+}
+
+/* Экран в зале: код должен читаться с последнего ряда. */
+.hall-code {
+  font-size: clamp(48px, 18vw, 96px);
+  font-weight: 700;
+  letter-spacing: 10px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding: 20px 0 8px;
+}
+
+.hall-countdown {
+  height: 4px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.hall-countdown span {
+  display: block;
+  height: 100%;
+  background: var(--link);
+  transition: width 1s linear;
+}
+
+/* --- Этап 4: код и оценка --------------------------------------------------- */
+
+.code-input {
+  font-size: 28px;
+  letter-spacing: 6px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.rating-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rating-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--hint);
+  font-weight: 600;
+}
+
+.rating-dot.is-on {
+  background: var(--link);
+  border-color: var(--link);
+  color: #fff;
+}
+
+.big-code {
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: 10px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding: 20px 0 8px;
+}
+
+.code-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--link);
+  transition: width 1s linear;
+}

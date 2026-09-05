@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Confirmation, Screening, Slot, User
+from app.models import Attendance, Confirmation, Feedback, Screening, Slot, User
 from app.models.enums import (
     ConfirmationState,
     NotificationKind,
@@ -141,12 +141,51 @@ async def warn_low_attendance(session: AsyncSession) -> int:
     return created
 
 
+async def remind_about_feedback(session: AsyncSession) -> int:
+    """Напоминание тем, кто пришёл, но не заполнил форму (§8).
+
+    Оценка необязательна, поэтому напоминаем один раз и больше не трогаем:
+    настойчивость здесь раздражала бы сильнее, чем помогала.
+    """
+    hours = int(await SettingsService(session).get("feedback_reminder_hours"))
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
+
+    # Пришёл достаточно давно, оценки нет, ещё не напоминали.
+    rows = await session.execute(
+        sa.select(Attendance, Screening)
+        .join(Screening, Screening.id == Attendance.screening_id)
+        .outerjoin(
+            Feedback,
+            sa.and_(
+                Feedback.screening_id == Attendance.screening_id,
+                Feedback.user_id == Attendance.user_id,
+            ),
+        )
+        .where(Attendance.marked_at <= cutoff, Feedback.id.is_(None))
+    )
+
+    created = 0
+    for attendance, screening in rows:
+        if await queue(
+            session,
+            attendance.user_id,
+            NotificationKind.FEEDBACK_REMINDER,
+            dedup_key=f"feedback:{screening.id}:{attendance.user_id}",
+            payload={"screening_id": screening.id},
+        ):
+            created += 1
+
+    await session.commit()
+    return created
+
+
 async def run_all(session: AsyncSession) -> dict[str, int]:
     """Один проход по всем периодическим задачам."""
     result = {
         "reminders_24h": await send_reminders(session, 24),
         "reminders_2h": await send_reminders(session, 2),
         "low_attendance": await warn_low_attendance(session),
+        "feedback": await remind_about_feedback(session),
     }
     if any(result.values()):
         logger.info("Фоновые задачи: %s", result)

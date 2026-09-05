@@ -10,7 +10,8 @@ import {
 } from "../api";
 import { dayLabel, timeLabel } from "../dates";
 import { webApp } from "../telegram";
-import type { FilmBrief, Schedule, Slot } from "../types";
+import { RunScreening } from "../screens/RunScreening";
+import type { FilmBrief, Schedule, Screening, Slot } from "../types";
 
 type Props = { shortlist: FilmBrief[] };
 
@@ -27,6 +28,7 @@ export function ScheduleBuilder({ shortlist }: Props) {
   const [slot, setSlot] = useState<number | "">("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState<Screening | null>(null);
 
   async function reload() {
     const [next, free] = await Promise.all([getSchedule(), getFreeSlots()]);
@@ -52,6 +54,10 @@ export function ScheduleBuilder({ shortlist }: Props) {
     }
   }
 
+  if (running) {
+    return <RunScreening screening={running} onBack={() => setRunning(null)} />;
+  }
+
   if (error && !schedule) return <div className="error">{error}</div>;
   if (!schedule) return <p className="hint">Загрузка расписания…</p>;
 
@@ -75,6 +81,10 @@ export function ScheduleBuilder({ shortlist }: Props) {
             </p>
           </div>
           {schedule.published ? (
+            <div className="marks" style={{ marginTop: 0 }}>
+            <button className="mark mark--wishlist is-on" onClick={() => setRunning(screening)}>
+              Провести
+            </button>
             <button
               className="mark"
               disabled={busy}
@@ -90,6 +100,7 @@ export function ScheduleBuilder({ shortlist }: Props) {
             >
               Отменить
             </button>
+            </div>
           ) : (
             <button className="mark" disabled={busy} onClick={() => act(() => unassignScreening(screening.id))}>
               Снять

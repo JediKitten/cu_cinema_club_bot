@@ -235,3 +235,53 @@ async def test_run_all_is_safe_to_repeat(session):
 
     assert sum(first.values()) > 0
     assert sum(second.values()) == 0
+
+
+async def test_feedback_reminder_once_for_those_who_came(session):
+    """Пришёл, не оценил — напоминаем один раз (§8)."""
+    from datetime import UTC, datetime, timedelta
+
+    import sqlalchemy as sa
+
+    from app.models import Attendance
+    from app.services import attendance as att
+
+    round_, films, slots, boss, voters = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+    await sched.confirm(session, screening.id, voters[0].id)
+    await att.mark_manually(session, screening.id, voters[0].id, boss.id)
+
+    # Ещё свежо — напоминать рано.
+    assert await reminders.remind_about_feedback(session) == 0
+
+    await session.execute(
+        sa.update(Attendance).values(marked_at=datetime.now(UTC) - timedelta(hours=30))
+    )
+    await session.commit()
+
+    assert await reminders.remind_about_feedback(session) == 1
+    assert await reminders.remind_about_feedback(session) == 0
+
+
+async def test_no_feedback_reminder_after_rating(session):
+    from datetime import UTC, datetime, timedelta
+
+    import sqlalchemy as sa
+
+    from app.models import Attendance
+    from app.services import attendance as att
+
+    round_, films, slots, boss, voters = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+    await sched.confirm(session, screening.id, voters[0].id)
+    await att.mark_manually(session, screening.id, voters[0].id, boss.id)
+    await att.save_feedback(session, screening.id, voters[0].id, 8, None, None)
+
+    await session.execute(
+        sa.update(Attendance).values(marked_at=datetime.now(UTC) - timedelta(hours=30))
+    )
+    await session.commit()
+
+    assert await reminders.remind_about_feedback(session) == 0

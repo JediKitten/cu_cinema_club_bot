@@ -186,3 +186,38 @@ export type ConfirmResult = {
   confirmed: number;
   capacity: number;
 };
+
+// --- Этап 4: присутствие и оценки (§8) --------------------------------------
+
+export type OrgRating = {
+  sound: number | null;
+  picture: number | null;
+  hall: number | null;
+  time: number | null;
+  comment: string | null;
+};
+
+export type FeedbackState = {
+  screening_id: number;
+  film: FilmBrief;
+  attended: boolean;
+  film_rating: number | null;
+  review_text: string | null;
+  org: OrgRating | null;
+};
+
+export type ScreeningCode = {
+  screening_id: number;
+  code: string;
+  valid_for: number;
+  rotates_every: number;
+  window_open: boolean;
+  attendees: number;
+};
+
+export type Attendee = {
+  user_id: number;
+  display_name: string;
+  method: "qr" | "code" | "manual";
+  marked_at: string;
+};

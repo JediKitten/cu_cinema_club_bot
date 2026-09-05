@@ -282,3 +282,52 @@ class ConfirmOut(BaseModel):
     place_in_queue: int | None = None
     confirmed: int
     capacity: int
+
+
+# --- Этап 4: присутствие и обратная связь (§8) ------------------------------
+
+
+class CodeOut(BaseModel):
+    """Код для экрана в зале. Живёт секунды, поэтому отдаём и остаток."""
+
+    screening_id: int
+    code: str
+    valid_for: int
+    rotates_every: int
+    window_open: bool
+    attendees: int
+
+
+class MarkCodeIn(BaseModel):
+    code: str = Field(min_length=4, max_length=12)
+
+
+class AttendeeOut(BaseModel):
+    user_id: int
+    display_name: str
+    method: str
+    marked_at: datetime
+
+
+class OrgRating(BaseModel):
+    sound: int | None = Field(default=None, ge=1, le=5)
+    picture: int | None = Field(default=None, ge=1, le=5)
+    hall: int | None = Field(default=None, ge=1, le=5)
+    time: int | None = Field(default=None, ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class FeedbackIn(BaseModel):
+    # Обязательна только отметка присутствия, форма — нет (§8).
+    film_rating: int | None = Field(default=None, ge=1, le=10)
+    review_text: str | None = Field(default=None, max_length=2000)
+    org: OrgRating | None = None
+
+
+class FeedbackOut(BaseModel):
+    screening_id: int
+    film: FilmBrief
+    attended: bool
+    film_rating: int | None = None
+    review_text: str | None = None
+    org: OrgRating | None = None

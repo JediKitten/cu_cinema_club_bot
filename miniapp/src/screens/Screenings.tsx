@@ -4,10 +4,18 @@ import { Poster } from "../components/FilmRow";
 import { dayLabel, timeLabel, weekLabel } from "../dates";
 import { haptic, webApp } from "../telegram";
 import type { Schedule, Screening } from "../types";
+import { Attend } from "./Attend";
+
+/** Сеанс уже начался — значит, пора отмечаться, а не подтверждать.
+ *  Точное окно проверяет сервер; здесь только момент показа кнопки. */
+function started(screening: Screening): boolean {
+  return new Date(screening.slot.starts_at).getTime() <= Date.now();
+}
 
 /** Этап 3 (§7): опубликованное расписание и подтверждения. */
 export function Screenings({ schedule, onChange }: { schedule: Schedule; onChange(s: Schedule): void }) {
   const [busy, setBusy] = useState<number | null>(null);
+  const [attending, setAttending] = useState<Screening | null>(null);
 
   async function toggle(screening: Screening) {
     if (busy !== null) return;
@@ -39,6 +47,10 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
     } finally {
       setBusy(null);
     }
+  }
+
+  if (attending) {
+    return <Attend screening={attending} onBack={() => setAttending(null)} />;
   }
 
   const active = schedule.screenings.filter((s) => s.status !== "cancelled");
@@ -82,7 +94,13 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
                 >
                   {going ? "✓ Приду" : queued ? "В очереди" : full ? "Встать в очередь" : "Приду"}
                 </button>
-                {(going || queued) && (
+                {started(screening) && (
+                  // Окно отметки открыто — предлагаем ввести код с экрана (§8).
+                  <button className="mark mark--wishlist is-on" onClick={() => setAttending(screening)}>
+                    Я на месте
+                  </button>
+                )}
+                {(going || queued) && !started(screening) && (
                   <span className="hint" style={{ alignSelf: "center" }}>
                     нажмите ещё раз, чтобы отменить
                   </span>

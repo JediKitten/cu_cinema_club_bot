@@ -6,11 +6,14 @@ import type {
   FilmRequest,
   InterestKind,
   InterestState,
+  Attendee,
   ConfirmResult,
+  FeedbackState,
   Matrix,
   Rankings,
   Round,
   Schedule,
+  ScreeningCode,
   Slot,
   User,
 } from "./types";
@@ -182,3 +185,29 @@ export const cancelScreening = (id: number, reason: string) =>
     method: "POST",
     body: JSON.stringify({ reason }),
   });
+
+// --- Этап 4: присутствие и оценки ------------------------------------------
+
+export const attendByCode = (screeningId: number, code: string) =>
+  request<FeedbackState>(`/api/screenings/${screeningId}/attend`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+
+export const getFeedback = (screeningId: number) =>
+  request<FeedbackState>(`/api/screenings/${screeningId}/feedback`);
+
+export const saveFeedback = (
+  screeningId: number,
+  payload: { film_rating: number | null; review_text: string | null },
+) =>
+  request<FeedbackState>(`/api/screenings/${screeningId}/feedback`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+export const getScreeningCode = (screeningId: number) =>
+  request<ScreeningCode>(`/api/screenings/${screeningId}/code`);
+
+export const getAttendees = (screeningId: number) =>
+  request<Attendee[]>(`/api/screenings/${screeningId}/attendees`);
