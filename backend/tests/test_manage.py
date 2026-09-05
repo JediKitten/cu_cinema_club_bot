@@ -364,3 +364,55 @@ async def test_waitlist_works_for_manual_event(session):
     queued = await sched.confirm(session, event.id, second.id)
     assert queued.state == ConfirmationState.WAITLIST
     assert queued.place_in_queue == 1
+
+
+async def test_schedule_opens_on_the_current_week(client, session):
+    """Открывать расписание на неделе активного цикла нельзя: тот готовится
+    к следующей, и человек увидел бы пустой экран вместо сегодняшних показов."""
+    from datetime import date, timedelta
+
+    from app.services import rounds as rounds_service
+
+    boss = await login(client, 777001, "Главный")
+    headers = {"Authorization": f"Bearer {boss['token']}"}
+
+    today = date.today()
+    this_week = today - timedelta(days=today.weekday())
+    next_week = this_week + timedelta(days=7)
+
+    # Цикл готовится к следующей неделе — как и бывает в обычной работе.
+    await rounds_service.open_round(session, next_week, boss["user"]["id"])
+
+    opened = (await client.get("/api/schedule", headers=headers)).json()
+    assert opened["week_start"] == this_week.isoformat()
+
+
+async def test_voting_week_is_pointed_at_from_another_week(client, session):
+    """Голосование — единственное, что требует действия; прятать его за
+    листанием нельзя."""
+    from datetime import date, timedelta
+
+    from app.models.enums import RoundStage
+    from app.services import rounds as rounds_service
+
+    boss = await login(client, 777001, "Главный")
+    headers = {"Authorization": f"Bearer {boss['token']}"}
+
+    today = date.today()
+    this_week = today - timedelta(days=today.weekday())
+    next_week = this_week + timedelta(days=7)
+
+    film = await make_film(session, "Фильм")
+    await session.commit()
+    round_ = await rounds_service.open_round(session, next_week, boss["user"]["id"])
+    await rounds_service.set_shortlist(session, round_, [film.id], boss["user"]["id"])
+    await rounds_service.publish_shortlist(session, round_, boss["user"]["id"])
+    assert round_.stage == RoundStage.SLOT_VOTING
+
+    here = (await client.get("/api/schedule", headers=headers)).json()
+    assert here["week_start"] == this_week.isoformat()
+    assert here["voting_week"] == next_week.isoformat()
+
+    # На самой неделе голосования подсказка не нужна — человек уже там.
+    there = (await client.get(f"/api/schedule?week={next_week}", headers=headers)).json()
+    assert there["voting_week"] is None

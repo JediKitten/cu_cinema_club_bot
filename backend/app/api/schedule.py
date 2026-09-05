@@ -242,7 +242,9 @@ async def _week_view(
     rows.sort(key=lambda item: item[2].starts_at)
 
     has_prev, has_next = await _neighbours(session, week)
+    voting_week = await _voting_week(session)
     return ScheduleOut(
+        voting_week=voting_week if voting_week != week else None,
         round_id=round_.id if round_ else 0,
         week_start=week,
         stage=round_.stage if round_ else "collecting",
@@ -275,15 +277,24 @@ def _monday(day: date) -> date:
 
 
 async def _default_week(session: AsyncSession) -> date:
-    """Неделя, которую логично показать при открытии.
+    """При открытии показываем текущую неделю.
 
-    Это неделя активного цикла, а если его нет — текущая: пустой экран
-    «показов нет» понятнее, чем экран без даты.
+    Не неделю активного цикла: тот готовится к следующей, и человек, открыв
+    расписание, увидел бы пустой экран вместо сегодняшних показов.
+    """
+    return _monday(date.today())
+
+
+async def _voting_week(session: AsyncSession) -> date | None:
+    """Неделя, на которую сейчас идёт голосование.
+
+    Нужна, чтобы с текущей недели вести туда: голосование — единственное,
+    что требует действия, и прятать его за листанием неправильно.
     """
     round_ = await rounds_service.active_round(session)
-    if round_ is not None:
+    if round_ is not None and round_.stage == RoundStage.SLOT_VOTING:
         return round_.week_start
-    return _monday(date.today())
+    return None
 
 
 # --- Расстановка (модератор и выше) ----------------------------------------

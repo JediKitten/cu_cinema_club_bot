@@ -267,6 +267,8 @@ class ScheduleOut(BaseModel):
     # Есть ли что показать в соседних неделях — по ним рисуются стрелки.
     has_prev: bool = False
     has_next: bool = False
+    # Идёт голосование на другую неделю — ведём туда явной подсказкой.
+    voting_week: date | None = None
 
 
 class AssignIn(BaseModel):

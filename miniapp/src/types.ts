@@ -180,6 +180,8 @@ export type Schedule = {
   /** Есть ли что показать в соседних неделях — по ним рисуются стрелки. */
   has_prev: boolean;
   has_next: boolean;
+  /** Идёт голосование на другую неделю — ведём туда явной подсказкой. */
+  voting_week: string | null;
 };
 
 export type ConfirmResult = {

@@ -651,3 +651,14 @@ h3 {
   margin: 0 auto;
   padding-bottom: 32px;
 }
+
+.notice {
+  width: 100%;
+  text-align: left;
+  background: color-mix(in srgb, var(--link) 14%, transparent);
+  color: var(--link);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  font-size: 14px;
+  font-weight: 600;
+}

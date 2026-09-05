@@ -72,6 +72,14 @@ export function Week() {
         </button>
       </div>
 
+      {schedule?.voting_week && (
+        // Голосование — единственное, что требует действия. Оно идёт на другой
+        // неделе, поэтому ведём туда явно, а не надеемся, что долистают.
+        <button className="notice" onClick={() => setWeek(schedule.voting_week)}>
+          Идёт выбор фильмов на неделю {weekLabel(schedule.voting_week)} →
+        </button>
+      )}
+
       {error && <div className="error">{error}</div>}
       {loading && !schedule && <div className="center">Загрузка…</div>}
 
