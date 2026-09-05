@@ -177,6 +177,7 @@ FULL_FIELDS = [
     "votes",
     "videos",
     "top250",
+    "persons",
 ]
 
 
@@ -197,6 +198,14 @@ def film_fields(doc: dict) -> dict:
     rating = doc.get("rating") or {}
     votes = doc.get("votes") or {}
 
+    # В persons приходит вся съёмочная группа — от актёров до художников;
+    # режиссёров отбираем по enProfession, он не зависит от языка ответа.
+    directors = [
+        person.get("name") or person.get("enName")
+        for person in (doc.get("persons") or [])
+        if person.get("enProfession") == "director" and (person.get("name") or person.get("enName"))
+    ]
+
     return {
         "kp_id": doc["id"],
         "title_ru": doc.get("name") or doc.get("alternativeName") or "Без названия",
@@ -207,6 +216,7 @@ def film_fields(doc: dict) -> dict:
         "poster_path": (doc.get("poster") or {}).get("url"),
         "trailer_key": trailer_key,
         "genres": [g["name"] for g in doc.get("genres", []) if g.get("name")],
+        "directors": directors,
         "ext_rating": rating.get("kp"),
         "ext_votes": votes.get("kp"),
         "kp_rating": rating.get("kp"),

@@ -34,6 +34,7 @@ class FilmBrief(BaseModel):
     year: int | None = None
     poster_url: str | None = None
     genres: list[str] = Field(default_factory=list)
+    directors: list[str] = Field(default_factory=list)
     in_catalog: bool = True
     # Отметки текущего пользователя: каталог должен показывать кнопки уже нажатыми.
     my_interests: list[InterestKind] = Field(default_factory=list)

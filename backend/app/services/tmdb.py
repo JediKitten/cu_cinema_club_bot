@@ -81,7 +81,7 @@ class TmdbClient:
         return data.get("results", [])
 
     async def movie(self, tmdb_id: int) -> dict:
-        return await self._request(f"/movie/{tmdb_id}", append_to_response="videos")
+        return await self._request(f"/movie/{tmdb_id}", append_to_response="videos,credits")
 
     async def aclose(self) -> None:
         if self._client is not None:
@@ -109,6 +109,15 @@ def _trailer_key(payload: dict) -> str | None:
     return None
 
 
+def _directors(payload: dict) -> list[str]:
+    crew = (payload.get("credits") or {}).get("crew", [])
+    return [
+        person["name"]
+        for person in crew
+        if person.get("job") == "Director" and person.get("name")
+    ]
+
+
 def _film_fields(payload: dict) -> dict:
     release_date = payload.get("release_date") or ""
     return {
@@ -122,6 +131,7 @@ def _film_fields(payload: dict) -> dict:
         "backdrop_path": payload.get("backdrop_path"),
         "trailer_key": _trailer_key(payload),
         "genres": [g["name"] for g in payload.get("genres", []) if g.get("name")],
+        "directors": _directors(payload),
         "ext_rating": payload.get("vote_average"),
         "ext_votes": payload.get("vote_count"),
     }

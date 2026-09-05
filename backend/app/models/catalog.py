@@ -39,6 +39,9 @@ class Film(Base, CreatedAtMixin):
     genres: Mapped[list[str]] = mapped_column(
         ARRAY(sa.String(64)), default=list, server_default="{}"
     )
+    directors: Mapped[list[str]] = mapped_column(
+        ARRAY(sa.String(128)), default=list, server_default="{}"
+    )
 
     ext_rating: Mapped[float | None] = mapped_column(sa.Float)
     ext_votes: Mapped[int | None]

@@ -18,6 +18,7 @@ export type FilmBrief = {
   year: number | null;
   poster_url: string | null;
   genres: string[];
+  directors: string[];
   /** false — фильм найден в TMDB, но в каталог попадёт только при первой отметке. */
   in_catalog: boolean;
   my_interests: InterestKind[];

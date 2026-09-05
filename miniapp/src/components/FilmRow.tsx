@@ -33,6 +33,14 @@ export function FilmRow({ film, onOpen, onMarksChange }: Props) {
           {film.title_ru}
         </button>
         {subtitle && <p className="meta">{subtitle}</p>}
+        {film.directors.length > 0 && (
+          // В списке режиссёров может быть трое (братья Руссо и подобные) —
+          // показываем двоих, иначе строка ломает вёрстку на узком экране.
+          <p className="meta">
+            {film.directors.slice(0, 2).join(", ")}
+            {film.directors.length > 2 && " и др."}
+          </p>
+        )}
         {!film.in_catalog && <p className="meta">Найдено в TMDB</p>}
         <MarkButtons film={film} kinds={film.my_interests} onChange={onMarksChange} />
       </div>

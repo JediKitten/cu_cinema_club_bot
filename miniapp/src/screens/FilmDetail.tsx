@@ -46,6 +46,12 @@ export function FilmDetail({ filmId, onBack }: Props) {
             <p className="meta">{film.title_orig}</p>
           )}
           {facts && <p className="meta">{facts}</p>}
+          {film.directors.length > 0 && (
+            <p className="meta">
+              {film.directors.length > 1 ? "Режиссёры" : "Режиссёр"}:{" "}
+              {film.directors.join(", ")}
+            </p>
+          )}
           {film.watched && <p className="badge" style={{ marginTop: 8 }}>Просмотрено</p>}
         </div>
       </div>

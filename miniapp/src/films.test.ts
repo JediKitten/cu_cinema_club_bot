@@ -11,6 +11,7 @@ function film(over: Partial<FilmBrief>): FilmBrief {
     year: null,
     poster_url: null,
     genres: [],
+    directors: [],
     in_catalog: true,
     my_interests: [],
     ...over,
