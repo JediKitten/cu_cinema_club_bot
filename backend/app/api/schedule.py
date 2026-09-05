@@ -279,10 +279,45 @@ def _monday(day: date) -> date:
 async def _default_week(session: AsyncSession) -> date:
     """При открытии показываем текущую неделю.
 
-    Не неделю активного цикла: тот готовится к следующей, и человек, открыв
-    расписание, увидел бы пустой экран вместо сегодняшних показов.
+    Не неделю активного цикла: тот готовится к следующей, и человек увидел бы
+    пустой экран вместо сегодняшних показов.
+
+    Исключение — когда в текущей неделе ничего не осталось: в субботу вечером
+    показывать доживающую пустую неделю бессмысленно, поэтому переходим к
+    ближайшей, где что-то есть.
     """
-    return _monday(date.today())
+    current = _monday(date.today())
+    _, end = await _week_bounds(session, current)
+
+    left_this_week = await session.scalar(
+        sa.select(Screening.id)
+        .join(Slot, Slot.id == Screening.slot_id)
+        .where(
+            Screening.status != ScreeningStatus.CANCELLED,
+            Slot.starts_at >= datetime.now(UTC),
+            Slot.starts_at < end,
+        )
+        .limit(1)
+    )
+    if left_this_week is not None:
+        return current
+
+    # Ближайший будущий показ — его неделю и открываем.
+    upcoming = await session.scalar(
+        sa.select(Slot.starts_at)
+        .join(Screening, Screening.slot_id == Slot.id)
+        .where(
+            Screening.status != ScreeningStatus.CANCELLED,
+            Slot.starts_at >= datetime.now(UTC),
+        )
+        .order_by(Slot.starts_at)
+        .limit(1)
+    )
+    if upcoming is None:
+        return current
+
+    tz = ZoneInfo(str(await SettingsService(session).get("display_timezone")))
+    return _monday(upcoming.astimezone(tz).date())
 
 
 async def _voting_week(session: AsyncSession) -> date | None:

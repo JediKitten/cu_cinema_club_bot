@@ -416,3 +416,44 @@ async def test_voting_week_is_pointed_at_from_another_week(client, session):
     # На самой неделе голосования подсказка не нужна — человек уже там.
     there = (await client.get(f"/api/schedule?week={next_week}", headers=headers)).json()
     assert there["voting_week"] is None
+
+
+async def test_dead_current_week_is_skipped(client, session):
+    """В субботу вечером показывать доживающую пустую неделю бессмысленно —
+    открываем ближайшую, где что-то есть."""
+    from datetime import UTC, datetime, timedelta
+
+    boss = await login(client, 777001, "Главный")
+    headers = {"Authorization": f"Bearer {boss['token']}"}
+
+    # Единственное событие — на следующей неделе.
+    when = datetime.now(UTC) + timedelta(days=9)
+    await client.post(
+        "/api/admin/events",
+        json={"starts_at": when.isoformat(), "title": "Через полторы недели"},
+        headers=headers,
+    )
+
+    opened = (await client.get("/api/schedule", headers=headers)).json()
+    titles = [s["film"]["title_ru"] for s in opened["screenings"]]
+    assert titles == ["Через полторы недели"]
+
+
+async def test_current_week_kept_while_something_is_left(client, session):
+    """Пока на этой неделе есть что впереди — остаёмся на ней."""
+    from datetime import UTC, datetime, timedelta
+
+    boss = await login(client, 777001, "Главный")
+    headers = {"Authorization": f"Bearer {boss['token']}"}
+
+    soon = datetime.now(UTC) + timedelta(hours=6)
+    later = datetime.now(UTC) + timedelta(days=9)
+    for when, title in ((soon, "Сегодня"), (later, "Потом")):
+        await client.post(
+            "/api/admin/events",
+            json={"starts_at": when.isoformat(), "title": title},
+            headers=headers,
+        )
+
+    opened = (await client.get("/api/schedule", headers=headers)).json()
+    assert "Сегодня" in [s["film"]["title_ru"] for s in opened["screenings"]]
