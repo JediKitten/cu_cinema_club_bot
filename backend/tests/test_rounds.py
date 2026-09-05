@@ -8,6 +8,7 @@ import sqlalchemy as sa
 
 from app.models import Round, ShortlistItem, Slot, User
 from app.models.enums import InterestKind, RoundStage, UserRole
+from app.services import autopilot
 from app.services import rounds as rounds_service
 from app.services.rounds import RoundError, next_week_start, week_start_for
 from app.services.settings import SettingsService
@@ -152,12 +153,12 @@ async def test_autopilot_marks_low_activity(session):
 
     # Подсказка считается всегда, но флаг не поднимает: на свежем цикле отметок
     # ещё нет, и «низкая активность» была бы ложной тревогой.
-    hint = await rounds_service.autopilot_shortlist(session, round_)
+    hint = await autopilot.propose_shortlist(session, round_)
     assert hint == [film.id]
     assert round_.low_activity is False
 
     # А вот когда автопилот действительно решает — флаг уместен.
-    decided = await rounds_service.autopilot_shortlist(session, round_, deciding=True)
+    decided = await autopilot.propose_shortlist(session, round_, deciding=True)
     assert decided == [film.id]
     assert round_.low_activity is True
 

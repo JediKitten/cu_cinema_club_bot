@@ -18,6 +18,7 @@ from app.schemas import (
     ShortlistItemOut,
     SlotOut,
 )
+from app.services import autopilot
 from app.services import rounds as rounds_service
 from app.services.rounds import RoundError
 from app.services.tmdb import poster_url
@@ -113,7 +114,7 @@ async def open_round(
     except RoundError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     # Подсказку автопилота считаем сразу: админ должен видеть её рядом с рейтингами.
-    await rounds_service.autopilot_shortlist(session, round_)
+    await autopilot.propose_shortlist(session, round_)
     return await _serialize(session, round_)
 
 

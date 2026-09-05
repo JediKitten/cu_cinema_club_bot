@@ -1,0 +1,194 @@
+"""Продвижение цикла по дедлайнам (§3, §17)."""
+
+from datetime import date, timedelta
+
+import sqlalchemy as sa
+
+from app.models import Round, Screening, Slot
+from app.models.enums import InterestKind, RoundStage, ScreeningStatus
+from app.services import cycle, voting
+from app.services import rounds as rounds_service
+from app.services.settings import SettingsService
+from tests.test_rounds import admin
+from tests.test_weights import add_interest, make_film, make_user
+
+__all__ = ["admin"]
+
+
+async def past_round(session, boss, stage: RoundStage) -> Round:
+    """Цикл на неделю, все дедлайны которой давно прошли."""
+    week = date.today() - timedelta(days=7)
+    week -= timedelta(days=week.weekday())
+    round_ = await rounds_service.open_round(session, week, boss.id)
+    round_.stage = stage
+    await session.commit()
+    return round_
+
+
+async def test_tick_opens_a_round_when_there_is_none(session):
+    assert await session.scalar(sa.select(sa.func.count()).select_from(Round)) == 0
+
+    done = await cycle.tick(session)
+
+    assert any("открыт цикл" in line for line in done)
+    assert await session.scalar(sa.select(sa.func.count()).select_from(Round)) == 1
+
+
+async def test_tick_does_not_open_a_second_round(session):
+    await cycle.tick(session)
+    await cycle.tick(session)
+
+    assert await session.scalar(sa.select(sa.func.count()).select_from(Round)) == 1
+
+
+async def test_autopilot_collects_shortlist_after_deadline(session):
+    boss = await admin(session)
+    round_ = await past_round(session, boss, RoundStage.COLLECTING)
+
+    film = await make_film(session, "Фильм")
+    fan = await make_user(session, "Фанат")
+    await session.commit()
+    await add_interest(session, fan, film, InterestKind.SOON, 0)
+    await session.commit()
+
+    done = await cycle.tick(session)
+
+    assert any("шорт-лист" in line for line in done)
+    assert round_.stage in (RoundStage.SHORTLIST_REVIEW, RoundStage.SLOT_VOTING)
+
+
+async def test_disabled_autopilot_only_suggests(session):
+    """Тумблер выключен — решение всё равно считается, но не применяется (§5)."""
+    boss = await admin(session)
+    round_ = await past_round(session, boss, RoundStage.COLLECTING)
+    await SettingsService(session).set_many({"autopilot_stage1_enabled": False}, boss.id)
+    await session.commit()
+
+    film = await make_film(session, "Фильм")
+    fan = await make_user(session, "Фанат")
+    await session.commit()
+    await add_interest(session, fan, film, InterestKind.SOON, 0)
+    await session.commit()
+
+    await cycle.tick(session)
+
+    assert round_.stage == RoundStage.COLLECTING
+
+    from app.models import AutopilotProposal
+
+    proposal = (
+        await session.execute(
+            sa.select(AutopilotProposal).where(AutopilotProposal.round_id == round_.id)
+        )
+    ).scalar_one()
+    assert proposal.payload["film_ids"] == [film.id]
+
+
+async def test_tick_is_idempotent(session):
+    boss = await admin(session)
+    round_ = await past_round(session, boss, RoundStage.COLLECTING)
+    film = await make_film(session, "Фильм")
+    fan = await make_user(session, "Фанат")
+    await session.commit()
+    await add_interest(session, fan, film, InterestKind.SOON, 0)
+    await session.commit()
+
+    await cycle.tick(session)
+    stage_after_first = round_.stage
+    second = await cycle.tick(session)
+
+    # Второй проход не должен откатывать или повторять уже сделанное.
+    assert round_.stage == stage_after_first or round_.stage.value > stage_after_first.value
+    assert not any("шорт-лист собрал" in line for line in second)
+
+
+async def test_running_round_closes_after_the_last_evening(session):
+    boss = await admin(session)
+    round_ = await past_round(session, boss, RoundStage.RUNNING)
+
+    film = await make_film(session, "Фильм")
+    await session.commit()
+    slot = (
+        await session.execute(
+            sa.select(Slot).where(Slot.round_id == round_.id).order_by(Slot.starts_at)
+        )
+    ).scalars().first()
+    session.add(
+        Screening(
+            round_id=round_.id,
+            film_id=film.id,
+            slot_id=slot.id,
+            status=ScreeningStatus.SCHEDULED,
+        )
+    )
+    await session.commit()
+
+    done = await cycle.tick(session)
+
+    assert any("закрыт" in line for line in done)
+    assert round_.stage == RoundStage.CLOSED
+
+    screening = (await session.execute(sa.select(Screening))).scalar_one()
+    assert screening.status == ScreeningStatus.COMPLETED
+
+
+async def test_week_not_finished_while_evenings_remain(session):
+    boss = await admin(session)
+    week = date.today() + timedelta(days=1)
+    week -= timedelta(days=week.weekday())
+    round_ = await rounds_service.open_round(session, week, boss.id)
+    round_.stage = RoundStage.RUNNING
+    await session.commit()
+
+    await cycle.tick(session)
+    assert round_.stage == RoundStage.RUNNING
+
+
+async def test_published_round_starts_running_on_the_week(session):
+    boss = await admin(session)
+    round_ = await past_round(session, boss, RoundStage.PUBLISHED)
+
+    await cycle.tick(session)
+    assert round_.stage in (RoundStage.RUNNING, RoundStage.CLOSED)
+
+
+async def test_full_path_from_collecting_to_published(session):
+    """Сквозной проход: цикл доходит до опубликованного расписания сам."""
+    boss = await admin(session)
+    round_ = await past_round(session, boss, RoundStage.COLLECTING)
+
+    film = await make_film(session, "Популярный")
+    await session.commit()
+    for i in range(6):
+        user = await make_user(session, f"Зритель {i}")
+        await session.commit()
+        await add_interest(session, user, film, InterestKind.SOON, 0)
+    await session.commit()
+
+    # Первый проход собирает и публикует шорт-лист.
+    await cycle.tick(session)
+    assert round_.stage == RoundStage.SLOT_VOTING
+
+    slots = (
+        (
+            await session.execute(
+                sa.select(Slot).where(Slot.round_id == round_.id).order_by(Slot.starts_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    users = (
+        (await session.execute(sa.select(sa.text("id FROM users")))).scalars().all()
+    )
+    for user_id in users:
+        await voting.set_votes(session, round_, user_id, [film.id])
+        await voting.set_availability(session, round_, user_id, [slots[2].id])
+
+    # Второй проход расставляет и публикует расписание.
+    await cycle.tick(session)
+    assert round_.stage in (RoundStage.PUBLISHED, RoundStage.RUNNING, RoundStage.CLOSED)
+
+    screening = (await session.execute(sa.select(Screening))).scalars().first()
+    assert screening is not None
+    assert screening.film_id == film.id

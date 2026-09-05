@@ -24,7 +24,7 @@ from aiogram.types import (
 
 from app.config import get_config
 from app.db import SessionLocal
-from app.services import notify, reminders
+from app.services import cycle, notify, reminders
 from app.services.settings import SettingsService
 
 logger = logging.getLogger(__name__)
@@ -165,6 +165,9 @@ async def jobs_loop() -> None:
     while True:
         try:
             async with SessionLocal() as session:
+                # Порядок важен: сначала двигаем цикл, потом рассылаем — иначе
+                # приглашения после автопубликации ждали бы лишние пять минут.
+                await cycle.tick(session)
                 await reminders.run_all(session)
         except Exception:
             logger.exception("Сбой в фоновых задачах")

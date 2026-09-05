@@ -11,11 +11,9 @@ from zoneinfo import ZoneInfo
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AuditLog, AutopilotProposal, Hall, Round, ShortlistItem, Slot
+from app.models import AuditLog, Hall, Round, ShortlistItem, Slot
 from app.models.enums import RoundStage, ShortlistSource
-from app.services.ranking import rank_by_coverage
 from app.services.settings import SettingsService
-from app.services.weights import WeightParams
 
 DAYS_IN_WEEK = 7
 
@@ -225,49 +223,3 @@ async def set_slot_blocked(
     )
     await session.commit()
     return slot
-
-
-async def autopilot_shortlist(
-    session: AsyncSession, round_: Round, *, deciding: bool = False
-) -> list[int]:
-    """Решение автопилота для этапа 1.
-
-    Считается всегда, даже когда админ работает вручную, и показывается рядом
-    как подсказка (§5). Сохраняем, чтобы потом сравнить с тем, что выбрал человек.
-
-    `deciding` — автопилот действительно принимает решение (сработал в срез),
-    а не считает подсказку. Только тогда имеет смысл флаг низкой активности:
-    на свежем цикле отметок ещё физически нет, и флаг был бы ложной тревогой.
-    """
-    values = await SettingsService(session).all()
-    ranked = await rank_by_coverage(
-        session,
-        WeightParams.from_settings(values),
-        long_wait_days=int(values["long_wait_days"]),
-        size=int(values["shortlist_size"]),
-        min_weight=float(values["min_weight_threshold"]),
-    )
-    film_ids = [row.film_id for row in ranked]
-
-    payload = {
-        "film_ids": film_ids,
-        "titles": [row.title_ru for row in ranked],
-        "computed_at": datetime.now(ZoneInfo("UTC")).isoformat(),
-    }
-    existing = (
-        await session.execute(
-            sa.select(AutopilotProposal).where(
-                AutopilotProposal.round_id == round_.id, AutopilotProposal.stage == 1
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is None:
-        session.add(AutopilotProposal(round_id=round_.id, stage=1, payload=payload))
-    else:
-        existing.payload = payload
-
-    # Прошедших порог меньше, чем нужно, — цикл идёт с флагом низкой активности (§5).
-    if deciding:
-        round_.low_activity = len(film_ids) < int(values["shortlist_size"])
-    await session.commit()
-    return film_ids
