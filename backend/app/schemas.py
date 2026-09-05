@@ -233,3 +233,52 @@ class MatrixOut(BaseModel):
     film_votes: dict[int, int] = Field(default_factory=dict)
     slot_free: dict[int, int] = Field(default_factory=dict)
     voters_without_evening: int = 0
+
+
+# --- Этап 3: расписание и подтверждения (§7) --------------------------------
+
+
+class ScreeningOut(BaseModel):
+    id: int
+    film: FilmBrief
+    slot: SlotOut
+    status: str
+    expected_attendance: int | None = None
+    cancel_reason: str | None = None
+    # Состояние текущего пользователя по этому показу.
+    my_state: str | None = None
+    my_place_in_queue: int | None = None
+    confirmed: int = 0
+    capacity: int = 0
+    # Голосовал за фильм — значит, показ его касается и приглашение было.
+    invited: bool = False
+
+
+class ScheduleOut(BaseModel):
+    round_id: int
+    week_start: date
+    stage: str
+    published: bool
+    screenings: list[ScreeningOut] = Field(default_factory=list)
+
+
+class AssignIn(BaseModel):
+    film_id: int
+    slot_id: int
+
+
+class MoveIn(BaseModel):
+    slot_id: int
+
+
+class CancelIn(BaseModel):
+    # Комментарий обязателен: он уходит всем, кто собирался прийти (§7).
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class ConfirmOut(BaseModel):
+    screening_id: int
+    state: str
+    place_in_queue: int | None = None
+    confirmed: int
+    capacity: int

@@ -1,0 +1,113 @@
+import { useState } from "react";
+import { ApiError, confirmScreening, declineScreening } from "../api";
+import { Poster } from "../components/FilmRow";
+import { dayLabel, timeLabel, weekLabel } from "../dates";
+import { haptic, webApp } from "../telegram";
+import type { Schedule, Screening } from "../types";
+
+/** Этап 3 (§7): опубликованное расписание и подтверждения. */
+export function Screenings({ schedule, onChange }: { schedule: Schedule; onChange(s: Schedule): void }) {
+  const [busy, setBusy] = useState<number | null>(null);
+
+  async function toggle(screening: Screening) {
+    if (busy !== null) return;
+    setBusy(screening.id);
+    haptic();
+
+    const going = screening.my_state === "confirmed" || screening.my_state === "waitlist";
+    try {
+      const result = going
+        ? await declineScreening(screening.id)
+        : await confirmScreening(screening.id);
+      onChange({
+        ...schedule,
+        screenings: schedule.screenings.map((item) =>
+          item.id === screening.id
+            ? {
+                ...item,
+                my_state: result.state,
+                my_place_in_queue: result.place_in_queue,
+                confirmed: result.confirmed,
+                capacity: result.capacity,
+              }
+            : item,
+        ),
+      });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Не удалось сохранить";
+      webApp()?.showAlert(message) ?? alert(message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const active = schedule.screenings.filter((s) => s.status !== "cancelled");
+  const cancelled = schedule.screenings.filter((s) => s.status === "cancelled");
+
+  return (
+    <div className="screen">
+      <div className="round-head">
+        <b>Показы {weekLabel(schedule.week_start)}</b>
+        <p className="meta">Отметьте, на какие сеансы придёте.</p>
+      </div>
+
+      {active.length === 0 && <p className="hint">На этой неделе показов нет.</p>}
+
+      {active.map((screening) => {
+        const going = screening.my_state === "confirmed";
+        const queued = screening.my_state === "waitlist";
+        const full = screening.confirmed >= screening.capacity;
+
+        return (
+          <div className="film-row" key={screening.id}>
+            <Poster url={screening.film.poster_url} />
+            <div>
+              <p className="film-row__title">{screening.film.title_ru}</p>
+              <p className="meta">
+                {dayLabel(screening.slot.starts_at)} · {timeLabel(screening.slot.starts_at)} ·{" "}
+                {screening.slot.hall_name}
+              </p>
+              <p className="meta">
+                Придут: {screening.confirmed} из {screening.capacity}
+                {queued && screening.my_place_in_queue !== null && (
+                  <> · вы {screening.my_place_in_queue}-й в очереди</>
+                )}
+              </p>
+
+              <div className="marks">
+                <button
+                  className={`mark ${going ? "mark--going is-on" : queued ? "mark--soon is-on" : ""}`}
+                  disabled={busy !== null}
+                  onClick={() => toggle(screening)}
+                >
+                  {going ? "✓ Приду" : queued ? "В очереди" : full ? "Встать в очередь" : "Приду"}
+                </button>
+                {(going || queued) && (
+                  <span className="hint" style={{ alignSelf: "center" }}>
+                    нажмите ещё раз, чтобы отменить
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {cancelled.length > 0 && (
+        <>
+          <h3>Отменены</h3>
+          {cancelled.map((screening) => (
+            <div className="film-row" key={screening.id} style={{ opacity: 0.65 }}>
+              <Poster url={screening.film.poster_url} />
+              <div>
+                <p className="film-row__title">{screening.film.title_ru}</p>
+                <p className="meta">{dayLabel(screening.slot.starts_at)}</p>
+                {screening.cancel_reason && <p className="meta">{screening.cancel_reason}</p>}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}

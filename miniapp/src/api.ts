@@ -6,9 +6,12 @@ import type {
   FilmRequest,
   InterestKind,
   InterestState,
+  ConfirmResult,
   Matrix,
   Rankings,
   Round,
+  Schedule,
+  Slot,
   User,
 } from "./types";
 
@@ -149,3 +152,33 @@ export const saveAvailability = (slotIds: number[]) =>
   });
 
 export const getMatrix = () => request<Matrix>("/api/round/matrix");
+
+// --- Этап 3: расписание и подтверждения ------------------------------------
+
+export const getSchedule = () => request<Schedule>("/api/schedule");
+
+export const confirmScreening = (id: number) =>
+  request<ConfirmResult>(`/api/schedule/screenings/${id}/confirm`, { method: "POST" });
+
+export const declineScreening = (id: number) =>
+  request<ConfirmResult>(`/api/schedule/screenings/${id}/decline`, { method: "POST" });
+
+export const getFreeSlots = () => request<Slot[]>("/api/schedule/free-slots");
+
+export const assignScreening = (filmId: number, slotId: number) =>
+  request<Schedule>("/api/schedule/assign", {
+    method: "POST",
+    body: JSON.stringify({ film_id: filmId, slot_id: slotId }),
+  });
+
+export const unassignScreening = (id: number) =>
+  request<Schedule>(`/api/schedule/screenings/${id}`, { method: "DELETE" });
+
+export const publishSchedule = () =>
+  request<Schedule>("/api/schedule/publish", { method: "POST" });
+
+export const cancelScreening = (id: number, reason: string) =>
+  request<Schedule>(`/api/schedule/screenings/${id}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });

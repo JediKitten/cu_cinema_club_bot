@@ -437,3 +437,18 @@ h3 {
   border-color: transparent;
   color: var(--text);
 }
+
+.mark--going.is-on {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+
+.assign {
+  display: grid;
+  gap: 8px;
+}
+
+.assign select {
+  appearance: none;
+}

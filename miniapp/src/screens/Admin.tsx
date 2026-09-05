@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Matrix } from "../components/Matrix";
+import { ScheduleBuilder } from "../components/ScheduleBuilder";
 import {
   blockSlot,
   getRankings,
@@ -207,6 +208,13 @@ export function Admin() {
             <>
               <h3>Матрица «фильм × вечер»</h3>
               <Matrix />
+            </>
+          )}
+
+          {round.stage !== "collecting" && round.stage !== "shortlist_review" && (
+            <>
+              <h3>Показы</h3>
+              <ScheduleBuilder shortlist={round.shortlist.map((item) => item.film)} />
             </>
           )}
 

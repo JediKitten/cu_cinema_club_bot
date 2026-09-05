@@ -4,7 +4,7 @@ import { Admin } from "./screens/Admin";
 import { Catalog } from "./screens/Catalog";
 import { FilmDetail } from "./screens/FilmDetail";
 import { More } from "./screens/More";
-import { Vote } from "./screens/Vote";
+import { Week } from "./screens/Week";
 import { MyList } from "./screens/MyList";
 import { initTelegram } from "./telegram";
 import type { FilmBrief, User } from "./types";
@@ -62,7 +62,7 @@ export default function App() {
         <>
           {tab === "catalog" && <Catalog onOpen={openFilm} />}
           {tab === "mine" && <MyList onOpen={openFilm} />}
-          {tab === "vote" && <Vote />}
+          {tab === "vote" && <Week />}
           {tab === "admin" && <Admin />}
           {tab === "more" && <More user={user} />}
         </>

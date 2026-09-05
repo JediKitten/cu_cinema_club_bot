@@ -151,3 +151,38 @@ export type Matrix = {
   slot_free: Record<number, number>;
   voters_without_evening: number;
 };
+
+// --- Этап 3: расписание и подтверждения (§7) --------------------------------
+
+export type ConfirmState = "confirmed" | "waitlist" | "cancelled";
+
+export type Screening = {
+  id: number;
+  film: FilmBrief;
+  slot: Slot;
+  status: "scheduled" | "cancelled" | "completed";
+  expected_attendance: number | null;
+  cancel_reason: string | null;
+  my_state: ConfirmState | null;
+  my_place_in_queue: number | null;
+  confirmed: number;
+  capacity: number;
+  /** Голосовал за этот фильм — значит, приглашение приходило. */
+  invited: boolean;
+};
+
+export type Schedule = {
+  round_id: number;
+  week_start: string;
+  stage: RoundStage;
+  published: boolean;
+  screenings: Screening[];
+};
+
+export type ConfirmResult = {
+  screening_id: number;
+  state: ConfirmState;
+  place_in_queue: number | null;
+  confirmed: number;
+  capacity: number;
+};
