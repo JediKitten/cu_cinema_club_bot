@@ -116,7 +116,7 @@ def _directors(payload: dict) -> list[str]:
     ]
 
 
-def _film_fields(payload: dict) -> dict:
+def film_fields(payload: dict) -> dict:
     release_date = payload.get("release_date") or ""
     return {
         "tmdb_id": payload["id"],
@@ -138,7 +138,7 @@ def _film_fields(payload: dict) -> dict:
 async def upsert_from_tmdb(session: AsyncSession, payload: dict) -> Film:
     """Единственная точка записи фильма из TMDB — и для ленивой подгрузки,
     и для будущего массового импорта. Идемпотентна по tmdb_id."""
-    fields = _film_fields(payload)
+    fields = film_fields(payload)
     stmt = insert(Film).values(**fields, tmdb_synced_at=sa.func.now())
     stmt = stmt.on_conflict_do_update(
         index_elements=[Film.tmdb_id],

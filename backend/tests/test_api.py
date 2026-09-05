@@ -457,3 +457,66 @@ async def test_watched_works_for_film_not_yet_in_catalog(client, session, monkey
     # Фильм завёлся в каталоге в этот же момент.
     assert body["film"]["id"] is not None
     assert body["film"]["title_ru"] == "Новинка"
+
+
+async def test_tmdb_card_opens_without_touching_the_catalog(client, session, monkeypatch):
+    """Карточку фильма из поиска можно открыть, но в базу он при этом не попадает:
+    иначе каталог заполнялся бы всем, что кто-то просто посмотрел."""
+    import sqlalchemy as sa
+
+    async def fake_movie(self, tmdb_id):
+        return {
+            "id": tmdb_id,
+            "title": "Гладиатор",
+            "original_title": "Gladiator",
+            "release_date": "2000-05-01",
+            "runtime": 155,
+            "overview": "Про арену",
+            "poster_path": "/g.jpg",
+            "genres": [{"name": "драма"}],
+            "credits": {"crew": [{"job": "Director", "name": "Ридли Скотт"}]},
+            "videos": {"results": []},
+            "vote_average": 8.2,
+            "vote_count": 17000,
+        }
+
+    from app.services.tmdb import TmdbClient
+
+    monkeypatch.setattr(TmdbClient, "movie", fake_movie)
+    monkeypatch.setattr(TmdbClient, "configured", property(lambda self: True))
+
+    auth = await login(client, 777050, "Любопытный")
+    card = (
+        await client.get(
+            "/api/films/tmdb/98", headers={"Authorization": f"Bearer {auth['token']}"}
+        )
+    ).json()
+
+    assert card["title_ru"] == "Гладиатор"
+    assert card["directors"] == ["Ридли Скотт"]
+    assert card["runtime_min"] == 155
+    assert card["id"] is None
+    assert card["in_catalog"] is False
+    # Внутренних данных нет: отмечать фильм никто не мог.
+    assert card["interested_count"] == 0
+    assert card["internal_rating"] is None
+
+    assert await session.scalar(sa.select(sa.func.count()).select_from(Film)) == 0
+
+
+async def test_tmdb_card_falls_back_to_the_catalog_one(client, session, monkeypatch):
+    """Если фильм уже завели, показываем полноценную карточку с данными клуба."""
+    film = Film(title_ru="Гладиатор", title_orig="Gladiator", year=2000, tmdb_id=98)
+    session.add(film)
+    await session.commit()
+
+    auth = await login(client, 777051, "Зритель")
+    headers = {"Authorization": f"Bearer {auth['token']}"}
+    await client.post(f"/api/films/{film.id}/interest", json={"kind": "soon"}, headers=headers)
+
+    card = (await client.get("/api/films/tmdb/98", headers=headers)).json()
+
+    assert card["id"] == film.id
+    assert card["in_catalog"] is True
+    assert card["interested_count"] == 1
+    assert card["my_interests"] == ["soon"]

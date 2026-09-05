@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { getFilm } from "../api";
+import { getFilm, getTmdbFilm } from "../api";
 import { Poster } from "../components/FilmRow";
 import { MarkButtons } from "../components/MarkButtons";
 import { WatchedButton } from "../components/WatchedButton";
 import { useTelegramBackButton } from "../telegram";
 import type { FilmBrief, FilmCard, InterestKind } from "../types";
 
-type Props = { filmId: number; onBack(): void };
+type Props = { filmId: number | null; tmdbId?: number | null; onBack(): void };
 
 function runtime(minutes: number | null): string | null {
   if (!minutes) return null;
@@ -14,17 +14,20 @@ function runtime(minutes: number | null): string | null {
   return hours ? `${hours} ч ${minutes % 60} мин` : `${minutes} мин`;
 }
 
-export function FilmDetail({ filmId, onBack }: Props) {
+export function FilmDetail({ filmId, tmdbId, onBack }: Props) {
   const [film, setFilm] = useState<FilmCard | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => useTelegramBackButton(true, onBack), [onBack]);
 
   useEffect(() => {
-    getFilm(filmId)
+    // Фильм из каталога открываем по его id, найденный в поиске — по tmdb_id:
+    // во втором случае карточка собирается из TMDB и в базу не пишется.
+    const load = filmId !== null ? getFilm(filmId) : getTmdbFilm(tmdbId!);
+    load
       .then(setFilm)
-      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось открыть карточку"));
-  }, [filmId]);
+      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
+  }, [filmId, tmdbId]);
 
   if (error) return <div className="screen"><div className="error">{error}</div></div>;
   if (!film) return <div className="center">Загрузка…</div>;

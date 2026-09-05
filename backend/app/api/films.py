@@ -13,7 +13,7 @@ from app.services import interests as marks_service
 from app.services import matching
 from app.services.interests import MarkState
 from app.services.settings import SettingsService
-from app.services.tmdb import TmdbError, get_tmdb, poster_url
+from app.services.tmdb import TmdbError, film_fields, get_tmdb, poster_url
 
 router = APIRouter(prefix="/api/films", tags=["films"])
 
@@ -139,6 +139,59 @@ async def browse_films(
     films = list((await session.execute(stmt)).scalars())
     marks = await _my_marks(session, user.id, films)
     return [_brief(film, marks) for film in films]
+
+
+@router.get("/tmdb/{tmdb_id}", response_model=FilmCard)
+async def tmdb_card(
+    tmdb_id: int,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FilmCard:
+    """Карточка фильма, которого ещё нет в каталоге.
+
+    Данные берутся из TMDB и НЕ сохраняются: иначе база заполнялась бы всем,
+    что кто-то просто открыл посмотреть. В каталог фильм попадает при первой
+    отметке, как и раньше.
+    """
+    existing = (
+        await session.execute(sa.select(Film).where(Film.tmdb_id == tmdb_id))
+    ).scalar_one_or_none()
+    if existing is not None:
+        # Фильм уже завели — показываем полноценную карточку с рейтингом клуба.
+        return await film_card(existing.id, user, session)
+
+    try:
+        payload = await get_tmdb().movie(tmdb_id)
+    except TmdbError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"TMDB недоступен: {exc}") from exc
+
+    fields = film_fields(payload)
+    release = payload.get("release_date") or ""
+
+    return FilmCard(
+        id=None,
+        tmdb_id=tmdb_id,
+        title_ru=fields["title_ru"],
+        title_orig=fields["title_orig"],
+        year=int(release[:4]) if release[:4].isdigit() else None,
+        poster_url=poster_url(fields["poster_path"]),
+        genres=fields["genres"],
+        directors=fields["directors"],
+        in_catalog=False,
+        # Отметок быть не может: фильма нет в каталоге, отмечать было нечего.
+        my_interests=[],
+        watched=False,
+        runtime_min=fields["runtime_min"],
+        overview=fields["overview"],
+        trailer_key=fields["trailer_key"],
+        ext_rating=fields["ext_rating"],
+        ext_votes=fields["ext_votes"],
+        # Внутренних данных нет: фильм ещё не в каталоге, отмечать его никто не мог.
+        internal_rating=None,
+        internal_votes=0,
+        interested_count=0,
+        reviews=[],
+    )
 
 
 @router.get("/{film_id}", response_model=FilmCard)

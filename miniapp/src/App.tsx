@@ -27,7 +27,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("catalog");
-  const [openFilmId, setOpenFilmId] = useState<number | null>(null);
+  // Фильм из поиска ещё не в каталоге — у него есть только tmdb_id.
+  const [openFilm, setOpenFilm] = useState<FilmBrief | null>(null);
 
   useEffect(() => {
     initTelegram();
@@ -50,18 +51,22 @@ export default function App() {
 
   if (!user) return <div className="center">Входим…</div>;
 
-  function openFilm(film: FilmBrief) {
-    if (film.id) setOpenFilmId(film.id);
+  function open(film: FilmBrief) {
+    if (film.id !== null || film.tmdb_id !== null) setOpenFilm(film);
   }
 
   return (
     <div className="app">
-      {openFilmId !== null ? (
-        <FilmDetail filmId={openFilmId} onBack={() => setOpenFilmId(null)} />
+      {openFilm !== null ? (
+        <FilmDetail
+          filmId={openFilm.id}
+          tmdbId={openFilm.tmdb_id}
+          onBack={() => setOpenFilm(null)}
+        />
       ) : (
         <>
-          {tab === "catalog" && <Catalog onOpen={openFilm} />}
-          {tab === "mine" && <MyList onOpen={openFilm} />}
+          {tab === "catalog" && <Catalog onOpen={open} />}
+          {tab === "mine" && <MyList onOpen={open} />}
           {tab === "vote" && <Week />}
           {tab === "admin" && <Admin role={user.role} />}
           {tab === "more" && <More user={user} />}
@@ -69,7 +74,7 @@ export default function App() {
       )}
 
       {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
-      {openFilmId === null && (
+      {openFilm === null && (
         <nav className="tabs">
           {TABS.filter((item) => item.key !== "admin" || ADMIN_ROLES.has(user.role)).map((item) => (
             <button

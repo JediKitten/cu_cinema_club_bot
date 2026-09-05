@@ -24,13 +24,13 @@ export function FilmRow({ film, onOpen, onMarksChange }: Props) {
       <WatchedButton film={film} onChange={onMarksChange} />
       <Poster url={film.poster_url} />
       <div>
-        {/* Карточка открывается только у фильмов из каталога: у найденного в TMDB
-            ещё нет id, он появится после первой отметки. */}
+        {/* Открываются и фильмы из TMDB: карточка соберётся из их данных,
+            в каталог фильм при этом не попадёт. */}
         <button
           className="film-row__title"
           style={{ padding: 0, textAlign: "left" }}
-          disabled={!film.id}
-          onClick={() => film.id && onOpen(film)}
+          disabled={film.id === null && film.tmdb_id === null}
+          onClick={() => onOpen(film)}
         >
           {film.title_ru}
         </button>

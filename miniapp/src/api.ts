@@ -86,6 +86,11 @@ export const browseFilms = (sort: string, offset = 0) =>
 
 export const getFilm = (filmId: number) => request<FilmCard>(`/api/films/${filmId}`);
 
+// Карточка фильма, которого ещё нет в каталоге: данные берутся из TMDB
+// и не сохраняются — фильм заводится только при первой отметке.
+export const getTmdbFilm = (tmdbId: number) =>
+  request<FilmCard>(`/api/films/tmdb/${tmdbId}`);
+
 export const myInterests = () => request<InterestState[]>("/api/me/interests");
 
 /** Фильм из поиска TMDB ещё не в каталоге — тогда отмечаем по tmdb_id,
