@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import (
     admin,
+    analytics,
     attendance,
     auth,
     film_requests,
@@ -55,6 +56,7 @@ app.include_router(rounds.router)
 app.include_router(voting.router)
 app.include_router(schedule.router)
 app.include_router(attendance.router)
+app.include_router(analytics.router)
 
 
 @app.get("/health", tags=["ops"])

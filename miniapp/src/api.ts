@@ -6,10 +6,12 @@ import type {
   FilmRequest,
   InterestKind,
   InterestState,
+  Analytics,
   Attendee,
   ConfirmResult,
   FeedbackState,
   Matrix,
+  PastScreening,
   Rankings,
   Round,
   Schedule,
@@ -211,3 +213,9 @@ export const getScreeningCode = (screeningId: number) =>
 
 export const getAttendees = (screeningId: number) =>
   request<Attendee[]>(`/api/screenings/${screeningId}/attendees`);
+
+// --- Аналитика -------------------------------------------------------------
+
+export const getAnalytics = () => request<Analytics>("/api/admin/analytics");
+
+export const getPastScreenings = () => request<PastScreening[]>("/api/screenings/past");

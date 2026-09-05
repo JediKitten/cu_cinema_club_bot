@@ -331,3 +331,47 @@ class FeedbackOut(BaseModel):
     film_rating: int | None = None
     review_text: str | None = None
     org: OrgRating | None = None
+
+
+# --- Аналитика (§14) --------------------------------------------------------
+
+
+class FunnelStep(BaseModel):
+    week_start: date
+    stage: str
+    interested: int
+    voted: int
+    confirmed: int
+    attended: int
+
+
+class OverviewOut(BaseModel):
+    rounds: int
+    screenings_held: int
+    screenings_cancelled: int
+    average_attendance: float
+    hall_fill_rate: float
+    active_users: int
+    # Подтвердил и не пришёл — доля от подтверждений на прошедших показах.
+    no_show_rate: float
+    late_cancels: int
+    by_weekday: dict[str, float] = Field(default_factory=dict)
+    long_wait_films: list[dict] = Field(default_factory=list)
+
+
+class AnalyticsOut(BaseModel):
+    funnel: list[FunnelStep] = Field(default_factory=list)
+    overview: OverviewOut
+    top_rated: list[dict] = Field(default_factory=list)
+
+
+class PastScreeningOut(BaseModel):
+    screening_id: int
+    title: str
+    year: int | None
+    poster_url: str | None
+    starts_at: datetime
+    status: str
+    expected: int | None
+    came: int
+    rating: float | None

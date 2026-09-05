@@ -553,3 +553,28 @@ h3 {
   background: var(--link);
   transition: width 1s linear;
 }
+
+/* --- Аналитика -------------------------------------------------------------- */
+
+.funnel-row {
+  display: grid;
+  grid-template-columns: 1fr auto 52px;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.funnel-row:last-child {
+  border-bottom: none;
+}
+
+.funnel-row > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.funnel-row > span:last-child {
+  text-align: right;
+}

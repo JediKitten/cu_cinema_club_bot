@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createFilmRequest, myFilmRequests } from "../api";
 import { haptic } from "../telegram";
 import type { FilmRequest, User } from "../types";
+import { History } from "./History";
 
 const STATUS: Record<FilmRequest["status"], string> = {
   pending: "на модерации",
@@ -10,6 +11,7 @@ const STATUS: Record<FilmRequest["status"], string> = {
 };
 
 export function More({ user }: { user: User }) {
+  const [showHistory, setShowHistory] = useState(false);
   const [title, setTitle] = useState("");
   const [year, setYear] = useState("");
   const [note, setNote] = useState("");
@@ -43,6 +45,19 @@ export function More({ user }: { user: User }) {
     }
   }
 
+  if (showHistory) {
+    return (
+      <>
+        <div className="screen" style={{ paddingBottom: 0 }}>
+          <button className="mark" style={{ alignSelf: "flex-start" }} onClick={() => setShowHistory(false)}>
+            ← Назад
+          </button>
+        </div>
+        <History />
+      </>
+    );
+  }
+
   return (
     <div className="screen">
       <div>
@@ -51,6 +66,10 @@ export function More({ user }: { user: User }) {
           {user.role === "user" ? "участник клуба" : `роль: ${user.role}`}
         </p>
       </div>
+
+      <button className="primary" onClick={() => setShowHistory(true)}>
+        🕘 Что уже смотрели
+      </button>
 
       <h2 style={{ fontSize: 16, margin: "8px 0 0" }}>Не нашёл фильм</h2>
       <p className="hint" style={{ marginTop: -6 }}>

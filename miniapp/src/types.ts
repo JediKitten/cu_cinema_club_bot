@@ -221,3 +221,45 @@ export type Attendee = {
   method: "qr" | "code" | "manual";
   marked_at: string;
 };
+
+// --- Аналитика (§14) --------------------------------------------------------
+
+export type FunnelStep = {
+  week_start: string;
+  stage: RoundStage;
+  interested: number;
+  voted: number;
+  confirmed: number;
+  attended: number;
+};
+
+export type Overview = {
+  rounds: number;
+  screenings_held: number;
+  screenings_cancelled: number;
+  average_attendance: number;
+  hall_fill_rate: number;
+  active_users: number;
+  no_show_rate: number;
+  late_cancels: number;
+  by_weekday: Record<string, number>;
+  long_wait_films: { title: string; year: number | null; waiting: number; days: number }[];
+};
+
+export type Analytics = {
+  funnel: FunnelStep[];
+  overview: Overview;
+  top_rated: { title: string; year: number | null; rating: number; votes: number }[];
+};
+
+export type PastScreening = {
+  screening_id: number;
+  title: string;
+  year: number | null;
+  poster_url: string | null;
+  starts_at: string;
+  status: string;
+  expected: number | null;
+  came: number;
+  rating: number | null;
+};

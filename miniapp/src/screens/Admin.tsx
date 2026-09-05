@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Analytics } from "../components/Analytics";
 import { Matrix } from "../components/Matrix";
 import { ScheduleBuilder } from "../components/ScheduleBuilder";
 import {
@@ -217,6 +218,9 @@ export function Admin() {
               <ScheduleBuilder shortlist={round.shortlist.map((item) => item.film)} />
             </>
           )}
+
+          <h3>Аналитика</h3>
+          <Analytics />
 
           <h3>Вечера</h3>
           <p className="hint">Заблокированные вечера автопилот не использует.</p>
