@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser
 from app.db import get_session
-from app.models import Film, Interest
+from app.models import Film, Interest, Watch
 from app.models.enums import FilmStatus, InterestKind
 from app.schemas import FilmBrief, InterestIn, InterestOut
 from app.services import interests as marks
@@ -157,6 +157,29 @@ async def set_watched(
         session, user.id, film_id, body.watched, await _ttl(session)
     )
     return _out(film, mark)
+
+
+@router.get("/me/watched", response_model=list[FilmBrief])
+async def my_watched(
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[FilmBrief]:
+    """Просмотренные фильмы. Отдельно от отметок: фильм может быть и там и там."""
+    ttl = await _ttl(session)
+    films = (
+        (
+            await session.execute(
+                sa.select(Film)
+                .join(Watch, Watch.film_id == Film.id)
+                .where(Watch.user_id == user.id)
+                .order_by(Watch.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    states = await marks.marks_for_films(session, user.id, [f.id for f in films], ttl)
+    return [brief(film, states[film.id]) for film in films]
 
 
 @router.get("/me/interests", response_model=list[InterestOut])

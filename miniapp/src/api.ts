@@ -93,6 +93,8 @@ export const getTmdbFilm = (tmdbId: number) =>
 
 export const myInterests = () => request<InterestState[]>("/api/me/interests");
 
+export const myWatched = () => request<FilmBrief[]>("/api/me/watched");
+
 /** Фильм из поиска TMDB ещё не в каталоге — тогда отмечаем по tmdb_id,
  *  и бэкенд заводит карточку в этот момент. */
 export const addInterest = (film: FilmBrief, kind: InterestKind) =>

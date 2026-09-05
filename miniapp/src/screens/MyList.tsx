@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { myInterests } from "../api";
+import { myInterests, myWatched } from "../api";
 import { FilmRow } from "../components/FilmRow";
 import type { FilmBrief, InterestKind, InterestState } from "../types";
 import { isSameFilm, replaceFilm } from "../films";
@@ -12,17 +12,28 @@ function daysLeft(expiresAt: string): number {
 
 export function MyList({ onOpen }: Props) {
   const [items, setItems] = useState<InterestState[]>([]);
+  const [watched, setWatchedFilms] = useState<FilmBrief[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    myInterests()
-      .then(setItems)
+    Promise.all([myInterests(), myWatched()])
+      .then(([marks, seen]) => {
+        setItems(marks);
+        setWatchedFilms(seen);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Ошибка загрузки"))
       .finally(() => setLoading(false));
   }, []);
 
   function handleMarks(kinds: InterestKind[], updated: FilmBrief) {
+    // Список просмотренного меняется той же кнопкой, что и отметки, поэтому
+    // обновляем его здесь же — иначе фильм исчезал бы только после перезахода.
+    setWatchedFilms((current) => {
+      const without = current.filter((film) => !isSameFilm(film, updated));
+      return updated.watched ? [updated, ...without] : without;
+    });
+
     setItems((current) =>
       replaceFilm(
         // Фильм без отметок в этом списке больше не место.
@@ -42,7 +53,7 @@ export function MyList({ onOpen }: Props) {
   if (loading) return <div className="center">Загрузка…</div>;
   if (error) return <div className="screen"><div className="error">{error}</div></div>;
 
-  if (items.length === 0) {
+  if (items.length === 0 && watched.length === 0) {
     return (
       <div className="center">
         Пока ничего не отмечено.
@@ -83,6 +94,18 @@ export function MyList({ onOpen }: Props) {
               onOpen={onOpen}
               onMarksChange={handleMarks}
             />
+          ))}
+        </>
+      )}
+
+      {watched.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 16, margin: "8px 0 0" }}>Просмотренные</h2>
+          <p className="hint" style={{ marginTop: -6 }}>
+            Отметка «Смотрел» ничему не мешает: фильм может быть и здесь, и в желаемом.
+          </p>
+          {watched.map((film) => (
+            <FilmRow key={film.id} film={film} onOpen={onOpen} onMarksChange={handleMarks} />
           ))}
         </>
       )}

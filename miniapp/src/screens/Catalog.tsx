@@ -6,14 +6,14 @@ import { replaceFilm } from "../films";
 
 type Props = { onOpen(film: FilmBrief): void };
 
-type Sort = "popular" | "alphabetical" | "year";
+type Sort = "popular" | "wanted" | "year";
 
 // Популярность первой и по умолчанию — по решению клуба. §11 просил обратного:
 // такая сортировка усиливает эффект присоединения к большинству и прячет хвост
 // каталога. Компромисс: остальные порядки рядом, в один тап.
 const SORTS: { key: Sort; label: string }[] = [
   { key: "popular", label: "По популярности" },
-  { key: "alphabetical", label: "По алфавиту" },
+  { key: "wanted", label: "Хотят в клубе" },
   { key: "year", label: "По году" },
 ];
 

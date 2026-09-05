@@ -579,96 +579,53 @@ h3 {
   text-align: right;
 }
 
-/* --- «Просмотрено» в углу карточки ----------------------------------------- */
+/* --- «Смотрел» в углу карточки --------------------------------------------- */
 
 .film-row--watchable {
   position: relative;
 }
 
-.watched-dot {
+.watched-tag {
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 600;
   border: 1px solid var(--border);
   color: var(--hint);
+  background: var(--bg);
+  white-space: nowrap;
   /* Над названием: длинные заголовки иначе заезжают под кнопку. */
   z-index: 2;
-  background: var(--bg);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
-.watched-dot.is-on {
+.watched-tag.is-on {
   background: #16a34a;
   border-color: #16a34a;
   color: #fff;
 }
 
-.watched-dot:disabled {
+.watched-tag:disabled {
   opacity: 0.5;
 }
 
 /* Освобождаем место под кнопку, чтобы заголовок под неё не подлезал. */
 .film-row--watchable .film-row__title,
 .film-row--watchable h1 {
-  padding-right: 38px;
+  padding-right: 92px;
 }
 
-/* --- Панель параметров ------------------------------------------------------ */
+/* --- Карточка кликабельна целиком ------------------------------------------ */
 
-.setting {
-  display: grid;
-  gap: 6px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
+.film-row--clickable {
+  cursor: pointer;
 }
 
-.setting label {
-  font-size: 14px;
-}
-
-.setting__pair {
-  display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: 8px;
-}
-
-.sticky-actions {
-  position: sticky;
-  bottom: 8px;
-  padding-top: 8px;
-  background: linear-gradient(transparent, var(--bg) 40%);
-}
-
-/* --- Листание недель -------------------------------------------------------- */
-
-.week-nav {
-  display: grid;
-  grid-template-columns: 44px 1fr 44px;
-  align-items: center;
-  gap: 8px;
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 10px 8px;
-}
-
-.week-nav > b {
-  text-align: center;
-}
-
-.week-nav__arrow {
-  height: 34px;
-  border-radius: 10px;
-  font-size: 22px;
-  line-height: 1;
-  color: var(--link);
-  background: var(--bg);
-}
-
-.week-nav__arrow:disabled {
-  opacity: 0.3;
-  color: var(--hint);
+/* Название больше не отдельная кнопка: по нему кликается вся строка. */
+.film-row__title {
+  font-weight: 600;
+  margin: 0 0 2px;
 }

@@ -18,22 +18,29 @@ export function Poster({ url, className = "" }: { url: string | null; className?
 
 export function FilmRow({ film, onOpen, onMarksChange }: Props) {
   const subtitle = [film.year, film.title_orig].filter(Boolean).join(" · ");
+  // Открываются и фильмы из TMDB: карточка соберётся из их данных, в каталог
+  // фильм при этом не попадёт.
+  const openable = film.id !== null || film.tmdb_id !== null;
 
   return (
-    <div className="film-row film-row--watchable">
+    // Кликается вся карточка, а не только название: попасть по одной строке
+    // текста на телефоне трудно. Кнопки внутри гасят всплытие сами.
+    <div
+      className={`film-row film-row--watchable ${openable ? "film-row--clickable" : ""}`}
+      role={openable ? "button" : undefined}
+      tabIndex={openable ? 0 : undefined}
+      onClick={() => openable && onOpen(film)}
+      onKeyDown={(event) => {
+        if (openable && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          onOpen(film);
+        }
+      }}
+    >
       <WatchedButton film={film} onChange={onMarksChange} />
       <Poster url={film.poster_url} />
       <div>
-        {/* Открываются и фильмы из TMDB: карточка соберётся из их данных,
-            в каталог фильм при этом не попадёт. */}
-        <button
-          className="film-row__title"
-          style={{ padding: 0, textAlign: "left" }}
-          disabled={film.id === null && film.tmdb_id === null}
-          onClick={() => onOpen(film)}
-        >
-          {film.title_ru}
-        </button>
+        <p className="film-row__title">{film.title_ru}</p>
         {subtitle && <p className="meta">{subtitle}</p>}
         {film.directors.length > 0 && (
           // В списке режиссёров может быть трое (братья Руссо и подобные) —

@@ -520,3 +520,40 @@ async def test_tmdb_card_falls_back_to_the_catalog_one(client, session, monkeypa
     assert card["in_catalog"] is True
     assert card["interested_count"] == 1
     assert card["my_interests"] == ["soon"]
+
+
+async def test_watched_list_and_wanted_sorting(client, session):
+    """«Мои» показывают просмотренное, каталог умеет сортировать по числу желающих."""
+    popular = Film(title_ru="Многие хотят", year=2000, ext_votes=10)
+    lonely = Film(title_ru="Один хочет", year=2001, ext_votes=9999)
+    session.add_all([popular, lonely])
+    await session.commit()
+
+    first = await login(client, 777060, "Первый")
+    second = await login(client, 777061, "Второй")
+    h1 = {"Authorization": f"Bearer {first['token']}"}
+    h2 = {"Authorization": f"Bearer {second['token']}"}
+
+    for headers in (h1, h2):
+        await client.post(
+            f"/api/films/{popular.id}/interest", json={"kind": "soon"}, headers=headers
+        )
+    await client.post(f"/api/films/{lonely.id}/interest", json={"kind": "soon"}, headers=h1)
+
+    # По числу желающих первым идёт фильм с двумя отметками, хотя внешних
+    # голосов у него меньше.
+    by_wanted = (await client.get("/api/films?sort=wanted", headers=h1)).json()
+    assert [f["title_ru"] for f in by_wanted][:2] == ["Многие хотят", "Один хочет"]
+
+    # По популярности — наоборот.
+    by_popular = (await client.get("/api/films?sort=popular", headers=h1)).json()
+    assert by_popular[0]["title_ru"] == "Один хочет"
+
+    # Просмотренное — отдельный список, отметку не отменяет.
+    await client.post(f"/api/films/{popular.id}/watched", json={"watched": True}, headers=h1)
+    watched = (await client.get("/api/me/watched", headers=h1)).json()
+    assert [f["title_ru"] for f in watched] == ["Многие хотят"]
+    assert watched[0]["my_interests"] == ["soon"]
+
+    # У второго пользователя свой список.
+    assert (await client.get("/api/me/watched", headers=h2)).json() == []

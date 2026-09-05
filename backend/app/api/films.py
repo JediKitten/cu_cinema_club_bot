@@ -17,7 +17,7 @@ from app.services.tmdb import TmdbError, film_fields, get_tmdb, poster_url
 
 router = APIRouter(prefix="/api/films", tags=["films"])
 
-SortKey = Literal["recent", "alphabetical", "year", "popular"]
+SortKey = Literal["popular", "wanted", "year", "recent"]
 
 
 def _brief(film: Film, marks: dict[int, MarkState] | None = None) -> FilmBrief:
@@ -129,13 +129,28 @@ async def browse_films(
     if genre:
         stmt = stmt.where(Film.genres.any(genre))
 
-    order = {
-        "recent": Film.created_at.desc(),
-        "alphabetical": Film.title_ru.asc(),
-        "year": sa.func.coalesce(Film.year, 0).desc(),
-        "popular": sa.func.coalesce(Film.ext_votes, 0).desc(),
-    }[sort]
-    stmt = stmt.order_by(order).offset(offset).limit(limit)
+    if sort == "wanted":
+        # Сколько человек держат фильм в списках. Считаем активные отметки,
+        # а не их вес: пользователю понятнее «сколько людей», чем число весов.
+        wanted = (
+            sa.select(Interest.film_id, sa.func.count(sa.distinct(Interest.user_id)).label("n"))
+            .where(Interest.revoked_at.is_(None))
+            .group_by(Interest.film_id)
+            .subquery()
+        )
+        stmt = stmt.outerjoin(wanted, wanted.c.film_id == Film.id).order_by(
+            sa.func.coalesce(wanted.c.n, 0).desc(),
+            sa.func.coalesce(Film.ext_votes, 0).desc(),
+        )
+    else:
+        order = {
+            "recent": Film.created_at.desc(),
+            "year": sa.func.coalesce(Film.year, 0).desc(),
+            "popular": sa.func.coalesce(Film.ext_votes, 0).desc(),
+        }[sort]
+        stmt = stmt.order_by(order)
+
+    stmt = stmt.offset(offset).limit(limit)
     films = list((await session.execute(stmt)).scalars())
     marks = await _my_marks(session, user.id, films)
     return [_brief(film, marks) for film in films]
