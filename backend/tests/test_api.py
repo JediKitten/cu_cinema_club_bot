@@ -540,8 +540,8 @@ async def test_watched_list_and_wanted_sorting(client, session):
         )
     await client.post(f"/api/films/{lonely.id}/interest", json={"kind": "soon"}, headers=h1)
 
-    # По числу желающих первым идёт фильм с двумя отметками, хотя внешних
-    # голосов у него меньше.
+    # По весу клуба первым идёт фильм с двумя отметками, хотя внешних голосов
+    # у него меньше.
     by_wanted = (await client.get("/api/films?sort=wanted", headers=h1)).json()
     assert [f["title_ru"] for f in by_wanted][:2] == ["Многие хотят", "Один хочет"]
 
@@ -557,3 +557,40 @@ async def test_watched_list_and_wanted_sorting(client, session):
 
     # У второго пользователя свой список.
     assert (await client.get("/api/me/watched", headers=h2)).json() == []
+
+
+async def test_wanted_sorting_uses_weight_not_headcount(client, session):
+    """Свежее «Ближайшее» весит больше давнего «Желаемого» — сортировка это учитывает."""
+    from datetime import UTC, datetime, timedelta
+
+    import sqlalchemy as sa
+
+    from app.models import Interest
+
+    fresh = Film(title_ru="Хотят сейчас", year=2020, ext_votes=1)
+    stale = Film(title_ru="Хотели давно", year=2019, ext_votes=1)
+    session.add_all([fresh, stale])
+    await session.commit()
+
+    one = await login(client, 777070, "Первый")
+    h1 = {"Authorization": f"Bearer {one['token']}"}
+    await client.post(f"/api/films/{fresh.id}/interest", json={"kind": "soon"}, headers=h1)
+
+    # На старый фильм — двое, но их отметки давно затухли.
+    for tg_id in (777071, 777072):
+        auth = await login(client, tg_id, f"Зритель {tg_id}")
+        await client.post(
+            f"/api/films/{stale.id}/interest",
+            json={"kind": "wishlist"},
+            headers={"Authorization": f"Bearer {auth['token']}"},
+        )
+    await session.execute(
+        sa.update(Interest)
+        .where(Interest.film_id == stale.id)
+        .values(created_at=datetime.now(UTC) - timedelta(days=3000))
+    )
+    await session.commit()
+
+    listed = (await client.get("/api/films?sort=wanted", headers=h1)).json()
+    # Один свежий голос перевешивает двух давних: 3.0 против 2 × 0.2.
+    assert [f["title_ru"] for f in listed][:2] == ["Хотят сейчас", "Хотели давно"]

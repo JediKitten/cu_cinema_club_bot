@@ -14,6 +14,7 @@ from app.services import matching
 from app.services.interests import MarkState
 from app.services.settings import SettingsService
 from app.services.tmdb import TmdbError, film_fields, get_tmdb, poster_url
+from app.services.weights import WeightParams, active_interest_clause, film_weight_expr
 
 router = APIRouter(prefix="/api/films", tags=["films"])
 
@@ -130,16 +131,20 @@ async def browse_films(
         stmt = stmt.where(Film.genres.any(genre))
 
     if sort == "wanted":
-        # Сколько человек держат фильм в списках. Считаем активные отметки,
-        # а не их вес: пользователю понятнее «сколько людей», чем число весов.
+        # Сортировка по весу §4, а не по числу отметок: «Ближайшее» весит больше
+        # «Желаемого», а давняя отметка — меньше свежей. Считать головы значило бы
+        # уравнять «трое хотят прямо сейчас» и «трое захотели год назад».
+        params = WeightParams.from_settings(await SettingsService(session).all())
         wanted = (
-            sa.select(Interest.film_id, sa.func.count(sa.distinct(Interest.user_id)).label("n"))
-            .where(Interest.revoked_at.is_(None))
+            sa.select(
+                Interest.film_id, film_weight_expr(params).label("weight")
+            )
+            .where(active_interest_clause())
             .group_by(Interest.film_id)
             .subquery()
         )
         stmt = stmt.outerjoin(wanted, wanted.c.film_id == Film.id).order_by(
-            sa.func.coalesce(wanted.c.n, 0).desc(),
+            sa.func.coalesce(wanted.c.weight, 0.0).desc(),
             sa.func.coalesce(Film.ext_votes, 0).desc(),
         )
     else:
