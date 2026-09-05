@@ -112,3 +112,24 @@ class Watch(Base, CreatedAtMixin):
     # manual — отметил сам, attendance — зафиксирован приход на сеанс.
     source: Mapped[str] = mapped_column(sa.String(16), default="manual", server_default="manual")
     screening_id: Mapped[int | None] = mapped_column(sa.ForeignKey("screenings.id"))
+
+
+class Referral(Base, CreatedAtMixin):
+    """Приглашение на конкретный фильм по ссылке (расширение по просьбе клуба).
+
+    Хранит только факт перехода. Согласился человек или нет, вычисляется при
+    чтении по его отметкам — как и всё остальное в этом проекте, где состояние
+    выводится из событий, а не дублируется флагом.
+    """
+
+    __tablename__ = "referrals"
+    __table_args__ = (
+        # Одно приглашение на пару «приглашённый + фильм»: первый позвавший
+        # и считается автором, иначе за одного человека спорили бы двое.
+        sa.UniqueConstraint("invitee_id", "film_id", name="uq_referral"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    referrer_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id"), index=True)
+    invitee_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id"), index=True)
+    film_id: Mapped[int] = mapped_column(sa.ForeignKey("films.id"), index=True)

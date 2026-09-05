@@ -26,6 +26,7 @@ type WebApp = {
   ready(): void;
   expand(): void;
   showAlert(message: string): void;
+  openTelegramLink?(url: string): void;
 };
 
 declare global {
@@ -87,4 +88,19 @@ export function showMessage(message: string): void {
   } else {
     alert(message);
   }
+}
+
+/** Открыть окно «Поделиться» в самом Telegram.
+ *
+ * Обычный window.open из webview не работает — нужен openTelegramLink.
+ * Вне Telegram остаётся копирование в буфер.
+ */
+export function shareLink(url: string, text: string): boolean {
+  const app = webApp();
+  const share = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+  if (app?.openTelegramLink) {
+    app.openTelegramLink(share);
+    return true;
+  }
+  return false;
 }

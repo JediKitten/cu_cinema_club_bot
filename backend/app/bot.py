@@ -11,9 +11,10 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import sqlalchemy as sa
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -24,7 +25,8 @@ from aiogram.types import (
 
 from app.config import get_config
 from app.db import SessionLocal
-from app.services import cycle, notify, reminders
+from app.models import Film, User
+from app.services import cycle, notify, referrals, reminders
 from app.services.settings import SettingsService
 
 logger = logging.getLogger(__name__)
@@ -78,8 +80,70 @@ def open_app_keyboard(url: str) -> InlineKeyboardMarkup:
     )
 
 
+async def _ensure_user(session, message: Message) -> User:
+    """Аккаунт может ещё не существовать: человек пришёл по ссылке, не открыв
+    приложение. Заводим сразу, иначе приглашение некому засчитать."""
+    tg_id = message.from_user.id
+    user = (
+        await session.execute(sa.select(User).where(User.tg_id == tg_id))
+    ).scalar_one_or_none()
+    if user is None:
+        user = User(
+            tg_id=tg_id,
+            tg_username=message.from_user.username,
+            display_name=" ".join(
+                filter(None, (message.from_user.first_name, message.from_user.last_name))
+            )
+            or f"user{tg_id}",
+        )
+        session.add(user)
+        await session.commit()
+    return user
+
+
 def build_dispatcher() -> Dispatcher:
     dispatcher = Dispatcher()
+
+    @dispatcher.message(CommandStart(deep_link=True))
+    async def start_with_invite(message: Message, command: CommandObject) -> None:
+        """Переход по пригласительной ссылке на конкретный фильм.
+
+        Голос не ставится: показываем карточку и кнопку, решает человек.
+        """
+        parsed = referrals.parse_payload(command.args or "")
+        miniapp_url = current_miniapp_url()
+        if parsed is None or not miniapp_url:
+            await start(message)
+            return
+
+        film_id, referrer_id = parsed
+        async with SessionLocal() as session:
+            invitee = await _ensure_user(session, message)
+            film = await session.get(Film, film_id)
+            if film is None:
+                await start(message)
+                return
+            await referrals.record(session, referrer_id, invitee.id, film_id)
+            referrer = await session.get(User, referrer_id)
+
+        who = referrer.display_name if referrer else "Кто-то из клуба"
+        year = f" ({film.year})" if film.year else ""
+        await message.answer(
+            f"<b>{who}</b> зовёт вас на фильм\n\n"
+            f"🎬 <b>{film.title_ru}</b>{year}\n\n"
+            "Откройте карточку и решите сами — голос за вас никто не ставит.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Посмотреть фильм",
+                            # Фильм передаём в адресе: приложение откроет сразу его.
+                            web_app=WebAppInfo(url=f"{miniapp_url}?film={film_id}"),
+                        )
+                    ]
+                ]
+            ),
+        )
 
     @dispatcher.message(CommandStart())
     async def start(message: Message) -> None:

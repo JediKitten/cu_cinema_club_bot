@@ -6,6 +6,7 @@ import type {
   FilmRequest,
   InterestKind,
   InterestState,
+  Invite,
   Analytics,
   Attendee,
   ConfirmResult,
@@ -85,6 +86,8 @@ export const browseFilms = (sort: string, offset = 0) =>
   request<FilmBrief[]>(`/api/films?sort=${sort}&offset=${offset}`);
 
 export const getFilm = (filmId: number) => request<FilmCard>(`/api/films/${filmId}`);
+
+export const getInvite = (filmId: number) => request<Invite>(`/api/films/${filmId}/invite`);
 
 // Карточка фильма, которого ещё нет в каталоге: данные берутся из TMDB
 // и не сохраняются — фильм заводится только при первой отметке.

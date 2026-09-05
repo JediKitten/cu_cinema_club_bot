@@ -4,13 +4,14 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_config
 from app.core.auth import CurrentUser
 from app.db import get_session
 from app.models import Feedback, Film, Interest, User
 from app.models.enums import FilmStatus
-from app.schemas import FilmBrief, FilmCard, ReviewOut
+from app.schemas import FilmBrief, FilmCard, InviteOut, ReviewOut
 from app.services import interests as marks_service
-from app.services import matching
+from app.services import matching, referrals
 from app.services.interests import MarkState
 from app.services.settings import SettingsService
 from app.services.tmdb import TmdbError, film_fields, get_tmdb, poster_url
@@ -161,6 +162,37 @@ async def browse_films(
     return [_brief(film, marks) for film in films]
 
 
+@router.get("/{film_id}/invite", response_model=InviteOut)
+async def invite(
+    film_id: int,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> InviteOut:
+    """Ссылка, которой зовут друзей на конкретный фильм.
+
+    Голос по ней не ставится: приглашённый видит карточку и решает сам.
+    """
+    film = await session.get(Film, film_id)
+    if film is None or film.status == FilmStatus.HIDDEN:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Фильм не найден")
+
+    bot = get_config().telegram_bot_username
+    if not bot:
+        # Без имени бота ссылку не собрать — но это ошибка настройки сервера,
+        # а не действий человека.
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Приглашения временно недоступны"
+        )
+
+    counts = await referrals.stats(session, user.id)
+    return InviteOut(
+        link=referrals.invite_link(bot, film_id, user.id),
+        film_id=film_id,
+        invited=counts.invited,
+        accepted=counts.accepted,
+    )
+
+
 @router.get("/tmdb/{tmdb_id}", response_model=FilmCard)
 async def tmdb_card(
     tmdb_id: int,
@@ -236,6 +268,7 @@ async def film_card(
     ).scalar_one()
 
     marks = await _my_marks(session, user.id, [film])
+    inviter = await referrals.pending_invite(session, user.id, film_id)
 
     rating_row = (
         await session.execute(
@@ -272,5 +305,6 @@ async def film_card(
         internal_rating=round(float(avg), 2) if votes >= min_votes and avg is not None else None,
         internal_votes=votes,
         interested_count=interested_count,
+        invited_by=inviter.display_name if inviter else None,
         reviews=reviews,
     )

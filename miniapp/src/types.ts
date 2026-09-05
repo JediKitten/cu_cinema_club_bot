@@ -45,6 +45,8 @@ export type FilmCard = FilmBrief & {
   internal_rating: number | null;
   internal_votes: number;
   interested_count: number;
+  /** Кто позвал на этот фильм по ссылке. */
+  invited_by: string | null;
   my_interests: InterestKind[];
   watched: boolean;
   reviews: Review[];
@@ -290,4 +292,11 @@ export type Setting = {
   min: number | null;
   max: number | null;
   affects_weights: boolean;
+};
+
+export type Invite = {
+  link: string;
+  film_id: number;
+  invited: number;
+  accepted: number;
 };

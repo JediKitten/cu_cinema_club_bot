@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getFilm, getTmdbFilm } from "../api";
 import { Poster } from "../components/FilmRow";
 import { MarkButtons } from "../components/MarkButtons";
+import { InviteButton } from "../components/InviteButton";
 import { WatchedButton } from "../components/WatchedButton";
 import { useTelegramBackButton } from "../telegram";
 import type { FilmBrief, FilmCard, InterestKind } from "../types";
@@ -63,7 +64,18 @@ export function FilmDetail({ filmId, tmdbId, onBack }: Props) {
         </div>
       </div>
 
+      {film.invited_by && (
+        // Приглашение по ссылке. Голос не поставлен — человек решает сам.
+        <div className="notice" style={{ cursor: "default" }}>
+          {film.invited_by} зовёт вас на этот фильм. Решать вам — отметьте, если пойдёте.
+        </div>
+      )}
+
       <MarkButtons film={film} kinds={film.my_interests} onChange={updateMarks} full />
+
+      <div className="marks">
+        <InviteButton film={film} />
+      </div>
 
       {/* Три числа принципиально разные — не смешиваем их в одну «оценку» (§11). */}
       <div className="ratings">

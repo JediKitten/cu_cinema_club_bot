@@ -1,5 +1,5 @@
 from app.models.base import Base
-from app.models.catalog import Film, FilmRequest, TmdbSyncState, Watch
+from app.models.catalog import Film, FilmRequest, Referral, TmdbSyncState, Watch
 from app.models.cycle import (
     Attendance,
     AutopilotProposal,
@@ -33,6 +33,7 @@ __all__ = [
     "Hall",
     "Interest",
     "Notification",
+    "Referral",
     "Round",
     "Screening",
     "Setting",

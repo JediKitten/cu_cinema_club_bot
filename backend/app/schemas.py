@@ -57,6 +57,8 @@ class FilmCard(FilmBrief):
     internal_votes: int = 0
     # Публично видно только ЧИСЛО желающих, никогда не поимённый список (§11).
     interested_count: int = 0
+    # Кто позвал на этот фильм по ссылке — подпись в карточке.
+    invited_by: str | None = None
     reviews: list["ReviewOut"] = Field(default_factory=list)
 
 
@@ -412,3 +414,20 @@ class TeamMember(BaseModel):
 
 class RoleIn(BaseModel):
     role: UserRole
+
+
+# --- Пригласительные ссылки -------------------------------------------------
+
+
+class InviteOut(BaseModel):
+    """Ссылка на фильм и то, что уже принесли прежние приглашения."""
+
+    link: str
+    film_id: int
+    invited: int = 0
+    accepted: int = 0
+
+
+class ReferralStatsOut(BaseModel):
+    invited: int
+    accepted: int

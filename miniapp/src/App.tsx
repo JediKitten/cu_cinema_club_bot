@@ -30,6 +30,28 @@ export default function App() {
   // Фильм из поиска ещё не в каталоге — у него есть только tmdb_id.
   const [openFilm, setOpenFilm] = useState<FilmBrief | null>(null);
 
+  // Бот открывает приложение адресом вида ?film=123 — сразу показываем карточку.
+  useEffect(() => {
+    const requested = new URLSearchParams(location.search).get("film");
+    if (requested && /^\d+$/.test(requested)) {
+      setOpenFilm({
+        id: Number(requested),
+        tmdb_id: null,
+        title_ru: "",
+        title_orig: null,
+        year: null,
+        poster_url: null,
+        genres: [],
+        directors: [],
+        in_catalog: true,
+        my_interests: [],
+        can_renew_soon: false,
+        soon_expires_at: null,
+        watched: false,
+      });
+    }
+  }, []);
+
   useEffect(() => {
     initTelegram();
     login()
