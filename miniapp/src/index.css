@@ -629,3 +629,25 @@ h3 {
   font-weight: 600;
   margin: 0 0 2px;
 }
+
+/* --- Карточка поверх списка ------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Прокрутка не уходит в список под карточкой: докрутив до конца описания,
+     пользователь иначе начинал бы листать выдачу за спиной. */
+  overscroll-behavior: contain;
+  /* Выше таб-бара: он в это время всё равно скрыт, но перекрытие должно быть
+     полным, иначе сквозь него ловятся нажатия. */
+  z-index: 20;
+}
+
+.overlay > .screen {
+  max-width: 640px;
+  margin: 0 auto;
+  padding-bottom: 32px;
+}

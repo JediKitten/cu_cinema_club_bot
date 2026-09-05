@@ -57,20 +57,24 @@ export default function App() {
 
   return (
     <div className="app">
-      {openFilm !== null ? (
-        <FilmDetail
-          filmId={openFilm.id}
-          tmdbId={openFilm.tmdb_id}
-          onBack={() => setOpenFilm(null)}
-        />
-      ) : (
-        <>
-          {tab === "catalog" && <Catalog onOpen={open} />}
-          {tab === "mine" && <MyList onOpen={open} />}
-          {tab === "vote" && <Week />}
-          {tab === "admin" && <Admin role={user.role} />}
-          {tab === "more" && <More user={user} />}
-        </>
+      {/* Вкладка остаётся смонтированной под карточкой: иначе возврат из фильма
+          терял бы поисковый запрос, выдачу и место прокрутки. */}
+      {tab === "catalog" && <Catalog onOpen={open} />}
+      {tab === "mine" && <MyList onOpen={open} />}
+      {tab === "vote" && <Week />}
+      {tab === "admin" && <Admin role={user.role} />}
+      {tab === "more" && <More user={user} />}
+
+      {openFilm !== null && (
+        // Карточка накрывает список, а не заменяет его: список под ней жив
+        // и вернётся ровно таким, каким был.
+        <div className="overlay">
+          <FilmDetail
+            filmId={openFilm.id}
+            tmdbId={openFilm.tmdb_id}
+            onBack={() => setOpenFilm(null)}
+          />
+        </div>
       )}
 
       {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
