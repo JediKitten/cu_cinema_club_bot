@@ -307,3 +307,30 @@ input {
   text-align: center;
   padding: 8px 16px 0;
 }
+
+.round-head {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.round-head .meta {
+  margin-top: 2px;
+}
+
+.round-head .badge {
+  margin-top: 8px;
+  background: color-mix(in srgb, var(--soon) 22%, transparent);
+  color: var(--soon);
+}
+
+.tabs-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+h3 {
+  margin: 16px 0 0;
+  font-size: 16px;
+}

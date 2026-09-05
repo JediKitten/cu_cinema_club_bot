@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import date
 from urllib.parse import urlencode
 
 import pytest
@@ -278,3 +279,117 @@ async def test_directors_reach_the_client(client, session):
         f"/api/films/{film.id}/interest", json={"kind": "wishlist"}, headers=headers
     )
     assert marked.json()["film"]["directors"] == ["Андрей Тарковский"]
+
+
+async def _promote(session, tg_id: int, role: UserRole) -> None:
+    import sqlalchemy as sa
+
+    from app.models import User
+
+    await session.execute(sa.update(User).where(User.tg_id == tg_id).values(role=role))
+    await session.commit()
+
+
+async def test_round_flow_and_roles(client, session):
+    films = [Film(title_ru=f"Фильм {i}") for i in range(3)]
+    session.add_all(films)
+    await session.commit()
+
+    boss = await login(client, SUPERADMIN_TG_ID, "Главный")
+    boss_headers = {"Authorization": f"Bearer {boss['token']}"}
+
+    # Обычный пользователь админку не видит.
+    plain = await login(client, 777040, "Студент")
+    assert (
+        await client.get(
+            "/api/admin/round", headers={"Authorization": f"Bearer {plain['token']}"}
+        )
+    ).status_code == 403
+
+    assert (await client.get("/api/admin/round", headers=boss_headers)).json() is None
+
+    opened = await client.post("/api/admin/round", json={}, headers=boss_headers)
+    assert opened.status_code == 201
+    body = opened.json()
+    assert body["stage"] == "collecting"
+    assert len(body["slots"]) == 7
+    # Понедельник следующей недели.
+    assert date.fromisoformat(body["week_start"]).weekday() == 0
+
+    # Несуществующий фильм в шорт-лист не пройдёт.
+    bad = await client.put(
+        "/api/admin/round/shortlist", json={"film_ids": [99999]}, headers=boss_headers
+    )
+    assert bad.status_code == 422
+
+    chosen = [films[0].id, films[2].id]
+    saved = await client.put(
+        "/api/admin/round/shortlist", json={"film_ids": chosen}, headers=boss_headers
+    )
+    assert saved.status_code == 200
+    assert [item["film_id"] for item in saved.json()["shortlist"]] == chosen
+    assert saved.json()["stage"] == "shortlist_review"
+
+    published = await client.post("/api/admin/round/shortlist/publish", headers=boss_headers)
+    assert published.json()["stage"] == "slot_voting"
+
+    # Повторная публикация — конфликт, а не молчаливый успех.
+    assert (
+        await client.post("/api/admin/round/shortlist/publish", headers=boss_headers)
+    ).status_code == 409
+
+
+async def test_moderator_may_build_shortlist_but_not_block_evenings(client, session):
+    """§9: закрытие этапа 1 доступно модератору, блокировка вечеров — нет."""
+    film = Film(title_ru="Кин-дза-дза!")
+    session.add(film)
+    await session.commit()
+
+    boss = await login(client, SUPERADMIN_TG_ID, "Главный")
+    opened = await client.post(
+        "/api/admin/round", json={}, headers={"Authorization": f"Bearer {boss['token']}"}
+    )
+    slot_id = opened.json()["slots"][0]["id"]
+
+    moderator = await login(client, 777041, "Модератор")
+    await _promote(session, 777041, UserRole.MODERATOR)
+    headers = {"Authorization": f"Bearer {moderator['token']}"}
+
+    allowed = await client.put(
+        "/api/admin/round/shortlist", json={"film_ids": [film.id]}, headers=headers
+    )
+    assert allowed.status_code == 200
+
+    refused = await client.post(
+        f"/api/admin/round/slots/{slot_id}/block",
+        json={"blocked": True, "reason": "пары"},
+        headers=headers,
+    )
+    assert refused.status_code == 403
+
+
+async def test_blocked_evening_is_reported(client, session):
+    film = Film(title_ru="Солярис")
+    session.add(film)
+    await session.commit()
+
+    boss = await login(client, SUPERADMIN_TG_ID, "Главный")
+    headers = {"Authorization": f"Bearer {boss['token']}"}
+    opened = await client.post("/api/admin/round", json={}, headers=headers)
+    slot_id = opened.json()["slots"][2]["id"]
+
+    blocked = await client.post(
+        f"/api/admin/round/slots/{slot_id}/block",
+        json={"blocked": True, "reason": "праздник"},
+        headers=headers,
+    )
+    slot = next(s for s in blocked.json()["slots"] if s["id"] == slot_id)
+    assert slot["blocked"] is True
+    assert slot["blocked_reason"] == "праздник"
+
+    unblocked = await client.post(
+        f"/api/admin/round/slots/{slot_id}/block", json={"blocked": False}, headers=headers
+    )
+    slot = next(s for s in unblocked.json()["slots"] if s["id"] == slot_id)
+    assert slot["blocked"] is False
+    assert slot["blocked_reason"] is None

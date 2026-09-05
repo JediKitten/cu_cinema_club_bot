@@ -1,5 +1,14 @@
 import { getInitData } from "./telegram";
-import type { FilmBrief, FilmCard, FilmRequest, InterestKind, InterestState, User } from "./types";
+import type {
+  FilmBrief,
+  FilmCard,
+  FilmRequest,
+  InterestKind,
+  InterestState,
+  Rankings,
+  Round,
+  User,
+} from "./types";
 
 // Пусто по умолчанию: запросы идут на тот же origin, а dev-сервер Vite проксирует
 // их на бэкенд. Переопределяется через VITE_API_URL, если API вынесен отдельно.
@@ -89,3 +98,27 @@ export const createFilmRequest = (payload: {
 }) => request<FilmRequest>("/api/film-requests", { method: "POST", body: JSON.stringify(payload) });
 
 export const myFilmRequests = () => request<FilmRequest[]>("/api/me/film-requests");
+
+// --- Админка ---------------------------------------------------------------
+
+export const getRankings = () => request<Rankings>("/api/admin/rankings");
+
+export const getRound = () => request<Round | null>("/api/admin/round");
+
+export const openRound = () =>
+  request<Round>("/api/admin/round", { method: "POST", body: JSON.stringify({}) });
+
+export const saveShortlist = (filmIds: number[]) =>
+  request<Round>("/api/admin/round/shortlist", {
+    method: "PUT",
+    body: JSON.stringify({ film_ids: filmIds }),
+  });
+
+export const publishShortlist = () =>
+  request<Round>("/api/admin/round/shortlist/publish", { method: "POST" });
+
+export const blockSlot = (slotId: number, blocked: boolean, reason?: string) =>
+  request<Round>(`/api/admin/round/slots/${slotId}/block`, {
+    method: "POST",
+    body: JSON.stringify({ blocked, reason: reason ?? null }),
+  });

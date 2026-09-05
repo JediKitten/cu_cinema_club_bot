@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { login } from "./api";
+import { Admin } from "./screens/Admin";
 import { Catalog } from "./screens/Catalog";
 import { FilmDetail } from "./screens/FilmDetail";
 import { More } from "./screens/More";
@@ -7,13 +8,18 @@ import { MyList } from "./screens/MyList";
 import { initTelegram } from "./telegram";
 import type { FilmBrief, User } from "./types";
 
-type Tab = "catalog" | "mine" | "more";
+type Tab = "catalog" | "mine" | "admin" | "more";
 
 const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: "catalog", icon: "🎞", label: "Каталог" },
   { key: "mine", icon: "★", label: "Мои" },
+  { key: "admin", icon: "⚙", label: "Клуб" },
   { key: "more", icon: "☰", label: "Ещё" },
 ];
+
+// Вкладка админки видна только тем, кто может ей пользоваться. Это удобство,
+// а не защита: права проверяет бэкенд на каждом запросе.
+const ADMIN_ROLES = new Set(["moderator", "admin", "superadmin"]);
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -54,6 +60,7 @@ export default function App() {
         <>
           {tab === "catalog" && <Catalog onOpen={openFilm} />}
           {tab === "mine" && <MyList onOpen={openFilm} />}
+          {tab === "admin" && <Admin />}
           {tab === "more" && <More user={user} />}
         </>
       )}
@@ -61,7 +68,7 @@ export default function App() {
       {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
       {openFilmId === null && (
         <nav className="tabs">
-          {TABS.map((item) => (
+          {TABS.filter((item) => item.key !== "admin" || ADMIN_ROLES.has(user.role)).map((item) => (
             <button
               key={item.key}
               className={tab === item.key ? "is-active" : ""}

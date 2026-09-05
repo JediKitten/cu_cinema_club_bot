@@ -1,9 +1,9 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import FilmRequestStatus, InterestKind, UserRole
+from app.models.enums import FilmRequestStatus, InterestKind, RoundStage, UserRole
 
 
 class UserOut(BaseModel):
@@ -142,3 +142,49 @@ class SandboxIn(BaseModel):
 
 
 FilmCard.model_rebuild()
+
+
+# --- Цикл и шорт-лист (§2, §5) ---------------------------------------------
+
+
+class SlotOut(BaseModel):
+    id: int
+    starts_at: datetime
+    duration_min: int
+    blocked: bool
+    blocked_reason: str | None = None
+    hall_name: str
+    hall_capacity: int
+
+
+class ShortlistItemOut(BaseModel):
+    film_id: int
+    position: int
+    source: str
+    film: FilmBrief
+
+
+class RoundOut(BaseModel):
+    id: int
+    week_start: date
+    stage: RoundStage
+    low_activity: bool
+    shortlist_locked_at: datetime | None = None
+    published_at: datetime | None = None
+    shortlist: list[ShortlistItemOut] = Field(default_factory=list)
+    slots: list[SlotOut] = Field(default_factory=list)
+    # Решение автопилота показывается рядом с ручным выбором как подсказка (§5).
+    autopilot_film_ids: list[int] = Field(default_factory=list)
+
+
+class OpenRoundIn(BaseModel):
+    week_start: date | None = None
+
+
+class ShortlistIn(BaseModel):
+    film_ids: list[int] = Field(min_length=1)
+
+
+class BlockSlotIn(BaseModel):
+    blocked: bool
+    reason: str | None = Field(default=None, max_length=500)

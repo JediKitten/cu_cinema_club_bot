@@ -61,3 +61,66 @@ export type FilmRequest = {
   resolution_comment: string | null;
   created_at: string;
 };
+
+// --- Админка (§5, §10) -----------------------------------------------------
+
+export type RoundStage =
+  | "collecting"
+  | "shortlist_review"
+  | "slot_voting"
+  | "schedule_review"
+  | "published"
+  | "running"
+  | "closed";
+
+export type Slot = {
+  id: number;
+  starts_at: string;
+  duration_min: number;
+  blocked: boolean;
+  blocked_reason: string | null;
+  hall_name: string;
+  hall_capacity: number;
+};
+
+export type ShortlistItem = {
+  film_id: number;
+  position: number;
+  source: string;
+  film: FilmBrief;
+};
+
+export type Round = {
+  id: number;
+  week_start: string;
+  stage: RoundStage;
+  low_activity: boolean;
+  shortlist_locked_at: string | null;
+  published_at: string | null;
+  shortlist: ShortlistItem[];
+  slots: Slot[];
+  autopilot_film_ids: number[];
+};
+
+export type RankRow = {
+  film_id: number;
+  title_ru: string;
+  title_orig: string | null;
+  year: number | null;
+  poster_url: string | null;
+  weight: number;
+  wishlist_count: number;
+  soon_count: number;
+  long_wait_count: number;
+  ext_rating: number | null;
+  ext_votes: number | null;
+  internal_rating: number | null;
+  internal_votes: number;
+  marginal_weight: number | null;
+  screening_history: unknown[];
+};
+
+export type Rankings = {
+  by_weight: RankRow[];
+  by_coverage: RankRow[];
+};
