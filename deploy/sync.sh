@@ -22,7 +22,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 rsync -az --delete \
   --exclude '.git' \
   --exclude '.env' \
-  --exclude '.db_password' \
   --exclude '.pgdata' \
   --exclude 'backend/venv' \
   --exclude 'backend/__pycache__' \
