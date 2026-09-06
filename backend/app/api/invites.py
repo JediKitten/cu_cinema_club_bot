@@ -66,29 +66,38 @@ async def listing(
     return [_out(view) for view in await invites.listing(session)]
 
 
-@router.post("/admin/invites", response_model=InviteCodeOut, status_code=201)
+@router.post("/admin/invites", response_model=list[InviteCodeOut], status_code=201)
 async def create(
     body: InviteIn,
     admin: RequireAdmin,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> InviteCodeOut:
+) -> list[InviteCodeOut]:
+    """Пачка кодов: `count` штук по `max_activations` активаций каждый.
+
+    Ответ всегда список, даже когда код один: одна форма ответа вместо двух.
+    """
     try:
-        code = await invites.create(session, admin.id, body.max_activations, body.note)
+        codes = await invites.create_many(
+            session, admin.id, body.count, body.max_activations, body.note
+        )
     except InviteError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return _out(
-        invites.CodeView(
-            id=code.id,
-            code=code.code,
-            max_activations=code.max_activations,
-            used=0,
-            note=code.note,
-            created_at=code.created_at,
-            created_by=admin.id,
-            created_by_name=admin.display_name,
-            invitees=[],
+    return [
+        _out(
+            invites.CodeView(
+                id=code.id,
+                code=code.code,
+                max_activations=code.max_activations,
+                used=0,
+                note=code.note,
+                created_at=code.created_at,
+                created_by=admin.id,
+                created_by_name=admin.display_name,
+                invitees=[],
+            )
         )
-    )
+        for code in codes
+    ]
 
 
 @router.get("/admin/beta")

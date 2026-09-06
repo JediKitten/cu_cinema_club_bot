@@ -29,6 +29,9 @@ class TelegramAuthIn(BaseModel):
 
 
 class InviteIn(BaseModel):
+    """Сколько кодов выдать и на сколько человек каждый."""
+
+    count: int = Field(default=1, ge=1, le=100)
     max_activations: int = Field(default=1, ge=1, le=1000)
     note: str | None = Field(default=None, max_length=200)
 

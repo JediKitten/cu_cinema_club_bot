@@ -173,7 +173,7 @@ async def test_api_is_closed_until_the_code_is_entered(client, session):
         "/api/admin/invites", json={"max_activations": 1}, headers=boss_headers
     )
     assert created.status_code == 201
-    code = created.json()["code"]
+    code = created.json()[0]["code"]
 
     # Гейт включаем после входа админа: он сам за ним не запирается.
     await SettingsService(session).set_many({"beta_invite_required": True}, None)
@@ -226,7 +226,7 @@ async def test_people_tab_shows_who_came_by_which_code(client, session):
             "/api/admin/invites", json={"max_activations": 3, "note": "первый поток"},
             headers=boss_headers,
         )
-    ).json()["code"]
+    ).json()[0]["code"]
 
     await SettingsService(session).set_many({"beta_invite_required": True}, None)
     await session.commit()
@@ -257,6 +257,44 @@ async def test_moderator_cannot_read_the_people_tab(client, session):
         "/api/admin/people", headers={"Authorization": f"Bearer {other['token']}"}
     )
     assert denied.status_code == 403
+
+
+async def test_batch_gives_several_codes_at_once(session):
+    """Пять кодов по два человека — не то же самое, что один код на десятерых."""
+    boss = await admin(session)
+
+    codes = await invites.create_many(session, boss.id, count=5, max_activations=2, note="поток")
+
+    assert len({code.code for code in codes}) == 5
+    assert all(code.max_activations == 2 for code in codes)
+    listed = await invites.listing(session)
+    assert len(listed) == 5
+    assert all(view.left == 2 and view.note == "поток" for view in listed)
+
+
+async def test_batch_rejects_nonsense(session):
+    boss = await admin(session)
+
+    with pytest.raises(InviteError, match="хотя бы один"):
+        await invites.create_many(session, boss.id, count=0, max_activations=1)
+    with pytest.raises(InviteError, match="хотя бы одна"):
+        await invites.create_many(session, boss.id, count=1, max_activations=0)
+
+
+async def test_batch_is_created_in_one_request(client):
+    boss = await login(client, SUPERADMIN_TG_ID, "Главный")
+
+    created = await client.post(
+        "/api/admin/invites",
+        json={"count": 3, "max_activations": 4},
+        headers={"Authorization": f"Bearer {boss['token']}"},
+    )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert len(body) == 3
+    assert {row["max_activations"] for row in body} == {4}
+    assert len({row["code"] for row in body}) == 3
 
 
 async def test_codes_are_unique(session):

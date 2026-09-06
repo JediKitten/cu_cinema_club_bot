@@ -74,14 +74,16 @@ def has_access(user: User, beta: bool) -> bool:
     return not beta or user.access_granted_at is not None or user.role != UserRole.USER
 
 
-async def create(
-    session: AsyncSession, actor_id: int, max_activations: int, note: str | None = None
+async def _add_one(
+    session: AsyncSession, actor_id: int, max_activations: int, note: str | None
 ) -> InviteCode:
-    if max_activations < 1:
-        raise InviteError("Активаций должно быть хотя бы одна")
+    """Одна запись с уникальным кодом.
 
-    # Совпадение кода маловероятно, но не невозможно: полагаемся на уникальный
-    # индекс, а не на проверку перед вставкой — между ними всё равно есть щель.
+    Совпадение маловероятно, но не невозможно, поэтому полагаемся на уникальный
+    индекс, а не на проверку перед вставкой: между ними всё равно есть щель.
+    Вставка идёт во вложенной транзакции — иначе конфликт одного кода отменил бы
+    всю пачку.
+    """
     for _ in range(5):
         code = InviteCode(
             code=generate(),
@@ -89,24 +91,55 @@ async def create(
             max_activations=max_activations,
             note=(note or "").strip() or None,
         )
-        session.add(code)
         try:
-            await session.flush()
+            async with session.begin_nested():
+                session.add(code)
+                await session.flush()
         except IntegrityError:
-            await session.rollback()
             continue
-        session.add(
-            AuditLog(
-                actor_id=actor_id,
-                entity="invite_code",
-                entity_id=code.id,
-                action="create",
-                payload={"max_activations": max_activations},
-            )
-        )
-        await session.commit()
         return code
     raise InviteError("Не удалось выдать код, попробуйте ещё раз")
+
+
+async def create_many(
+    session: AsyncSession,
+    actor_id: int,
+    count: int,
+    max_activations: int,
+    note: str | None = None,
+) -> list[InviteCode]:
+    """Пачка кодов: `count` штук, у каждого по `max_activations` активаций.
+
+    Один код на группу и по коду на человека — разные задачи: первый экономит
+    переписку, второй отвечает на вопрос «кто именно вошёл». Поэтому оба числа
+    задаются отдельно.
+    """
+    if count < 1:
+        raise InviteError("Кодов должно быть хотя бы один")
+    if max_activations < 1:
+        raise InviteError("Активаций должно быть хотя бы одна")
+
+    codes = [await _add_one(session, actor_id, max_activations, note) for _ in range(count)]
+    session.add(
+        AuditLog(
+            actor_id=actor_id,
+            entity="invite_code",
+            action="create",
+            payload={
+                "codes": [code.code for code in codes],
+                "max_activations": max_activations,
+            },
+        )
+    )
+    await session.commit()
+    return codes
+
+
+async def create(
+    session: AsyncSession, actor_id: int, max_activations: int, note: str | None = None
+) -> InviteCode:
+    """Один код — частный случай пачки."""
+    return (await create_many(session, actor_id, 1, max_activations, note))[0]
 
 
 @dataclass(slots=True)

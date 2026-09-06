@@ -279,10 +279,12 @@ export const redeemCode = (code: string) =>
 
 export const getInviteCodes = () => request<InviteCode[]>("/api/admin/invites");
 
-export const createInviteCode = (maxActivations: number, note: string | null) =>
-  request<InviteCode>("/api/admin/invites", {
+/** Пачка кодов: `count` штук по `maxActivations` активаций каждый.
+ *  Ответ всегда список, даже когда код один. */
+export const createInviteCodes = (count: number, maxActivations: number, note: string | null) =>
+  request<InviteCode[]>("/api/admin/invites", {
     method: "POST",
-    body: JSON.stringify({ max_activations: maxActivations, note }),
+    body: JSON.stringify({ count, max_activations: maxActivations, note }),
   });
 
 export const getBetaState = () =>
