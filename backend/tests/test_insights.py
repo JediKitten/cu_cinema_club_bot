@@ -103,6 +103,22 @@ async def test_no_shows_are_named(session):
     assert [p.display_name for p in stats.no_shows] == [voters[1].display_name]
 
 
+async def test_no_shows_are_empty_until_the_show_starts(session):
+    """До начала отмечаться нельзя — иначе все подтвердившие числились бы неявкой."""
+    round_, films, slots, boss, voters = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+    await sched.confirm(session, screening.id, voters[0].id)
+
+    stats = await insights.screening_stats(
+        session, screening.id, await SettingsService(session).all()
+    )
+
+    assert stats.started is False
+    assert stats.confirmed == 1
+    assert stats.no_shows == []
+
+
 async def test_late_cancel_is_counted_apart(session):
     round_, films, slots, boss, voters = await voted_round(session)
     screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)

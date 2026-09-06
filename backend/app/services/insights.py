@@ -92,6 +92,8 @@ class ScreeningStats:
     no_shows: list[Person] = field(default_factory=list)
     cancelled: int = 0
     late_cancels: int = 0
+    # Показ уже начался: до этого момента «не пришли» считать не из чего.
+    started: bool = False
     # Кворум не набран, а до начала меньше early_warning_hours (§7).
     low_attendance_warning: bool = False
     min_attendance: int = 0
@@ -303,6 +305,10 @@ async def screening_stats(
     capacity = hall.capacity if hall else 0
     minimum = int(values["min_attendance"])
     hours_left = (slot.starts_at - datetime.now(UTC)).total_seconds() / 3600
+    # До начала «не пришли» не существует: отмечаться ещё нельзя, и все, кто
+    # подтвердил, попали бы в список неявившихся. Проведённый показ считаем
+    # начавшимся независимо от часов: статус здесь важнее календаря.
+    started = hours_left <= 0 or screening.status == ScreeningStatus.COMPLETED
 
     film_rating = (
         await session.execute(
@@ -329,7 +335,12 @@ async def screening_stats(
         waitlist=[person(c.user_id, f"в очереди {index + 1}") for index, c in enumerate(waitlist)],
         attended=[person(a.user_id, a.method) for a in attendance],
         # Подтвердил и не пришёл. Отменившие сюда не попадают: они предупредили.
-        no_shows=[person(c.user_id) for c in confirmed if c.user_id not in came_ids],
+        no_shows=(
+            [person(c.user_id) for c in confirmed if c.user_id not in came_ids]
+            if started
+            else []
+        ),
+        started=started,
         cancelled=len(cancelled),
         late_cancels=sum(1 for c in cancelled if c.was_late_cancel),
         low_attendance_warning=(

@@ -171,6 +171,7 @@ class ScreeningStatsOut(BaseModel):
     no_shows: list[PersonOut] = Field(default_factory=list)
     cancelled: int = 0
     late_cancels: int = 0
+    started: bool = False
     low_attendance_warning: bool = False
     min_attendance: int = 0
     film_rating: float | None = None

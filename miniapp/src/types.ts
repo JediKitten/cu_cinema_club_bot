@@ -379,6 +379,8 @@ export type ScreeningStats = {
   no_shows: Person[];
   cancelled: number;
   late_cancels: number;
+  /** Показ начался: до этого «не пришли» считать не из чего. */
+  started: boolean;
   low_attendance_warning: boolean;
   min_attendance: number;
   film_rating: number | null;

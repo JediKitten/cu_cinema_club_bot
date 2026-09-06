@@ -81,7 +81,7 @@ export function ScreeningStatsPanel({ screeningId }: { screeningId: number }) {
           <span>отменили · {stats.late_cancels} поздно</span>
         </div>
         <div className="stat">
-          <b>{stats.no_shows.length}</b>
+          <b>{stats.started ? stats.no_shows.length : "—"}</b>
           <span>не пришли</span>
         </div>
       </div>

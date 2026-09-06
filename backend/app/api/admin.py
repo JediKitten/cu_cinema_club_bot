@@ -207,6 +207,7 @@ async def screening_stats(
         no_shows=people(stats.no_shows),
         cancelled=stats.cancelled,
         late_cancels=stats.late_cancels,
+        started=stats.started,
         low_attendance_warning=stats.low_attendance_warning,
         min_attendance=stats.min_attendance,
         film_rating=stats.film_rating,
