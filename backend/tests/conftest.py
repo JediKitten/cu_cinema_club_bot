@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import get_config
 from app.models import Base
+from app.services import rounds as rounds_service
+from app.services.settings import SettingsService
 
 TEST_DB = "cinema_test"
 _schema_ready = False
@@ -115,3 +117,29 @@ async def login(client, tg_id: int, name: str) -> dict:
     return response.json()
 
 
+
+
+# --- Шорт-лист --------------------------------------------------------------
+
+
+async def set_shortlist(session, round_, film_ids: list[int], actor_id: int):
+    """Собирает шорт-лист внутри окна сборки (среда 20:00 — четверг 08:00).
+
+    Само окно проверяется отдельным тестом; остальным незачем зависеть от того,
+    в какой день недели случился прогон.
+    """
+    values = await SettingsService(session).all()
+    window = rounds_service.shortlist_window(round_.week_start, values)
+    return await rounds_service.set_shortlist(
+        session, round_, film_ids, actor_id, now=window.opens_at
+    )
+
+
+async def open_shortlist_window(session) -> None:
+    """То же для тестов, которые ходят через HTTP: там «сейчас» не подменишь,
+    поэтому раздвигаем само окно на всю неделю, предшествующую неделе показов.
+    """
+    await SettingsService(session).set_many(
+        {"stage1_cut_at": "0 00:00", "stage1_autopilot_at": "6 23:59"}, None
+    )
+    await session.commit()

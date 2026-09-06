@@ -5,12 +5,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
-from app.models import Screening, Slot
-from app.models.enums import ScreeningStatus, UserRole
-from app.services import events, roles
+from app.models import Confirmation, Notification, Screening, Slot
+from app.models.enums import ConfirmationState, ScreeningStatus, UserRole
+from app.services import events, notify, roles
 from app.services.events import EventError
 from app.services.roles import RoleError
-from tests.conftest import login
+from tests.conftest import login, set_shortlist
 from tests.test_weights import make_film, make_user
 
 SOON = datetime.now(UTC) + timedelta(days=3)
@@ -91,6 +91,79 @@ async def test_reveal_replaces_the_teaser_with_a_film(session):
     revealed = await events.reveal(session, event.id, film.id, boss.id)
 
     assert revealed.film_id == film.id
+
+
+async def test_event_can_be_moved_and_confirmations_reset(session):
+    """Перенос — то же правило, что и у показов цикла (§7): вечер другой,
+    значит и «приду» надо подтверждать заново."""
+    boss = await make_user(session, "Админ")
+    guest = await make_user(session, "Гость")
+    await session.commit()
+
+    event = await events.create(session, starts_at=SOON, actor_id=boss.id, title="Встреча")
+    session.add(
+        Confirmation(screening_id=event.id, user_id=guest.id, state=ConfirmationState.CONFIRMED)
+    )
+    await session.commit()
+
+    later = SOON + timedelta(days=1)
+    await events.update(session, event.id, boss.id, {"starts_at": later})
+
+    slot = await session.get(Slot, event.slot_id)
+    assert slot.starts_at == later
+    left = await session.scalar(
+        sa.select(sa.func.count())
+        .select_from(Confirmation)
+        .where(Confirmation.screening_id == event.id)
+    )
+    assert left == 0
+    # Гостя предупредили, а не переставили молча.
+    kinds = (
+        await session.execute(sa.select(Notification.kind).where(Notification.user_id == guest.id))
+    ).scalars().all()
+    assert kinds == ["screening_changed"]
+
+
+async def test_editing_keeps_untouched_fields(session):
+    boss = await make_user(session, "Админ")
+    await session.commit()
+
+    event = await events.create(
+        session, starts_at=SOON, actor_id=boss.id, title="Секрет", note="ждите анонса"
+    )
+    await events.update(session, event.id, boss.id, {"note": "начало в фойе"})
+
+    assert event.title == "Секрет"
+    assert event.note == "начало в фойе"
+    slot = await session.get(Slot, event.slot_id)
+    assert slot.starts_at == SOON
+
+
+async def test_event_cannot_be_left_without_film_and_title(session):
+    boss = await make_user(session, "Админ")
+    film = await make_film(session, "Фильм")
+    await session.commit()
+
+    event = await events.create(session, starts_at=SOON, actor_id=boss.id, film_id=film.id)
+    with pytest.raises(EventError, match="фильм или заголовок"):
+        await events.update(session, event.id, boss.id, {"film_id": None})
+
+
+async def test_event_cannot_move_onto_another(session):
+    boss = await make_user(session, "Админ")
+    await session.commit()
+
+    first = await events.create(session, starts_at=SOON, actor_id=boss.id, title="Первое")
+    second = await events.create(
+        session, starts_at=SOON + timedelta(days=1), actor_id=boss.id, title="Второе"
+    )
+
+    with pytest.raises(EventError, match="уже что-то назначено"):
+        await events.update(session, second.id, boss.id, {"starts_at": SOON})
+    # Само событие при этом осталось на своём месте.
+    slot = await session.get(Slot, second.slot_id)
+    assert slot.starts_at == SOON + timedelta(days=1)
+    assert first.id != second.id
 
 
 async def test_upcoming_skips_the_past(session):
@@ -197,6 +270,48 @@ async def test_role_can_be_taken_away(session):
 
     updated = await roles.assign(session, boss, admin.id, UserRole.USER)
     assert updated.role == UserRole.USER
+
+
+async def test_admin_cannot_touch_another_admin(session):
+    """Иначе разжалование было бы гонкой: прав тот, кто нажал первым."""
+    admin = await make_user(session, "Админ")
+    admin.role = UserRole.ADMIN
+    other = await make_user(session, "Другой админ")
+    other.role = UserRole.ADMIN
+    await session.commit()
+
+    with pytest.raises(RoleError, match="равного"):
+        await roles.assign(session, admin, other.id, UserRole.USER)
+
+
+async def test_role_grant_notifies_the_person(session):
+    """Человек должен узнать о роли, а не наткнуться на новую вкладку."""
+    boss = await make_user(session, "Главный")
+    boss.role = UserRole.SUPERADMIN
+    target = await make_user(session, "Новый модератор")
+    await session.commit()
+
+    await roles.assign(session, boss, target.id, UserRole.MODERATOR)
+
+    queued = (
+        await session.execute(
+            sa.select(Notification).where(Notification.user_id == target.id)
+        )
+    ).scalars().all()
+    assert len(queued) == 1
+    text = notify.render(queued[0].kind, None, "—", queued[0].payload)
+    assert "модератор" in text
+
+    # Снятие роли — тоже новость, но с другим текстом.
+    await roles.assign(session, boss, target.id, UserRole.USER)
+    demoted = (
+        await session.execute(
+            sa.select(Notification)
+            .where(Notification.user_id == target.id)
+            .order_by(Notification.id.desc())
+        )
+    ).scalars().first()
+    assert "изменена" in notify.render(demoted.kind, None, "—", demoted.payload)
 
 
 async def test_team_lists_only_people_with_roles(session):
@@ -307,7 +422,7 @@ async def test_ordinary_user_still_cannot_see_unpublished_round(client, session)
     boss = await login(client, 777001, "Главный")
     boss_id = boss["user"]["id"]
     round_ = await rounds_service.open_round(session, date(2026, 9, 14), boss_id)
-    await rounds_service.set_shortlist(session, round_, [film.id], boss_id)
+    await set_shortlist(session, round_, [film.id], boss_id)
 
     viewer = await login(client, 777098, "Обычный")
     schedule = (
@@ -405,7 +520,7 @@ async def test_voting_week_is_pointed_at_from_another_week(client, session):
     film = await make_film(session, "Фильм")
     await session.commit()
     round_ = await rounds_service.open_round(session, next_week, boss["user"]["id"])
-    await rounds_service.set_shortlist(session, round_, [film.id], boss["user"]["id"])
+    await set_shortlist(session, round_, [film.id], boss["user"]["id"])
     await rounds_service.publish_shortlist(session, round_, boss["user"]["id"])
     assert round_.stage == RoundStage.SLOT_VOTING
 

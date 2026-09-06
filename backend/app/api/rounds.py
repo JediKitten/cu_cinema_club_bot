@@ -21,6 +21,7 @@ from app.schemas import (
 from app.services import autopilot
 from app.services import rounds as rounds_service
 from app.services.rounds import RoundError
+from app.services.settings import SettingsService
 from app.services.tmdb import poster_url
 
 router = APIRouter(prefix="/api/admin/round", tags=["round"])
@@ -58,6 +59,10 @@ async def _serialize(session: AsyncSession, round_: Round) -> RoundOut:
         )
     ).all()
 
+    window = rounds_service.shortlist_window(
+        round_.week_start, await SettingsService(session).all()
+    )
+
     proposal = (
         await session.execute(
             sa.select(AutopilotProposal).where(
@@ -92,6 +97,9 @@ async def _serialize(session: AsyncSession, round_: Round) -> RoundOut:
             for slot, hall in slots
         ],
         autopilot_film_ids=list((proposal.payload or {}).get("film_ids", [])) if proposal else [],
+        shortlist_window_opens_at=window.opens_at,
+        shortlist_window_closes_at=window.closes_at,
+        shortlist_window_open=window.is_open,
     )
 
 

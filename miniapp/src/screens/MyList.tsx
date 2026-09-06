@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { myInterests, myWatched } from "../api";
 import { FilmRow } from "../components/FilmRow";
+import { Section } from "../components/Section";
 import type { FilmBrief, InterestKind, InterestState } from "../types";
 import { isSameFilm, replaceFilm } from "../films";
 
@@ -66,11 +67,12 @@ export function MyList({ onOpen }: Props) {
   return (
     <div className="screen">
       {soon.length > 0 && (
-        <>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Ближайшее</h2>
-          <p className="hint" style={{ marginTop: -6 }}>
-            Эти отметки сгорают сами — продлить можно, когда придёт напоминание.
-          </p>
+        <Section
+          title="Ближайшее"
+          count={soon.length}
+          storageKey="mine-soon"
+          hint="Эти отметки сгорают сами — продлить можно, когда придёт напоминание."
+        >
           {soon.map((item) => (
             <div key={item.film.id}>
               <FilmRow film={item.film} onOpen={onOpen} onMarksChange={handleMarks} />
@@ -81,12 +83,11 @@ export function MyList({ onOpen }: Props) {
               )}
             </div>
           ))}
-        </>
+        </Section>
       )}
 
       {wishlist.length > 0 && (
-        <>
-          <h2 style={{ fontSize: 16, margin: "8px 0 0" }}>Желаемое</h2>
+        <Section title="Желаемое" count={wishlist.length} storageKey="mine-wishlist">
           {wishlist.map((item) => (
             <FilmRow
               key={item.film.id}
@@ -95,19 +96,20 @@ export function MyList({ onOpen }: Props) {
               onMarksChange={handleMarks}
             />
           ))}
-        </>
+        </Section>
       )}
 
       {watched.length > 0 && (
-        <>
-          <h2 style={{ fontSize: 16, margin: "8px 0 0" }}>Просмотренные</h2>
-          <p className="hint" style={{ marginTop: -6 }}>
-            Отметка «Смотрел» ничему не мешает: фильм может быть и здесь, и в желаемом.
-          </p>
+        <Section
+          title="Просмотренные"
+          count={watched.length}
+          storageKey="mine-watched"
+          hint="Отметка «Смотрел» ничему не мешает: фильм может быть и здесь, и в желаемом."
+        >
           {watched.map((film) => (
             <FilmRow key={film.id} film={film} onOpen={onOpen} onMarksChange={handleMarks} />
           ))}
-        </>
+        </Section>
       )}
     </div>
   );

@@ -7,8 +7,7 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import UTC, date, datetime
 
 import sqlalchemy as sa
 from scipy.optimize import linear_sum_assignment
@@ -16,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AutopilotProposal, Round, ShortlistItem, Slot
 from app.models.enums import RoundStage, ShortlistSource
+from app.services import rounds as rounds_service
 from app.services import schedule as schedule_service
 from app.services import voting
 from app.services.ranking import rank_by_coverage
@@ -216,12 +216,8 @@ def deadline_passed(
     Дедлайны относятся к неделе, ПРЕДШЕСТВУЮЩЕЙ неделе показов: шорт-лист
     собирают до её начала, а не во время.
     """
-    weekday, clock = spec.split()
-    hour, minute = (int(part) for part in clock.split(":"))
-    tz = ZoneInfo(tz_name)
-
-    prev_monday = week_start - timedelta(days=7)
-    moment = datetime.combine(
-        prev_monday + timedelta(days=int(weekday)), time(hour, minute), tzinfo=tz
+    # Сам момент считает rounds: тем же расчётом живёт окно сборки шорт-листа,
+    # и разъехаться они не должны.
+    return (now or datetime.now(UTC)) >= rounds_service.deadline_moment(
+        week_start, spec, tz_name
     )
-    return (now or datetime.now(UTC)) >= moment

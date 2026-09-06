@@ -10,6 +10,7 @@ from app.models.enums import RoundStage
 from app.services import rounds as rounds_service
 from app.services import voting
 from app.services.voting import VotingError
+from tests.conftest import set_shortlist
 from tests.test_rounds import admin
 from tests.test_weights import make_film, make_user
 
@@ -23,7 +24,7 @@ async def prepared_round(session, film_count: int = 3):
     films = [await make_film(session, f"Фильм {i}") for i in range(film_count)]
     await session.commit()
 
-    await rounds_service.set_shortlist(session, round_, [f.id for f in films], boss.id)
+    await set_shortlist(session, round_, [f.id for f in films], boss.id)
     await rounds_service.publish_shortlist(session, round_, boss.id)
 
     slots = (

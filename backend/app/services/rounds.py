@@ -5,7 +5,8 @@
 планировщиком, но опираться будет на эти же функции.
 """
 
-from datetime import date, datetime, time, timedelta
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import sqlalchemy as sa
@@ -20,6 +21,52 @@ DAYS_IN_WEEK = 7
 
 class RoundError(ValueError):
     """Нарушение порядка этапов — показываем администратору как есть."""
+
+
+def deadline_moment(week_start: date, spec: str, tz_name: str) -> datetime:
+    """Абсолютный момент дедлайна вида «<день недели> ЧЧ:ММ» (§13).
+
+    Дедлайны относятся к неделе, ПРЕДШЕСТВУЮЩЕЙ неделе показов: шорт-лист
+    собирают до её начала, а не во время.
+    """
+    weekday, clock = spec.split()
+    hour, minute = (int(part) for part in clock.split(":"))
+    prev_monday = week_start - timedelta(days=DAYS_IN_WEEK)
+    return datetime.combine(
+        prev_monday + timedelta(days=int(weekday)),
+        time(hour, minute),
+        tzinfo=ZoneInfo(tz_name),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ShortlistWindow:
+    """Окно, в котором шорт-лист собирают руками (по решению клуба).
+
+    Открывается срезом этапа 1 и закрывается временем автопилота: до среза
+    веса ещё набираются и список был бы преждевременным, после автопилота
+    список уже уходит в голосование. Границы — те же параметры §13, что
+    двигают цикл, чтобы окно и автоматика не разъезжались.
+    """
+
+    opens_at: datetime
+    closes_at: datetime
+    now: datetime
+
+    @property
+    def is_open(self) -> bool:
+        return self.opens_at <= self.now < self.closes_at
+
+
+def shortlist_window(
+    week_start: date, values: dict, now: datetime | None = None
+) -> ShortlistWindow:
+    tz = str(values["display_timezone"])
+    return ShortlistWindow(
+        opens_at=deadline_moment(week_start, str(values["stage1_cut_at"]), tz),
+        closes_at=deadline_moment(week_start, str(values["stage1_autopilot_at"]), tz),
+        now=now or datetime.now(UTC),
+    )
 
 
 def week_start_for(moment: date) -> date:
@@ -127,15 +174,33 @@ async def active_round(session: AsyncSession) -> Round | None:
 
 
 async def set_shortlist(
-    session: AsyncSession, round_: Round, film_ids: list[int], actor_id: int
+    session: AsyncSession,
+    round_: Round,
+    film_ids: list[int],
+    actor_id: int,
+    now: datetime | None = None,
 ) -> list[ShortlistItem]:
     """Заменяет шорт-лист целиком.
 
     Правка списка после публикации меняла бы условия голосования на ходу,
-    поэтому разрешена только до неё.
+    поэтому разрешена только до неё — и только внутри окна сборки
+    (см. shortlist_window).
     """
     if round_.stage not in (RoundStage.COLLECTING, RoundStage.SHORTLIST_REVIEW):
         raise RoundError("Шорт-лист уже опубликован, править его нельзя")
+
+    values = await SettingsService(session).all()
+    window = shortlist_window(round_.week_start, values, now)
+    if not window.is_open:
+        tz = ZoneInfo(str(values["display_timezone"]))
+        when = window.opens_at.astimezone(tz).strftime("%d.%m в %H:%M")
+        raise RoundError(
+            "Шорт-лист собирают только в окне с "
+            f"{window.opens_at.astimezone(tz):%H:%M} до "
+            f"{window.closes_at.astimezone(tz):%H:%M}. "
+            + ("Оно уже закрылось." if window.now >= window.closes_at else f"Откроется {when}.")
+        )
+
     if not film_ids:
         raise RoundError("Шорт-лист не может быть пустым")
     if len(set(film_ids)) != len(film_ids):

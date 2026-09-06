@@ -9,6 +9,7 @@ from app.models.enums import InterestKind, RoundStage, ScreeningStatus
 from app.services import autopilot, voting
 from app.services import rounds as rounds_service
 from app.services.settings import SettingsService
+from tests.conftest import set_shortlist
 from tests.test_rounds import admin
 from tests.test_weights import add_interest, make_film, make_user
 
@@ -90,7 +91,7 @@ async def test_schedule_autopilot_maximises_total_attendance(session):
     round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
     films = [await make_film(session, f"Фильм {i}") for i in range(2)]
     await session.commit()
-    await rounds_service.set_shortlist(session, round_, [f.id for f in films], boss.id)
+    await set_shortlist(session, round_, [f.id for f in films], boss.id)
     await rounds_service.publish_shortlist(session, round_, boss.id)
 
     slots = (
@@ -130,7 +131,7 @@ async def test_slots_below_quorum_are_left_empty(session):
     round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
     film = await make_film(session, "Нишевый")
     await session.commit()
-    await rounds_service.set_shortlist(session, round_, [film.id], boss.id)
+    await set_shortlist(session, round_, [film.id], boss.id)
     await rounds_service.publish_shortlist(session, round_, boss.id)
 
     slots = (
@@ -153,7 +154,7 @@ async def test_apply_schedule_creates_screenings(session):
     round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
     film = await make_film(session, "Популярный")
     await session.commit()
-    await rounds_service.set_shortlist(session, round_, [film.id], boss.id)
+    await set_shortlist(session, round_, [film.id], boss.id)
     await rounds_service.publish_shortlist(session, round_, boss.id)
 
     slots = (
@@ -188,7 +189,7 @@ async def test_monday_is_used_last(session):
     round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
     films = [await make_film(session, f"Фильм {i}") for i in range(2)]
     await session.commit()
-    await rounds_service.set_shortlist(session, round_, [f.id for f in films], boss.id)
+    await set_shortlist(session, round_, [f.id for f in films], boss.id)
     await rounds_service.publish_shortlist(session, round_, boss.id)
 
     slots = (

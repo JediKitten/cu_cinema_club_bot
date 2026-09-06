@@ -184,6 +184,11 @@ class RoundOut(BaseModel):
     slots: list[SlotOut] = Field(default_factory=list)
     # Решение автопилота показывается рядом с ручным выбором как подсказка (§5).
     autopilot_film_ids: list[int] = Field(default_factory=list)
+    # Окно, в котором шорт-лист собирают руками. Интерфейс по нему объясняет,
+    # почему кнопки не нажимаются, вместо того чтобы молча их гасить.
+    shortlist_window_opens_at: datetime | None = None
+    shortlist_window_closes_at: datetime | None = None
+    shortlist_window_open: bool = False
 
 
 class OpenRoundIn(BaseModel):
@@ -400,6 +405,32 @@ class EventIn(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     note: str | None = Field(default=None, max_length=1000)
     duration_min: int = Field(default=180, ge=30, le=600)
+
+
+class EventPatch(BaseModel):
+    """Правка события. Присланы только изменённые поля: отсутствие ключа и None
+    здесь значат разное — снять фильм с анонса и не трогать его."""
+
+    starts_at: datetime | None = None
+    film_id: int | None = None
+    title: str | None = Field(default=None, max_length=200)
+    note: str | None = Field(default=None, max_length=1000)
+    duration_min: int | None = Field(default=None, ge=30, le=600)
+
+
+class EventOut(BaseModel):
+    id: int
+    starts_at: datetime
+    duration_min: int
+    film_id: int | None = None
+    film: FilmBrief | None = None
+    title: str | None = None
+    note: str | None = None
+    confirmed: int = 0
+
+
+class CancelEventIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class RevealIn(BaseModel):

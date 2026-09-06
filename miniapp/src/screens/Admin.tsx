@@ -5,6 +5,7 @@ import { EventPanel } from "../components/EventPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { TeamPanel } from "../components/TeamPanel";
 import { Matrix } from "../components/Matrix";
+import { Section } from "../components/Section";
 import { ScheduleBuilder } from "../components/ScheduleBuilder";
 import {
   blockSlot,
@@ -16,7 +17,7 @@ import {
 } from "../api";
 import { Poster } from "../components/FilmRow";
 import { haptic } from "../telegram";
-import type { RankRow, Rankings, Round, Slot } from "../types";
+import type { RankRow, Rankings, Round, Slot, User } from "../types";
 
 type Tab = "weight" | "coverage";
 
@@ -41,9 +42,25 @@ function slotLabel(slot: Slot): string {
   return `${weekday}, ${at.getDate()}.${String(at.getMonth() + 1).padStart(2, "0")} ${time}`;
 }
 
-type Section = "round" | "events" | "stats" | "team" | "settings";
+function windowNotice(round: Round): string {
+  const opens = new Date(round.shortlist_window_opens_at!);
+  const closes = new Date(round.shortlist_window_closes_at!);
+  const clock = (at: Date) =>
+    at.toLocaleString("ru-RU", {
+      weekday: "short",
+      day: "numeric",
+      month: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  return Date.now() < opens.getTime()
+    ? `Шорт-лист собирают с ${clock(opens)} до ${clock(closes)} — пока только смотрим.`
+    : `Окно сборки закрылось ${clock(closes)}: список ушёл в голосование.`;
+}
 
-const SECTIONS: { key: Section; label: string; superadminOnly?: boolean }[] = [
+type Panel = "round" | "events" | "stats" | "team" | "settings";
+
+const PANELS: { key: Panel; label: string; superadminOnly?: boolean }[] = [
   { key: "round", label: "Цикл" },
   { key: "events", label: "События" },
   { key: "stats", label: "Аналитика" },
@@ -51,8 +68,9 @@ const SECTIONS: { key: Section; label: string; superadminOnly?: boolean }[] = [
   { key: "settings", label: "Параметры", superadminOnly: true },
 ];
 
-export function Admin({ role }: { role: string }) {
-  const [section, setSection] = useState<Section>("round");
+export function Admin({ me }: { me: User }) {
+  const role = me.role;
+  const [panel, setPanel] = useState<Panel>("round");
   const openFilm = useOpenFilmById();
   const [round, setRound] = useState<Round | null>(null);
   const [rankings, setRankings] = useState<Rankings | null>(null);
@@ -101,36 +119,41 @@ export function Admin({ role }: { role: string }) {
 
   if (loading) return <div className="center">Загрузка…</div>;
 
-  const locked = round !== null && round.stage !== "collecting" && round.stage !== "shortlist_review";
+  const stageLocked =
+    round !== null && round.stage !== "collecting" && round.stage !== "shortlist_review";
+  // Собирать шорт-лист руками можно только в окне (решение клуба): до среды
+  // веса ещё набираются, после четверга список уходит в голосование.
+  const windowOpen = round?.shortlist_window_open ?? false;
+  const locked = stageLocked || !windowOpen;
   const rows: RankRow[] = (tab === "weight" ? rankings?.by_weight : rankings?.by_coverage) ?? [];
   const autopilot = new Set(round?.autopilot_film_ids ?? []);
   const dirty =
     round !== null &&
     JSON.stringify(picked) !== JSON.stringify(round.shortlist.map((i) => i.film_id));
 
-  const sections = SECTIONS.filter((s) => !s.superadminOnly || role === "superadmin");
+  const panels = PANELS.filter((s) => !s.superadminOnly || role === "superadmin");
 
   return (
     <div className="screen">
       <div className="tabs-inline">
-        {sections.map((item) => (
+        {panels.map((item) => (
           <button
             key={item.key}
-            className={`mark ${section === item.key ? "is-on mark--wishlist" : ""}`}
-            onClick={() => setSection(item.key)}
+            className={`mark ${panel === item.key ? "is-on mark--wishlist" : ""}`}
+            onClick={() => setPanel(item.key)}
           >
             {item.label}
           </button>
         ))}
       </div>
 
-      {section === "team" && <TeamPanel />}
-      {section === "settings" && <SettingsPanel />}
-      {section === "events" && <EventPanel onCreated={() => setSection("round")} />}
-      {section === "stats" && <Analytics />}
+      {panel === "team" && <TeamPanel me={me} />}
+      {panel === "settings" && <SettingsPanel />}
+      {panel === "events" && <EventPanel onCreated={() => setPanel("round")} />}
+      {panel === "stats" && <Analytics />}
       {error && <div className="error">{error}</div>}
 
-      {section === "round" && (round === null ? (
+      {panel === "round" && (round === null ? (
         <>
           <p className="hint">Активного цикла нет. Откройте цикл на следующую неделю.</p>
           <button
@@ -173,8 +196,13 @@ export function Admin({ role }: { role: string }) {
               : "Простая сумма весов отметок."}
           </p>
 
+          {!stageLocked && !windowOpen && round.shortlist_window_opens_at && (
+            <p className="badge">{windowNotice(round)}</p>
+          )}
+
           {rows.length === 0 && <p className="hint">Пока никто ничего не отметил.</p>}
 
+          <Section title="Фильмы" count={rows.length} storageKey="admin-rankings">
           {rows.map((row) => {
             const chosen = picked.includes(row.film_id);
             return (
@@ -211,6 +239,7 @@ export function Admin({ role }: { role: string }) {
               </div>
             );
           })}
+          </Section>
 
           {!locked && (
             <>
@@ -247,21 +276,23 @@ export function Admin({ role }: { role: string }) {
           )}
 
           {(round.stage === "slot_voting" || round.stage === "schedule_review") && (
-            <>
-              <h3>Матрица «фильм × вечер»</h3>
+            <Section title="Матрица «фильм × вечер»" storageKey="admin-matrix">
               <Matrix />
-            </>
+            </Section>
           )}
 
           {round.stage !== "collecting" && round.stage !== "shortlist_review" && (
-            <>
-              <h3>Показы</h3>
+            <Section title="Показы" storageKey="admin-screenings">
               <ScheduleBuilder shortlist={round.shortlist.map((item) => item.film)} />
-            </>
+            </Section>
           )}
 
-          <h3>Вечера</h3>
-          <p className="hint">Заблокированные вечера автопилот не использует.</p>
+          <Section
+            title="Вечера"
+            count={round.slots.length}
+            storageKey="admin-slots"
+            hint="Заблокированные вечера автопилот не использует."
+          >
           {round.slots.map((slot) => (
             <div className="film-row" key={slot.id} style={{ gridTemplateColumns: "1fr auto" }}>
               <div>
@@ -297,6 +328,7 @@ export function Admin({ role }: { role: string }) {
               </button>
             </div>
           ))}
+          </Section>
         </>
       ))}
     </div>

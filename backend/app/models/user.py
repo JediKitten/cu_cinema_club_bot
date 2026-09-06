@@ -26,6 +26,9 @@ class User(Base, CreatedAtMixin):
     )
     photo_url: Mapped[str | None] = mapped_column(sa.String(512))
     last_seen_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    # Показывали ли знакомство с ботом. Хранится, а не выводится из created_at:
+    # аккаунт может завестись до первого /start — например, по чужой ссылке.
+    onboarded_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(default=True, server_default=sa.true())
 
     def __repr__(self) -> str:  # pragma: no cover

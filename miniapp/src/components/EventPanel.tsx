@@ -1,22 +1,67 @@
-import { useState } from "react";
-import { ApiError, createEvent, searchFilms } from "../api";
+import { useEffect, useState } from "react";
+import {
+  ApiError,
+  cancelEvent,
+  createEvent,
+  listEvents,
+  searchFilms,
+  updateEvent,
+} from "../api";
 import { showMessage } from "../telegram";
-import type { FilmBrief } from "../types";
+import { Section } from "./Section";
+import type { ClubEvent, EventChanges, FilmBrief } from "../types";
 
-/** Событие в обход алгоритма (§10, расширение по просьбе клуба).
- *
- * Фильм необязателен: можно объявить время заранее и раскрыть название позже —
- * ради этого и нужна подпись вроде «ждите анонса».
- */
-export function EventPanel({ onCreated }: { onCreated(): void }) {
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("19:00");
-  const [title, setTitle] = useState("");
-  const [note, setNote] = useState("");
+type Draft = {
+  date: string;
+  time: string;
+  title: string;
+  note: string;
+  film: FilmBrief | null;
+};
+
+const EMPTY: Draft = { date: "", time: "19:00", title: "", note: "", film: null };
+
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** Время события местное: в поля идут части локальной даты, а не UTC из ISO. */
+function toDraft(event: ClubEvent): Draft {
+  const at = new Date(event.starts_at);
+  return {
+    date: `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`,
+    time: `${pad(at.getHours())}:${pad(at.getMinutes())}`,
+    title: event.title ?? "",
+    note: event.note ?? "",
+    film: event.film,
+  };
+}
+
+function startsAt(draft: Draft): string {
+  return new Date(`${draft.date}T${draft.time || "19:00"}:00`).toISOString();
+}
+
+function when(iso: string): string {
+  return new Date(iso).toLocaleString("ru-RU", {
+    weekday: "short",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Поля события. Одни и те же и при создании, и при правке — иначе две формы
+ *  разъезжаются, и в одной из них рано или поздно чего-нибудь не хватает. */
+function EventFields({
+  draft,
+  onChange,
+}: {
+  draft: Draft;
+  onChange(next: Draft): void;
+}) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<FilmBrief[]>([]);
-  const [film, setFilm] = useState<FilmBrief | null>(null);
-  const [busy, setBusy] = useState(false);
 
   async function lookup() {
     if (query.trim().length < 2) return;
@@ -27,67 +72,30 @@ export function EventPanel({ onCreated }: { onCreated(): void }) {
     }
   }
 
-  async function submit() {
-    if (busy || !date) return;
-    if (!film && !title.trim()) {
-      showMessage("Укажите фильм или заголовок события");
-      return;
-    }
-    setBusy(true);
-    try {
-      // Время вводится местное; в ISO с зоной браузера его переведёт сам Date.
-      const startsAt = new Date(`${date}T${time || "19:00"}:00`).toISOString();
-      await createEvent({
-        starts_at: startsAt,
-        film_id: film?.id ?? null,
-        title: title.trim() || null,
-        note: note.trim() || null,
-      });
-      setDate("");
-      setTitle("");
-      setNote("");
-      setFilm(null);
-      setQuery("");
-      setFound([]);
-      showMessage("Событие создано");
-      onCreated();
-    } catch (error) {
-      showMessage(error instanceof ApiError ? error.message : "Не получилось");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <>
-      <h3>Своё событие</h3>
-      <p className="hint">
-        Назначается на любое время, минуя алгоритм. Фильм можно не указывать —
-        тогда напишите заголовок и подпись.
-      </p>
-
       <div className="setting__pair">
         <input
           className="field"
           type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
+          value={draft.date}
+          onChange={(e) => onChange({ ...draft, date: e.target.value })}
         />
         <input
           className="field"
           type="time"
-          value={time}
-          onChange={(e) => setTime(e.target.value)}
+          value={draft.time}
+          onChange={(e) => onChange({ ...draft, time: e.target.value })}
         />
       </div>
 
-      {film ? (
+      {draft.film ? (
         <div className="slot-row">
           <div>
-            <p className="film-row__title">{film.title_ru}</p>
-            <p className="meta">{film.year}</p>
+            <p className="film-row__title">{draft.film.title_ru}</p>
+            <p className="meta">{draft.film.year}</p>
           </div>
-          <button className="mark" onClick={() => setFilm(null)}>
+          <button className="mark" onClick={() => onChange({ ...draft, film: null })}>
             убрать
           </button>
         </div>
@@ -106,8 +114,9 @@ export function EventPanel({ onCreated }: { onCreated(): void }) {
               className="slot-row"
               key={item.id}
               onClick={() => {
-                setFilm(item);
+                onChange({ ...draft, film: item });
                 setFound([]);
+                setQuery("");
               }}
             >
               <div>
@@ -122,18 +131,207 @@ export function EventPanel({ onCreated }: { onCreated(): void }) {
 
       <input
         className="field"
-        value={title}
+        value={draft.title}
         placeholder="Заголовок, если без фильма"
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={(e) => onChange({ ...draft, title: e.target.value })}
       />
       <input
         className="field"
-        value={note}
+        value={draft.note}
         placeholder="Подпись, например «ждите анонса»"
-        onChange={(e) => setNote(e.target.value)}
+        onChange={(e) => onChange({ ...draft, note: e.target.value })}
       />
+    </>
+  );
+}
 
-      <button className="primary" disabled={busy || !date} onClick={submit}>
+/** Правка одного события. Уходит только изменённое: сервер отличает «не трогать
+ *  поле» от «очистить его». */
+function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
+  const [draft, setDraft] = useState<Draft>(() => toDraft(event));
+  const [reason, setReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const initial = toDraft(event);
+
+  function changes(): EventChanges {
+    const patch: EventChanges = {};
+    if (draft.date !== initial.date || draft.time !== initial.time) {
+      patch.starts_at = startsAt(draft);
+    }
+    if ((draft.film?.id ?? null) !== event.film_id) patch.film_id = draft.film?.id ?? null;
+    if (draft.title.trim() !== (event.title ?? "")) patch.title = draft.title.trim() || null;
+    if (draft.note.trim() !== (event.note ?? "")) patch.note = draft.note.trim() || null;
+    return patch;
+  }
+
+  async function save() {
+    const patch = changes();
+    if (Object.keys(patch).length === 0) {
+      showMessage("Ничего не изменилось");
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateEvent(event.id, patch);
+      showMessage(
+        patch.starts_at
+          ? "Событие перенесено. Тем, кто собирался прийти, ушло уведомление."
+          : "Событие обновлено",
+      );
+      onDone();
+    } catch (error) {
+      showMessage(error instanceof ApiError ? error.message : "Не получилось");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function drop() {
+    if (!reason.trim()) {
+      showMessage("Нужна причина: она уйдёт всем, кто собирался прийти");
+      return;
+    }
+    setBusy(true);
+    try {
+      await cancelEvent(event.id, reason.trim());
+      showMessage("Событие отменено");
+      onDone();
+    } catch (error) {
+      showMessage(error instanceof ApiError ? error.message : "Не получилось");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <EventFields draft={draft} onChange={setDraft} />
+      <button className="primary" disabled={busy} onClick={save}>
+        Сохранить
+      </button>
+
+      {cancelling ? (
+        <>
+          <input
+            className="field"
+            value={reason}
+            placeholder="Причина отмены — её увидят все"
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <div className="marks">
+            <button className="mark mark--soon is-on" disabled={busy} onClick={drop}>
+              Отменить событие
+            </button>
+            <button className="mark" disabled={busy} onClick={() => setCancelling(false)}>
+              Не отменять
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="marks">
+          <button className="mark" disabled={busy} onClick={() => setCancelling(true)}>
+            Отменить событие
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Событие в обход алгоритма (§10, расширение по просьбе клуба).
+ *
+ * Фильм необязателен: можно объявить время заранее и раскрыть название позже —
+ * ради этого и нужна подпись вроде «ждите анонса». Уже назначенное событие
+ * правится здесь же: время, фильм, подпись и отмена.
+ */
+export function EventPanel({ onCreated }: { onCreated(): void }) {
+  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [events, setEvents] = useState<ClubEvent[]>([]);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function reload() {
+    try {
+      setEvents(await listEvents());
+    } catch {
+      // Список — подспорье, а не условие создания события.
+      setEvents([]);
+    }
+  }
+
+  useEffect(() => {
+    reload();
+  }, []);
+
+  async function submit() {
+    if (busy || !draft.date) return;
+    if (!draft.film && !draft.title.trim()) {
+      showMessage("Укажите фильм или заголовок события");
+      return;
+    }
+    setBusy(true);
+    try {
+      await createEvent({
+        starts_at: startsAt(draft),
+        film_id: draft.film?.id ?? null,
+        title: draft.title.trim() || null,
+        note: draft.note.trim() || null,
+      });
+      setDraft(EMPTY);
+      showMessage("Событие создано");
+      await reload();
+      onCreated();
+    } catch (error) {
+      showMessage(error instanceof ApiError ? error.message : "Не получилось");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      {events.length > 0 && (
+        <Section title="Назначенные события" count={events.length} storageKey="admin-events">
+          {events.map((event) => (
+            <div className="slot-row" key={event.id} style={{ display: "block" }}>
+              <p className="film-row__title">
+                {event.film?.title_ru ?? event.title ?? "Без названия"}
+              </p>
+              <p className="meta">
+                {when(event.starts_at)}
+                {event.confirmed > 0 && ` · придут ${event.confirmed}`}
+              </p>
+              {event.note && <p className="hint">{event.note}</p>}
+              {editing === event.id ? (
+                <EventEditor
+                  event={event}
+                  onDone={async () => {
+                    setEditing(null);
+                    await reload();
+                  }}
+                />
+              ) : (
+                <div className="marks">
+                  <button className="mark" onClick={() => setEditing(event.id)}>
+                    Изменить
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </Section>
+      )}
+
+      <h3>Своё событие</h3>
+      <p className="hint">
+        Назначается на любое время, минуя алгоритм. Фильм можно не указывать —
+        тогда напишите заголовок и подпись.
+      </p>
+
+      <EventFields draft={draft} onChange={setDraft} />
+
+      <button className="primary" disabled={busy || !draft.date} onClick={submit}>
         Создать событие
       </button>
     </>

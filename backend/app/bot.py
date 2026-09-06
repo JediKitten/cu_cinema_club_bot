@@ -1,7 +1,7 @@
 """Telegram-бот (§12, §17).
 
-Пока делает одно: пускает в Mini App и объясняет, что это такое. Уведомления
-этапов 3–4 и ввод кода присутствия появятся здесь же.
+Пускает в Mini App, знакомит с клубом при первом запуске и разгребает очередь
+уведомлений. Ввод кода присутствия появится здесь же.
 
 Запуск: ./venv/bin/python -m app.bot
 """
@@ -14,8 +14,10 @@ from zoneinfo import ZoneInfo
 import sqlalchemy as sa
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
+    CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     MenuButtonWebApp,
@@ -57,7 +59,69 @@ HELP = (
     "Всё происходит в приложении — кнопка «Открыть киноклуб» под /start.\n\n"
     "Команды:\n"
     "/start — открыть каталог\n"
+    "/tour — знакомство: что умеет клуб\n"
     "/help — эта справка"
+)
+
+# Знакомство при первом запуске: человек видит всё, что умеет клуб, до того,
+# как откроет приложение, — иначе половина возможностей так и остаётся
+# незамеченной. Листается кнопками, каждый шаг — про одну вещь.
+TOUR: tuple[tuple[str, str], ...] = (
+    (
+        "Что здесь происходит",
+        "Киноклуб выбирает фильмы не голосованием «кто громче», а по интересу "
+        "всех участников: вы отмечаете, что хотите посмотреть, а раз в неделю "
+        "из этих отметок собирается шорт-лист и подбирается вечер, когда "
+        "свободно больше всего людей.\n\n"
+        "Ничего не нужно организовывать — достаточно отмечать фильмы.",
+    ),
+    (
+        "Две кнопки на карточке",
+        "🟣 <b>Желаемое</b> — «когда-нибудь хочу». Остаётся навсегда и медленно "
+        "теряет вес: свежее желание значит больше давнего.\n\n"
+        "🟠 <b>Ближайшее</b> — «готов пойти в ближайшие две недели». Весит "
+        "втрое больше, но через две недели само становится «Желаемым».\n\n"
+        "Состояние всегда одно: вторая кнопка снимает первую. Есть ещё "
+        "<b>«Смотрел»</b> — она ничему не мешает, фильм можно оставить "
+        "в желаемом, чтобы сходить снова.",
+    ),
+    (
+        "Каталог и поиск",
+        "Во вкладке <b>«Каталог»</b> — сотня фильмов на старте и поиск по всей "
+        "базе TMDB: если фильма у нас нет, он появится в момент вашей первой "
+        "отметки.\n\n"
+        "Не нашли совсем — оставьте заявку во вкладке «Ещё», её разберут "
+        "модераторы.\n\n"
+        "Список сортируется по популярности, по году и по тому, чего сильнее "
+        "всего хотят в клубе.",
+    ),
+    (
+        "Как выбирается фильм недели",
+        "Среда, 20:00 — срез: считаются веса всех отметок.\n"
+        "Четверг — публикуется шорт-лист, начинается голосование: вы отмечаете "
+        "фильмы, которые готовы посмотреть, и вечера, когда вам удобно.\n"
+        "Воскресенье — расписание готово.\n\n"
+        "Дальше вкладка <b>«Расписание»</b>: там показы недели и кнопка "
+        "«Приду». Если мест нет, вы встаёте в очередь — освободится, придёт "
+        "уведомление.",
+    ),
+    (
+        "На показе и после",
+        "На месте ведущий показывает код — введите его в приложении, "
+        "и присутствие зачтётся.\n\n"
+        "После показа можно поставить оценку и написать отзыв: из них "
+        "складывается внутренний рейтинг клуба, который виден на карточке "
+        "рядом с внешним.\n\n"
+        "Бот сам напомнит о показе за сутки и за два часа.",
+    ),
+    (
+        "Позвать своих",
+        "На карточке любого фильма есть <b>приглашение</b> — ссылка, которая "
+        "ведёт друга прямо на этот фильм в боте.\n\n"
+        "Голос за него никто не поставит: приглашённый видит карточку и решает "
+        "сам, одним нажатием. Так вес фильма остаётся честным.\n\n"
+        "Вот и всё — открывайте каталог.",
+    ),
 )
 
 
@@ -81,8 +145,9 @@ def open_app_keyboard(url: str) -> InlineKeyboardMarkup:
 
 
 async def _ensure_user(session, message: Message) -> User:
-    """Аккаунт может ещё не существовать: человек пришёл по ссылке, не открыв
-    приложение. Заводим сразу, иначе приглашение некому засчитать."""
+    """Аккаунт может ещё не существовать: человек написал боту, не открыв
+    приложение. Заводим сразу — иначе ни приглашение засчитать, ни запомнить,
+    что знакомство уже показывали."""
     tg_id = message.from_user.id
     user = (
         await session.execute(sa.select(User).where(User.tg_id == tg_id))
@@ -99,6 +164,38 @@ async def _ensure_user(session, message: Message) -> User:
         session.add(user)
         await session.commit()
     return user
+
+
+def tour_text(step: int) -> str:
+    title, body = TOUR[step]
+    return f"<b>{title}</b>\n\n{body}\n\n<i>{step + 1} из {len(TOUR)}</i>"
+
+
+def tour_keyboard(step: int, url: str) -> InlineKeyboardMarkup:
+    nav: list[InlineKeyboardButton] = []
+    if step > 0:
+        nav.append(InlineKeyboardButton(text="‹ Назад", callback_data=f"tour:{step - 1}"))
+    if step < len(TOUR) - 1:
+        nav.append(InlineKeyboardButton(text="Дальше ›", callback_data=f"tour:{step + 1}"))
+
+    rows = [nav] if nav else []
+    if url:
+        # Кнопка приложения на каждом шаге: знакомство можно бросить в любой
+        # момент, а не дочитывать ради единственной кнопки в конце.
+        rows.append(
+            [InlineKeyboardButton(text="🎬 Открыть киноклуб", web_app=WebAppInfo(url=url))]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def mark_onboarded(tg_id: int) -> None:
+    async with SessionLocal() as session:
+        await session.execute(
+            sa.update(User)
+            .where(User.tg_id == tg_id, User.onboarded_at.is_(None))
+            .values(onboarded_at=sa.func.now())
+        )
+        await session.commit()
 
 
 def build_dispatcher() -> Dispatcher:
@@ -154,7 +251,38 @@ def build_dispatcher() -> Dispatcher:
                 "Пока открыть каталог нельзя."
             )
             return
+
+        async with SessionLocal() as session:
+            user = await _ensure_user(session, message)
+            first_time = user.onboarded_at is None
+
+        if first_time:
+            # Первый запуск — показываем знакомство, а не короткое приветствие:
+            # иначе о половине возможностей человек никогда не узнает.
+            await mark_onboarded(message.from_user.id)
+            await message.answer(tour_text(0), reply_markup=tour_keyboard(0, miniapp_url))
+            return
+
         await message.answer(WELCOME, reply_markup=open_app_keyboard(miniapp_url))
+
+    @dispatcher.message(Command("tour"))
+    async def tour_command(message: Message) -> None:
+        """Знакомство можно перечитать: /tour, а не «удалите чат и начните заново»."""
+        await message.answer(tour_text(0), reply_markup=tour_keyboard(0, current_miniapp_url()))
+
+    @dispatcher.callback_query(F.data.startswith("tour:"))
+    async def tour_step(callback: CallbackQuery) -> None:
+        _, _, raw = callback.data.partition(":")
+        step = max(0, min(int(raw) if raw.isdigit() else 0, len(TOUR) - 1))
+        try:
+            await callback.message.edit_text(
+                tour_text(step), reply_markup=tour_keyboard(step, current_miniapp_url())
+            )
+        except TelegramBadRequest:
+            # Двойное нажатие на ту же кнопку: текст не изменился, Telegram
+            # считает это ошибкой. Для человека ничего не произошло.
+            pass
+        await callback.answer()
 
     @dispatcher.message(Command("help"))
     async def help_command(message: Message) -> None:

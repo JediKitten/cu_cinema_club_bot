@@ -116,3 +116,5 @@ class NotificationKind(StrEnum):
     ADMIN_LOW_ATTENDANCE = "admin_low_attendance"
     ADMIN_CANCEL_REQUEST = "admin_cancel_request"
     ADMIN_FILM_REQUEST = "admin_film_request"
+    # Роль выдана: человек должен узнать об этом, а не наткнуться на новую вкладку.
+    ROLE_GRANTED = "role_granted"

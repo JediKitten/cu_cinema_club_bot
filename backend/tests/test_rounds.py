@@ -1,6 +1,6 @@
 """Цикл: слоты, шорт-лист, порядок этапов (§2, §3, §5, §10)."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -12,6 +12,7 @@ from app.services import autopilot
 from app.services import rounds as rounds_service
 from app.services.rounds import RoundError, next_week_start, week_start_for
 from app.services.settings import SettingsService
+from tests.conftest import set_shortlist
 from tests.test_weights import add_interest, make_film, make_user
 
 
@@ -74,8 +75,8 @@ async def test_shortlist_replaces_previous_selection(session):
     films = [await make_film(session, f"Фильм {i}") for i in range(4)]
     await session.commit()
 
-    await rounds_service.set_shortlist(session, round_, [films[0].id, films[1].id], boss.id)
-    await rounds_service.set_shortlist(session, round_, [films[2].id, films[3].id], boss.id)
+    await set_shortlist(session, round_, [films[0].id, films[1].id], boss.id)
+    await set_shortlist(session, round_, [films[2].id, films[3].id], boss.id)
 
     items = (
         await session.execute(
@@ -89,6 +90,36 @@ async def test_shortlist_replaces_previous_selection(session):
     assert round_.stage == RoundStage.SHORTLIST_REVIEW
 
 
+async def test_shortlist_window_opens_wednesday_evening_and_closes_thursday_morning(session):
+    """Собирать шорт-лист руками можно только в окне (решение клуба).
+
+    Окно считается от недели, предшествующей неделе показов: среда 20:00 —
+    четверг 08:00, те же параметры §13, по которым цикл двигает автопилот.
+    """
+    boss = await admin(session)
+    round_ = await rounds_service.open_round(session, date(2026, 9, 14), boss.id)
+    film = await make_film(session, "Фильм")
+    await session.commit()
+
+    values = await SettingsService(session).all()
+    window = rounds_service.shortlist_window(round_.week_start, values)
+    moscow = ZoneInfo("Europe/Moscow")
+    assert window.opens_at.astimezone(moscow) == datetime(2026, 9, 9, 20, tzinfo=moscow)
+    assert window.closes_at.astimezone(moscow) == datetime(2026, 9, 10, 8, tzinfo=moscow)
+
+    too_early = window.opens_at - timedelta(minutes=1)
+    with pytest.raises(RoundError, match="только в окне"):
+        await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=too_early)
+
+    too_late = window.closes_at
+    with pytest.raises(RoundError, match="закрылось"):
+        await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=too_late)
+
+    inside = window.opens_at + timedelta(hours=1)
+    items = await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=inside)
+    assert [item.film_id for item in items] == [film.id]
+
+
 async def test_shortlist_rejects_duplicates(session):
     boss = await admin(session)
     round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
@@ -96,7 +127,7 @@ async def test_shortlist_rejects_duplicates(session):
     await session.commit()
 
     with pytest.raises(RoundError, match="повторяются"):
-        await rounds_service.set_shortlist(session, round_, [film.id, film.id], boss.id)
+        await set_shortlist(session, round_, [film.id, film.id], boss.id)
 
 
 async def test_publish_requires_shortlist(session):
@@ -112,7 +143,7 @@ async def test_publish_opens_voting_and_locks_shortlist(session):
     round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
     film = await make_film(session, "Сталкер")
     await session.commit()
-    await rounds_service.set_shortlist(session, round_, [film.id], boss.id)
+    await set_shortlist(session, round_, [film.id], boss.id)
 
     await rounds_service.publish_shortlist(session, round_, boss.id)
     assert round_.stage == RoundStage.SLOT_VOTING
@@ -120,7 +151,7 @@ async def test_publish_opens_voting_and_locks_shortlist(session):
 
     # После публикации список менять нельзя: это меняло бы условия голосования.
     with pytest.raises(RoundError, match="опубликован"):
-        await rounds_service.set_shortlist(session, round_, [film.id], boss.id)
+        await set_shortlist(session, round_, [film.id], boss.id)
 
 
 async def test_publish_refused_when_every_evening_blocked(session):
@@ -129,7 +160,7 @@ async def test_publish_refused_when_every_evening_blocked(session):
     round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
     film = await make_film(session, "Солярис")
     await session.commit()
-    await rounds_service.set_shortlist(session, round_, [film.id], boss.id)
+    await set_shortlist(session, round_, [film.id], boss.id)
 
     slots = (
         await session.execute(sa.select(Slot).where(Slot.round_id == round_.id))

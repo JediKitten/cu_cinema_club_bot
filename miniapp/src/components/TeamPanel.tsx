@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, findUsers, getGrantableRoles, getTeam, setUserRole } from "../api";
 import { showMessage } from "../telegram";
-import type { Role, TeamMember } from "../types";
+import type { Role, TeamMember, User } from "../types";
 
 const ROLE_LABEL: Record<Role, string> = {
   user: "участник",
@@ -10,12 +10,15 @@ const ROLE_LABEL: Record<Role, string> = {
   superadmin: "главный администратор",
 };
 
+// Тот же порядок, что и на сервере: менять роль можно только тому, кто ниже вас.
+const RANK: Record<Role, number> = { user: 0, moderator: 1, admin: 2, superadmin: 3 };
+
 /** Назначение ролей (§9).
  *
  * Какие роли доступны — решает сервер: админ выдаёт модераторов, главный админ
  * ещё и администраторов. Список приходит оттуда, чтобы правило жило в одном месте.
  */
-export function TeamPanel() {
+export function TeamPanel({ me }: { me: User }) {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [grantable, setGrantable] = useState<Role[]>([]);
   const [query, setQuery] = useState("");
@@ -59,14 +62,26 @@ export function TeamPanel() {
     }
   }
 
+  /** Кого этот администратор вправе трогать.
+   *
+   * Себя — нельзя: клуб остался бы без главного админа, и вернуть роль было бы
+   * некому. Равного — тоже: иначе разжалование превращается в гонку, где прав
+   * тот, кто нажал первым. Правило то же, что на сервере; здесь оно только
+   * убирает кнопки, которые всё равно ответили бы отказом.
+   */
+  function editable(member: TeamMember): boolean {
+    return member.id !== me.id && RANK[member.role] < RANK[me.role];
+  }
+
   function RoleButtons({ member }: { member: TeamMember }) {
+    if (!editable(member)) return null;
     return (
       <div className="marks" style={{ marginTop: 6 }}>
         {grantable.map((role) => (
           <button
             key={role}
             className={`mark ${member.role === role ? "is-on mark--wishlist" : ""}`}
-            disabled={busy || member.role === role || member.role === "superadmin"}
+            disabled={busy || member.role === role}
             onClick={() => assign(member, role)}
           >
             {ROLE_LABEL[role]}
@@ -85,8 +100,11 @@ export function TeamPanel() {
             {member.display_name}
             {member.tg_username && <span className="hint"> @{member.tg_username}</span>}
           </p>
-          <p className="meta">{ROLE_LABEL[member.role]}</p>
-          {member.role !== "superadmin" && <RoleButtons member={member} />}
+          <p className="meta">
+            {ROLE_LABEL[member.role]}
+            {member.id === me.id && " · это вы"}
+          </p>
+          <RoleButtons member={member} />
         </div>
       ))}
 
@@ -109,7 +127,11 @@ export function TeamPanel() {
             {member.tg_username && <span className="hint"> @{member.tg_username}</span>}
           </p>
           <p className="meta">сейчас: {ROLE_LABEL[member.role]}</p>
-          <RoleButtons member={member} />
+          {editable(member) ? (
+            <RoleButtons member={member} />
+          ) : (
+            <p className="hint">Роль этого человека вам менять нельзя.</p>
+          )}
         </div>
       ))}
     </>

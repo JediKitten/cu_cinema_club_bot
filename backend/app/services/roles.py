@@ -2,14 +2,18 @@
 
 Главный админ назначает админов и модераторов, админ — только модераторов.
 Понижать себя нельзя: иначе клуб может остаться без главного администратора,
-и вернуть роль будет некому.
+и вернуть роль будет некому. Равного себе тоже трогать нельзя — иначе два
+администратора могли бы разжаловать друг друга, и побеждал бы тот, кто успел.
 """
+
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AuditLog, User
-from app.models.enums import UserRole
+from app.models.enums import NotificationKind, UserRole
+from app.services import notify
 
 
 class RoleError(ValueError):
@@ -20,6 +24,27 @@ class RoleError(ValueError):
 GRANTABLE: dict[UserRole, set[UserRole]] = {
     UserRole.SUPERADMIN: {UserRole.USER, UserRole.MODERATOR, UserRole.ADMIN},
     UserRole.ADMIN: {UserRole.USER, UserRole.MODERATOR},
+}
+
+TITLE: dict[UserRole, str] = {
+    UserRole.USER: "участник",
+    UserRole.MODERATOR: "модератор",
+    UserRole.ADMIN: "администратор",
+    UserRole.SUPERADMIN: "главный администратор",
+}
+
+# Что человек получил вместе с ролью. Здесь, а не в шаблоне уведомления:
+# права описаны в одном месте с правилами их выдачи.
+ABILITIES: dict[UserRole, str] = {
+    UserRole.MODERATOR: (
+        "Вам доступна вкладка «Клуб»: заявки на фильмы, отметка присутствия "
+        "и список пришедших."
+    ),
+    UserRole.ADMIN: (
+        "Вам доступна вкладка «Клуб»: шорт-лист недели, расстановка показов "
+        "и публикация расписания, свои события в обход алгоритма, "
+        "аналитика и назначение модераторов."
+    ),
 }
 
 
@@ -41,6 +66,14 @@ async def assign(
     if target.role == UserRole.SUPERADMIN:
         raise RoleError("Роль главного администратора меняется только в настройках сервера")
 
+    if target.role.rank >= actor.role.rank:
+        # Админ не трогает другого админа: иначе разжалование превращалось бы
+        # в гонку, где прав тот, кто нажал первым.
+        raise RoleError("Нельзя менять роль равного вам по правам")
+
+    if target.role == role:
+        raise RoleError(f"У этого человека уже роль «{TITLE[role]}»")
+
     previous = target.role
     target.role = role
     session.add(
@@ -51,6 +84,19 @@ async def assign(
             action="set_role",
             payload={"from": previous, "to": role},
         )
+    )
+    await notify.queue(
+        session,
+        target.id,
+        NotificationKind.ROLE_GRANTED,
+        # Метка времени в ключе: роль могут выдать, снять и выдать снова —
+        # каждый раз это отдельная новость, а не повтор прежней.
+        dedup_key=f"role:{target.id}:{role}:{datetime.now(UTC).isoformat(timespec='seconds')}",
+        payload={
+            "role_title": TITLE[role],
+            "abilities": ABILITIES.get(role),
+            "demoted": role.rank < previous.rank,
+        },
     )
     await session.commit()
     return target

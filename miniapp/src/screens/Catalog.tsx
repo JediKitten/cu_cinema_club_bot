@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { browseFilms, searchFilms } from "../api";
+import { browseFilms, CATALOG_PAGE, searchFilms } from "../api";
 import { FilmRow } from "../components/FilmRow";
 import type { FilmBrief, InterestKind } from "../types";
 import { replaceFilm } from "../films";
@@ -22,6 +22,9 @@ export function Catalog({ onOpen }: Props) {
   const [sort, setSort] = useState<Sort>("popular");
   const [films, setFilms] = useState<FilmBrief[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Пришла ли последняя страница целиком: если да, дальше есть что грузить.
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
 
@@ -33,11 +36,14 @@ export function Catalog({ onOpen }: Props) {
     // Пауза перед запросом: поиск ходит в TMDB, дёргать его на каждую букву дорого.
     const timer = setTimeout(async () => {
       try {
-        const result = trimmed.length >= 2 ? await searchFilms(trimmed) : await browseFilms(sort);
+        const searching = trimmed.length >= 2;
+        const result = searching ? await searchFilms(trimmed) : await browseFilms(sort);
         // Ответ на устаревший запрос игнорируем, иначе медленный ранний ответ
         // перезапишет свежий.
         if (id === requestId.current) {
           setFilms(result);
+          // У поиска своя выдача и своя граница — подгружать там нечего.
+          setHasMore(!searching && result.length === CATALOG_PAGE);
           setError(null);
         }
       } catch (e) {
@@ -49,6 +55,24 @@ export function Catalog({ onOpen }: Props) {
 
     return () => clearTimeout(timer);
   }, [query, sort]);
+
+  async function loadMore() {
+    if (loadingMore) return;
+    const id = requestId.current;
+    setLoadingMore(true);
+    try {
+      const next = await browseFilms(sort, films.length);
+      // Пока грузили, могли переключить сортировку — тогда ответ уже не к месту.
+      if (id === requestId.current) {
+        setFilms((current) => [...current, ...next]);
+        setHasMore(next.length === CATALOG_PAGE);
+      }
+    } catch (e) {
+      if (id === requestId.current) setError(e instanceof Error ? e.message : "Ошибка загрузки");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   function handleMarks(kinds: InterestKind[], updated: FilmBrief) {
     setFilms((current) =>
@@ -107,6 +131,12 @@ export function Catalog({ onOpen }: Props) {
           onMarksChange={handleMarks}
         />
       ))}
+
+      {hasMore && (
+        <button className="primary" disabled={loadingMore} onClick={loadMore}>
+          {loadingMore ? "Загружаем…" : "Показать ещё"}
+        </button>
+      )}
     </div>
   );
 }

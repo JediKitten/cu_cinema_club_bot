@@ -20,6 +20,8 @@ import type {
   Schedule,
   ScreeningCode,
   Slot,
+  ClubEvent,
+  EventChanges,
   TeamMember,
   User,
 } from "./types";
@@ -82,8 +84,11 @@ export async function login(): Promise<User> {
 export const searchFilms = (query: string) =>
   request<FilmBrief[]>(`/api/films/search?q=${encodeURIComponent(query)}`);
 
-export const browseFilms = (sort: string, offset = 0) =>
-  request<FilmBrief[]>(`/api/films?sort=${sort}&offset=${offset}`);
+// Страница крупная: каталог листают, а не изучают по тридцать строк.
+export const CATALOG_PAGE = 40;
+
+export const browseFilms = (sort: string, offset = 0, limit = CATALOG_PAGE) =>
+  request<FilmBrief[]>(`/api/films?sort=${sort}&offset=${offset}&limit=${limit}`);
 
 export const getFilm = (filmId: number) => request<FilmCard>(`/api/films/${filmId}`);
 
@@ -270,3 +275,19 @@ export const createEvent = (payload: {
   title: string | null;
   note: string | null;
 }) => request<{ id: number }>("/api/admin/events", { method: "POST", body: JSON.stringify(payload) });
+
+export const listEvents = () => request<ClubEvent[]>("/api/admin/events");
+
+/** Правка: уходят только изменённые поля — сервер отличает «не трогать»
+ *  от «очистить», и снять фильм с анонса можно, не затирая подпись. */
+export const updateEvent = (eventId: number, changes: EventChanges) =>
+  request<ClubEvent>(`/api/admin/events/${eventId}`, {
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+
+export const cancelEvent = (eventId: number, reason: string) =>
+  request<ClubEvent>(`/api/admin/events/${eventId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });

@@ -380,7 +380,7 @@ async def cancel_screening(
     screening.decided_by = actor_id
     screening.decided_at = datetime.now(UTC)
 
-    await _notify_affected(session, screening, NotificationKind.SCREENING_CANCELLED,
+    await notify_affected(session, screening, NotificationKind.SCREENING_CANCELLED,
                            {"reason": reason.strip()})
     session.add(
         AuditLog(
@@ -428,15 +428,16 @@ async def move_screening(
     time_changed = old_slot.starts_at != target.starts_at
     screening.slot_id = slot_id
 
-    if time_changed:
-        await _reset_confirmations(session, screening)
-
-    await _notify_affected(
+    # Сначала уведомление, потом сброс: адресатов берут из подтверждений,
+    # и удалённых уже не найти.
+    await notify_affected(
         session,
         screening,
         NotificationKind.SCREENING_CHANGED,
         {"time_changed": time_changed, "starts_at": target.starts_at.isoformat()},
     )
+    if time_changed:
+        await reset_confirmations(session, screening)
     session.add(
         AuditLog(
             actor_id=actor_id,
@@ -450,16 +451,21 @@ async def move_screening(
     return screening
 
 
-async def _reset_confirmations(session: AsyncSession, screening: Screening) -> None:
+async def reset_confirmations(session: AsyncSession, screening: Screening) -> None:
+    """Публична: ею же пользуются ручные события при переносе (§10)."""
     await session.execute(
         sa.delete(Confirmation).where(Confirmation.screening_id == screening.id)
     )
 
 
-async def _notify_affected(
+async def notify_affected(
     session: AsyncSession, screening: Screening, kind: NotificationKind, payload: dict
 ) -> None:
-    """Уведомления получают только затронутые пользователи (§7)."""
+    """Уведомления получают только затронутые пользователи (§7).
+
+    Публична: тем же правилом пользуются ручные события — у них нет цикла,
+    но есть те, кто уже собрался прийти.
+    """
     users = (
         (
             await session.execute(

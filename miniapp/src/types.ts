@@ -107,6 +107,10 @@ export type Round = {
   shortlist: ShortlistItem[];
   slots: Slot[];
   autopilot_film_ids: number[];
+  // Окно ручной сборки шорт-листа: среда 20:00 — четверг 08:00.
+  shortlist_window_opens_at: string | null;
+  shortlist_window_closes_at: string | null;
+  shortlist_window_open: boolean;
 };
 
 export type RankRow = {
@@ -300,4 +304,24 @@ export type Invite = {
   film_id: number;
   invited: number;
   accepted: number;
+};
+
+/** Событие вне цикла: фильм необязателен, время любое (§10 + решение клуба). */
+export type ClubEvent = {
+  id: number;
+  starts_at: string;
+  duration_min: number;
+  film_id: number | null;
+  film: FilmBrief | null;
+  title: string | null;
+  note: string | null;
+  confirmed: number;
+};
+
+/** Правка события: присутствие ключа и значит «менять это поле». */
+export type EventChanges = {
+  starts_at?: string;
+  film_id?: number | null;
+  title?: string | null;
+  note?: string | null;
 };

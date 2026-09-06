@@ -112,6 +112,18 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                 f"⚠️ Мало подтверждений\n\n{film_line}\n{when}\n\n"
                 f"Придут {confirmed}, кворум {needed}. Решение о проведении за вами."
             )
+        case NotificationKind.ROLE_GRANTED:
+            # Что именно человек теперь умеет, решает вызывающий: список прав
+            # живёт в roles.py, а не размазывается по шаблонам сообщений.
+            title = payload.get("role_title", "новая роль")
+            if payload.get("demoted"):
+                return f"Ваша роль в клубе изменена: <b>{title}</b>."
+            parts = [
+                f"🔑 Вам выдали роль: <b>{title}</b>",
+                payload.get("abilities"),
+                "Откройте приложение — вкладка «Клуб» уже на месте.",
+            ]
+            return "\n\n".join(part for part in parts if part)
         case NotificationKind.FILM_REQUEST_RESOLVED:
             if payload.get("approved"):
                 return "✅ Ваш фильм добавлен в каталог — можно отмечать."

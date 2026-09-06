@@ -691,3 +691,41 @@ h3 {
   overflow-x: auto;
   white-space: nowrap;
 }
+
+/* --- Сворачиваемые разделы -------------------------------------------------- */
+
+.section {
+  display: contents;
+}
+
+.section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  color: var(--text);
+}
+
+.section__title .hint {
+  font-weight: 500;
+}
+
+.section__chevron {
+  color: var(--hint);
+  font-size: 13px;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+
+.section__chevron.is-open {
+  transform: none;
+}
+
+.section__hint {
+  margin: -2px 0 2px;
+}

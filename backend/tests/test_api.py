@@ -10,7 +10,12 @@ import pytest
 from app.config import get_config
 from app.models import Film
 from app.models.enums import UserRole
-from tests.conftest import SUPERADMIN_TG_ID, login, make_init_data
+from tests.conftest import (
+    SUPERADMIN_TG_ID,
+    login,
+    make_init_data,
+    open_shortlist_window,
+)
 
 
 async def test_health(client):
@@ -302,6 +307,8 @@ async def test_round_flow_and_roles(client, session):
     # Понедельник следующей недели.
     assert date.fromisoformat(body["week_start"]).weekday() == 0
 
+    await open_shortlist_window(session)
+
     # Несуществующий фильм в шорт-лист не пройдёт.
     bad = await client.put(
         "/api/admin/round/shortlist", json={"film_ids": [99999]}, headers=boss_headers
@@ -340,6 +347,7 @@ async def test_moderator_may_build_shortlist_but_not_block_evenings(client, sess
     moderator = await login(client, 777041, "Модератор")
     await _promote(session, 777041, UserRole.MODERATOR)
     headers = {"Authorization": f"Bearer {moderator['token']}"}
+    await open_shortlist_window(session)
 
     allowed = await client.put(
         "/api/admin/round/shortlist", json={"film_ids": [film.id]}, headers=headers

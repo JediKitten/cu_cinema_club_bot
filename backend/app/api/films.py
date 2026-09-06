@@ -147,6 +147,7 @@ async def browse_films(
         stmt = stmt.outerjoin(wanted, wanted.c.film_id == Film.id).order_by(
             sa.func.coalesce(wanted.c.weight, 0.0).desc(),
             sa.func.coalesce(Film.ext_votes, 0).desc(),
+            Film.id,
         )
     else:
         order = {
@@ -154,7 +155,10 @@ async def browse_films(
             "year": sa.func.coalesce(Film.year, 0).desc(),
             "popular": sa.func.coalesce(Film.ext_votes, 0).desc(),
         }[sort]
-        stmt = stmt.order_by(order)
+        # Film.id последним ключом — иначе у фильмов с равным рейтингом или
+        # годом порядок между запросами плавает, и подгрузка следующей
+        # страницы то теряет строки, то показывает их дважды.
+        stmt = stmt.order_by(order, Film.id)
 
     stmt = stmt.offset(offset).limit(limit)
     films = list((await session.execute(stmt)).scalars())
