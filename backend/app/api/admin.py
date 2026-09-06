@@ -3,10 +3,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import RequireAdmin, RequireSuperadmin
+from app.core.auth import RequireAdmin, RequireModerator, RequireSuperadmin
 from app.db import get_session
 from app.models import AuditLog
-from app.schemas import RankingsOut, RankRow, SandboxIn, SettingOut, SettingsPatch
+from app.schemas import (
+    FilmStatsOut,
+    RankingsOut,
+    RankRow,
+    SandboxIn,
+    ScreeningStatsOut,
+    SettingOut,
+    SettingsPatch,
+)
+from app.services import insights
 from app.services.ranking import FilmRank, rank_by_coverage, rank_by_weight
 from app.services.settings import REGISTRY, SettingsError, SettingsService
 from app.services.tmdb import poster_url
@@ -30,6 +39,7 @@ def _row(rank: FilmRank) -> RankRow:
         ext_votes=rank.ext_votes,
         internal_rating=rank.internal_rating,
         internal_votes=rank.internal_votes,
+        shortlist_misses=rank.shortlist_misses,
         marginal_weight=rank.marginal_weight,
         screening_history=rank.screening_history,
     )
@@ -119,4 +129,88 @@ async def sandbox(
     return RankingsOut(
         by_weight=[_row(r) for r in by_weight],
         by_coverage=[_row(r) for r in by_coverage],
+    )
+
+
+@router.get("/films/{film_id}/stats", response_model=FilmStatsOut)
+async def film_stats(
+    film_id: int,
+    admin: RequireAdmin,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FilmStatsOut:
+    """Разрез по одному фильму: отметки, вес, динамика, история показов (§14).
+
+    Открывается из карточки фильма в любой момент, а не только на отборе —
+    вопрос «почему он тут» возникает не по расписанию.
+    """
+    values = await SettingsService(session).all()
+    stats = await insights.film_stats(
+        session, film_id, WeightParams.from_settings(values), int(values["long_wait_days"])
+    )
+    if stats is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Фильм не найден")
+    return FilmStatsOut(
+        film_id=stats.film_id,
+        weight=stats.weight,
+        wishlist_count=stats.wishlist_count,
+        soon_count=stats.soon_count,
+        long_wait_count=stats.long_wait_count,
+        long_wait_days=int(values["long_wait_days"]),
+        shortlist_misses=stats.shortlist_misses,
+        shortlist_hits=stats.shortlist_hits,
+        internal_rating=stats.internal_rating,
+        internal_votes=stats.internal_votes,
+        dynamics=[
+            {"week_start": point.week_start, "wishlist": point.wishlist, "soon": point.soon}
+            for point in stats.dynamics
+        ],
+        history=[
+            {
+                "screening_id": record.screening_id,
+                "starts_at": record.starts_at.isoformat() if record.starts_at else None,
+                "status": record.status,
+                "expected": record.expected,
+                "came": record.came,
+                "rating": record.rating,
+            }
+            for record in stats.history
+        ],
+    )
+
+
+@router.get("/screenings/{screening_id}/stats", response_model=ScreeningStatsOut)
+async def screening_stats(
+    screening_id: int,
+    moderator: RequireModerator,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScreeningStatsOut:
+    """Всё про один сеанс (§14). Модератору тоже: он ведёт показ в зале."""
+    values = await SettingsService(session).all()
+    stats = await insights.screening_stats(session, screening_id, values)
+    if stats is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Показ не найден")
+
+    def people(items) -> list[dict]:
+        return [
+            {"user_id": p.user_id, "display_name": p.display_name, "detail": p.detail}
+            for p in items
+        ]
+
+    return ScreeningStatsOut(
+        screening_id=stats.screening_id,
+        starts_at=stats.starts_at,
+        capacity=stats.capacity,
+        confirmed=stats.confirmed,
+        fill_rate=stats.fill_rate,
+        waitlist=people(stats.waitlist),
+        attended=people(stats.attended),
+        no_shows=people(stats.no_shows),
+        cancelled=stats.cancelled,
+        late_cancels=stats.late_cancels,
+        low_attendance_warning=stats.low_attendance_warning,
+        min_attendance=stats.min_attendance,
+        film_rating=stats.film_rating,
+        film_rating_votes=stats.film_rating_votes,
+        org_rating=stats.org_rating,
+        org_rating_votes=stats.org_rating_votes,
     )

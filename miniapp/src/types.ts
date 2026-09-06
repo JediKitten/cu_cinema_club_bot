@@ -113,6 +113,15 @@ export type Round = {
   shortlist_window_open: boolean;
 };
 
+export type ScreeningRecord = {
+  screening_id: number;
+  starts_at: string | null;
+  status: string;
+  expected: number | null;
+  came: number;
+  rating: number | null;
+};
+
 export type RankRow = {
   film_id: number;
   title_ru: string;
@@ -127,8 +136,10 @@ export type RankRow = {
   ext_votes: number | null;
   internal_rating: number | null;
   internal_votes: number;
+  // Сколько раз фильм попадал в шорт-лист и так и не получил вечера.
+  shortlist_misses: number;
   marginal_weight: number | null;
-  screening_history: unknown[];
+  screening_history: ScreeningRecord[];
 };
 
 export type Rankings = {
@@ -149,6 +160,8 @@ export type Ballot = {
 
 export type MatrixCell = { film_id: number; slot_id: number; count: number };
 
+export type Assignment = { film_id: number; slot_id: number; expected: number };
+
 export type Matrix = {
   films: FilmBrief[];
   slots: Slot[];
@@ -156,6 +169,12 @@ export type Matrix = {
   film_votes: Record<number, number>;
   slot_free: Record<number, number>;
   voters_without_evening: number;
+  blocked_slots: Slot[];
+  // Решение автопилота рядом с ручным, в теневом режиме (§5, §6).
+  autopilot: Assignment[];
+  manual: Assignment[];
+  autopilot_expected: number;
+  manual_expected: number;
 };
 
 // --- Этап 3: расписание и подтверждения (§7) --------------------------------
@@ -253,8 +272,12 @@ export type Overview = {
   active_users: number;
   no_show_rate: number;
   late_cancels: number;
+  cancelled_share: number;
   by_weekday: Record<string, number>;
   long_wait_films: { title: string; year: number | null; waiting: number; days: number }[];
+  audience_by_week: { week_start: string; people: number }[];
+  no_show_users: { user_id: number; display_name: string; misses: number }[];
+  soon_churn: { expired_marks?: number; people?: number; lapsed?: number };
 };
 
 export type Analytics = {
@@ -324,4 +347,42 @@ export type EventChanges = {
   film_id?: number | null;
   title?: string | null;
   note?: string | null;
+};
+
+/** Разрез по фильму для админа (§14). */
+export type FilmStats = {
+  film_id: number;
+  weight: number;
+  wishlist_count: number;
+  soon_count: number;
+  long_wait_count: number;
+  long_wait_days: number;
+  shortlist_misses: number;
+  shortlist_hits: number;
+  internal_rating: number | null;
+  internal_votes: number;
+  dynamics: { week_start: string; wishlist: number; soon: number }[];
+  history: ScreeningRecord[];
+};
+
+export type Person = { user_id: number; display_name: string; detail: string | null };
+
+/** Разрез по сеансу (§14). */
+export type ScreeningStats = {
+  screening_id: number;
+  starts_at: string;
+  capacity: number;
+  confirmed: number;
+  fill_rate: number;
+  waitlist: Person[];
+  attended: Person[];
+  no_shows: Person[];
+  cancelled: number;
+  late_cancels: number;
+  low_attendance_warning: boolean;
+  min_attendance: number;
+  film_rating: number | null;
+  film_rating_votes: number;
+  org_rating: number | null;
+  org_rating_votes: number;
 };

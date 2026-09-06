@@ -8,8 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, RequireModerator
 from app.db import get_session
-from app.models import Film, Hall, Round, Slot
+from app.models import AutopilotProposal, Film, Hall, Round, Screening, Slot
+from app.models.enums import ScreeningStatus
 from app.schemas import (
+    Assignment,
     AvailabilityIn,
     BallotOut,
     FilmBrief,
@@ -120,6 +122,50 @@ async def matrix(
     built = await voting.build_matrix(session, round_)
     films = await voting.shortlist_films(session, round_)
     slots = await voting.open_slots(session, round_)
+
+    blocked = (
+        await session.execute(
+            sa.select(Slot)
+            .where(Slot.round_id == round_.id, Slot.blocked.is_(True))
+            .order_by(Slot.starts_at)
+        )
+    ).scalars().all()
+
+    # Теневой режим: решение автопилота лежит рядом с ручным, чтобы видеть,
+    # чем расстановка отличается и во сколько человек обходится (§5).
+    proposal = (
+        await session.execute(
+            sa.select(AutopilotProposal).where(
+                AutopilotProposal.round_id == round_.id, AutopilotProposal.stage == 2
+            )
+        )
+    ).scalar_one_or_none()
+    autopilot = [
+        Assignment(**item) for item in ((proposal.payload if proposal else {}) or {}).get(
+            "assignments", []
+        )
+    ]
+
+    placed = (
+        await session.execute(
+            sa.select(Screening).where(
+                Screening.round_id == round_.id,
+                Screening.status != ScreeningStatus.CANCELLED,
+            )
+        )
+    ).scalars().all()
+    manual = [
+        Assignment(
+            film_id=screening.film_id,
+            slot_id=screening.slot_id,
+            # Ожидание берём из матрицы, а не из снимка: параметры могли
+            # поменяться, и два числа на экране разъехались бы.
+            expected=built.cell(screening.film_id, screening.slot_id),
+        )
+        for screening in placed
+        if screening.film_id is not None
+    ]
+
     return MatrixOut(
         films=[_brief(film) for film in films],
         slots=await _slot_out(session, slots),
@@ -130,4 +176,9 @@ async def matrix(
         film_votes=built.film_votes,
         slot_free=built.slot_free,
         voters_without_evening=built.voters_without_evening,
+        blocked_slots=await _slot_out(session, list(blocked)),
+        autopilot=autopilot,
+        manual=manual,
+        autopilot_expected=sum(item.expected for item in autopilot),
+        manual_expected=sum(item.expected for item in manual),
     )

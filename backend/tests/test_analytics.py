@@ -10,8 +10,16 @@ from app.services import analytics
 from app.services import attendance as att
 from app.services import interests as marks
 from app.services import schedule as sched
+from app.services.settings import SettingsService
+from app.services.weights import WeightParams
 from tests.test_schedule import voted_round
 from tests.test_weights import add_interest, make_film, make_user
+
+
+async def summary(session, long_wait_days: int = 90):
+    """Сводка считает и веса — коэффициенты берём из тех же параметров §13."""
+    params = WeightParams.from_settings(await SettingsService(session).all())
+    return await analytics.overview(session, long_wait_days, params)
 
 
 async def held_screening(session):
@@ -60,7 +68,7 @@ async def test_funnel_lists_recent_weeks_first(session):
 async def test_no_show_rate_counts_confirmed_who_did_not_come(session):
     await held_screening(session)
 
-    overview = await analytics.overview(session, long_wait_days=90)
+    overview = await summary(session)
     # Из двух подтвердивших пришёл один.
     assert overview.no_show_rate == 50.0
     assert overview.screenings_held == 1
@@ -78,7 +86,7 @@ async def test_late_cancels_counted(session):
     await session.commit()
     await sched.cancel(session, screening.id, voters[0].id, late_cancel_hours=24)
 
-    overview = await analytics.overview(session, long_wait_days=90)
+    overview = await summary(session)
     assert overview.late_cancels == 1
 
 
@@ -88,7 +96,7 @@ async def test_cancelled_screenings_counted_separately(session):
     await sched.publish_schedule(session, round_, boss.id)
     await sched.cancel_screening(session, screening.id, "не смогли", boss.id)
 
-    overview = await analytics.overview(session, long_wait_days=90)
+    overview = await summary(session)
     assert overview.screenings_cancelled == 1
     assert overview.screenings_held == 0
 
@@ -127,7 +135,7 @@ async def test_attendance_by_weekday(session):
     _, _, screening, _, _ = await held_screening(session)
     slot = await session.get(Slot, screening.slot_id)
 
-    overview = await analytics.overview(session, long_wait_days=90)
+    overview = await summary(session)
     weekday = analytics.WEEKDAYS[slot.starts_at.weekday()]
     assert overview.by_weekday[weekday] == 1.0
 
@@ -142,7 +150,7 @@ async def test_past_screenings_exclude_cancelled(session):
     assert await analytics.past_screenings(session) == []
 
     # А в аналитике отмена видна отдельно.
-    overview = await analytics.overview(session, long_wait_days=90)
+    overview = await summary(session)
     assert overview.screenings_cancelled == 1
 
 
@@ -163,7 +171,7 @@ async def test_past_screenings_exclude_upcoming(session):
 
 async def test_overview_is_safe_on_empty_database(session):
     """Пустая база не должна ронять аналитику делением на ноль."""
-    overview = await analytics.overview(session, long_wait_days=90)
+    overview = await summary(session)
 
     assert overview.rounds == 0
     assert overview.average_attendance == 0.0
@@ -188,7 +196,7 @@ async def test_fill_rate_uses_hall_capacity(session):
     hall.capacity = 4
     await session.commit()
 
-    overview = await analytics.overview(session, long_wait_days=90)
+    overview = await summary(session)
     # Пришёл один из четырёх мест.
     assert overview.hall_fill_rate == 25.0
 
@@ -215,3 +223,54 @@ async def test_screening_history_visible_in_past(session):
     assert row["came"] == 1
     assert row["expected"] == 3  # столько ожидали по матрице
     assert row["status"] == ScreeningStatus.COMPLETED
+
+
+async def test_audience_by_week_counts_people_not_actions(session):
+    """Один человек, четыре действия за неделю — это один активный человек."""
+    _, _, _, _, voters = await held_screening(session)
+
+    weeks = await analytics.audience_by_week(session)
+
+    assert weeks, "неделя с активностью должна быть видна"
+    assert all(point["people"] <= len(voters) + 1 for point in weeks)
+
+
+async def test_no_show_users_names_the_repeat_offenders(session):
+    _, _, _, _, voters = await held_screening(session)
+
+    offenders = await analytics.no_show_users(session)
+
+    # Подтвердили двое, пришёл один — в списке ровно второй.
+    assert [row["display_name"] for row in offenders] == [voters[1].display_name]
+    assert offenders[0]["misses"] == 1
+
+
+async def test_soon_churn_counts_those_who_did_not_come_back(session):
+    """Срок «Ближайшего» вышел, новой отметки нет — человек собирался и пропал."""
+    film = await make_film(session, "Фильм")
+    lapsed = await make_user(session, "Пропал")
+    active = await make_user(session, "Вернулся")
+    other = await make_film(session, "Другой")
+    await session.commit()
+
+    await add_interest(session, lapsed, film, InterestKind.SOON, 30)
+    await add_interest(session, active, film, InterestKind.SOON, 30)
+    # У второго есть и свежая отметка — он никуда не делся.
+    await add_interest(session, active, other, InterestKind.SOON, 1)
+    await session.commit()
+
+    churn = await analytics.soon_churn(
+        session, WeightParams.from_settings(await SettingsService(session).all())
+    )
+
+    assert churn["expired_marks"] == 2
+    assert churn["people"] == 2
+    assert churn["lapsed"] == 1
+
+
+async def test_cancelled_share_is_a_percentage(session):
+    _, _, screening, boss, _ = await held_screening(session)
+    screening.status = ScreeningStatus.CANCELLED
+    await session.commit()
+
+    assert (await summary(session)).cancelled_share == 100.0

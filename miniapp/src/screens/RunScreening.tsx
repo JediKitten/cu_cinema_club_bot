@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { getAttendees, getScreeningCode } from "../api";
 import { timeLabel } from "../dates";
+import { ScreeningStatsPanel } from "../components/ScreeningStatsPanel";
+import { Section } from "../components/Section";
 import type { Attendee, Screening, ScreeningCode } from "../types";
 
 /** Проведение сеанса (§8): экран для зала.
@@ -87,6 +89,10 @@ export function RunScreening({ screening, onBack }: { screening: Screening; onBa
           </p>
         </>
       )}
+
+      <Section title="Статистика сеанса" storageKey="screening-stats" defaultOpen={false}>
+        <ScreeningStatsPanel screeningId={screening.id} />
+      </Section>
 
       <h3>Отметились: {attendees.length}</h3>
       {attendees.length === 0 && <p className="hint">Пока никого.</p>}

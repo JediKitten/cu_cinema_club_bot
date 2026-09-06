@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAnalytics } from "../api";
+import { Bars } from "./Bars";
+import { Section } from "./Section";
 import { weekLabel } from "../dates";
 import type { Analytics as Data, FunnelStep } from "../types";
 
@@ -9,6 +11,11 @@ import type { Analytics as Data, FunnelStep } from "../types";
  * подтверждением и явкой — что подтверждение не воспринимают всерьёз. Поэтому
  * рядом с числом показываем долю от предыдущего шага.
  */
+function shortDay(iso: string): string {
+  const at = new Date(`${iso}T00:00:00`);
+  return `${at.getDate()}.${at.getMonth() + 1}`;
+}
+
 function share(current: number, previous: number): string {
   if (previous === 0) return "—";
   return `${Math.round((current / previous) * 100)}%`;
@@ -88,9 +95,64 @@ export function Analytics() {
         </div>
         <div className="rating">
           <b>{overview.screenings_cancelled}</b>
-          <span>отменено</span>
+          <span>отменено · {overview.cancelled_share}%</span>
+        </div>
+        <div className="rating">
+          <b>{overview.late_cancels}</b>
+          <span>поздних отмен</span>
         </div>
       </div>
+
+      {overview.audience_by_week.length > 0 && (
+        <>
+          <h3>Активная аудитория</h3>
+          <Bars
+            data={overview.audience_by_week.map((point) => ({
+              // Под столбиком помещается только дата понедельника — полная
+              // подпись недели («7–13 сентября») превратила бы ось в кашу.
+              label: shortDay(point.week_start),
+              value: point.people,
+            }))}
+            hint="Сколько разных людей за неделю отметили фильм, проголосовали, подтвердили приход или пришли."
+          />
+        </>
+      )}
+
+      {(overview.soon_churn.people ?? 0) > 0 && (
+        <>
+          <h3>Отток «Ближайшего»</h3>
+          <div className="stats-grid">
+            <div className="stat">
+              <b>{overview.soon_churn.expired_marks ?? 0}</b>
+              <span>отметок истекло</span>
+            </div>
+            <div className="stat">
+              <b>{overview.soon_churn.people ?? 0}</b>
+              <span>у скольких людей</span>
+            </div>
+            <div className="stat">
+              <b>{overview.soon_churn.lapsed ?? 0}</b>
+              <span>не вернулись</span>
+            </div>
+          </div>
+          <p className="hint">
+            Отметка не сгорает, а становится «Желаемым». «Не вернулись» — те, у кого
+            срок вышел и ни одного свежего «Ближайшего» больше нет.
+          </p>
+        </>
+      )}
+
+      {overview.no_show_users.length > 0 && (
+        <Section title="Подтверждают и не приходят" storageKey="stats-noshow" defaultOpen={false}>
+          {overview.no_show_users.map((person) => (
+            <div className="funnel-row" key={person.user_id}>
+              <span>{person.display_name}</span>
+              <b>{person.misses}</b>
+              <span className="hint">раз</span>
+            </div>
+          ))}
+        </Section>
+      )}
 
       {Object.keys(overview.by_weekday).length > 0 && (
         <>

@@ -4,10 +4,18 @@ import { Poster } from "../components/FilmRow";
 import { MarkButtons } from "../components/MarkButtons";
 import { InviteButton } from "../components/InviteButton";
 import { WatchedButton } from "../components/WatchedButton";
+import { FilmStatsPanel } from "../components/FilmStatsPanel";
+import { Section } from "../components/Section";
 import { useTelegramBackButton } from "../telegram";
 import type { FilmBrief, FilmCard, InterestKind } from "../types";
 
-type Props = { filmId: number | null; tmdbId?: number | null; onBack(): void };
+type Props = {
+  filmId: number | null;
+  tmdbId?: number | null;
+  /** Админская статистика по фильму — только тем, кто отбирает шорт-лист. */
+  withStats?: boolean;
+  onBack(): void;
+};
 
 function runtime(minutes: number | null): string | null {
   if (!minutes) return null;
@@ -15,7 +23,7 @@ function runtime(minutes: number | null): string | null {
   return hours ? `${hours} ч ${minutes % 60} мин` : `${minutes} мин`;
 }
 
-export function FilmDetail({ filmId, tmdbId, onBack }: Props) {
+export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props) {
   const [film, setFilm] = useState<FilmCard | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,6 +123,12 @@ export function FilmDetail({ filmId, tmdbId, onBack }: Props) {
       )}
 
       {film.overview && <p className="overview">{film.overview}</p>}
+
+      {withStats && film.id !== null && (
+        <Section title="Статистика клуба" storageKey="film-stats" defaultOpen={false}>
+          <FilmStatsPanel filmId={film.id} />
+        </Section>
+      )}
 
       {film.reviews.length > 0 && (
         <>

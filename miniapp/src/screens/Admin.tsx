@@ -17,7 +17,7 @@ import {
 } from "../api";
 import { Poster } from "../components/FilmRow";
 import { haptic } from "../telegram";
-import type { RankRow, Rankings, Round, Slot, User } from "../types";
+import type { RankRow, Rankings, Round, ScreeningRecord, Slot, User } from "../types";
 
 type Tab = "weight" | "coverage";
 
@@ -40,6 +40,17 @@ function slotLabel(slot: Slot): string {
   const weekday = WEEKDAYS[(at.getDay() + 6) % 7];
   const time = at.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   return `${weekday}, ${at.getDate()}.${String(at.getMonth() + 1).padStart(2, "0")} ${time}`;
+}
+
+function showLabel(record: ScreeningRecord): string {
+  const day = record.starts_at
+    ? new Date(record.starts_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+    : "—";
+  if (record.status === "cancelled") return `${day} (отменён)`;
+  // Пришло из ожидавшихся: одно это сравнение и говорит, стоил ли показ вечера.
+  return record.expected !== null
+    ? `${day} — ${record.came} из ${record.expected}`
+    : `${day} — ${record.came}`;
 }
 
 function windowNotice(round: Round): string {
@@ -222,6 +233,24 @@ export function Admin({ me }: { me: User }) {
                     🟣 {row.wishlist_count} · 🟠 {row.soon_count}
                     {row.long_wait_count > 0 && ` · давно ждут: ${row.long_wait_count}`}
                   </p>
+                  {/* Три числа принципиально разные, поэтому в одну оценку
+                      их не сводим (§11): внешний рейтинг, рейтинг клуба и то,
+                      сколько раз фильм оставался без вечера. */}
+                  <p className="meta">
+                    {row.ext_rating !== null && `TMDB ${row.ext_rating}`}
+                    {row.internal_rating !== null &&
+                      ` · клуб ${row.internal_rating} (${row.internal_votes})`}
+                    {row.shortlist_misses > 0 && ` · без вечера: ${row.shortlist_misses}`}
+                  </p>
+                  {row.screening_history.length > 0 && (
+                    <p className="meta">
+                      уже показывали:{" "}
+                      {row.screening_history
+                        .slice(0, 3)
+                        .map((record) => showLabel(record))
+                        .join(", ")}
+                    </p>
+                  )}
                   <div className="marks">
                     <button
                       className={`mark ${chosen ? "is-on mark--wishlist" : ""}`}

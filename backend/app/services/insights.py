@@ -1,0 +1,345 @@
+"""Статистика для администратора (§14, расширение по просьбе клуба).
+
+Два экрана, которым нужны не агрегаты по клубу, а разрез по одному объекту:
+карточка фильма («почему он в шорт-листе и что с ним было раньше») и карточка
+сеанса («сколько придёт, кто в очереди, кто не пришёл»).
+
+Ничего не материализуем: как и веса, всё считается из событий. Цифры на экране
+всегда согласованы с тем, что сейчас в базе, и не расходятся с историей после
+смены параметров §13.
+"""
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import (
+    Attendance,
+    Confirmation,
+    Feedback,
+    Film,
+    Hall,
+    Interest,
+    Screening,
+    ShortlistItem,
+    Slot,
+    User,
+)
+from app.models.enums import ConfirmationState, InterestKind, ScreeningStatus
+from app.services.weights import (
+    WeightParams,
+    active_interest_clause,
+    age_days_expr,
+    interest_weight_expr,
+)
+
+# Сколько недель показывать в динамике интереса. Семестр — это примерно
+# столько; более длинный хвост на телефоне всё равно нечитаем.
+DYNAMICS_WEEKS = 16
+
+
+@dataclass(slots=True)
+class WeekPoint:
+    week_start: str
+    wishlist: int
+    soon: int
+
+
+@dataclass(slots=True)
+class ScreeningRecord:
+    screening_id: int
+    starts_at: datetime | None
+    status: str
+    expected: int | None
+    came: int
+    rating: float | None
+
+
+@dataclass(slots=True)
+class FilmStats:
+    film_id: int
+    weight: float
+    wishlist_count: int
+    soon_count: int
+    long_wait_count: int
+    # Сколько раз фильм попадал в шорт-лист и так и не был назначен.
+    shortlist_misses: int
+    shortlist_hits: int
+    internal_rating: float | None
+    internal_votes: int
+    dynamics: list[WeekPoint] = field(default_factory=list)
+    history: list[ScreeningRecord] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class Person:
+    user_id: int
+    display_name: str
+    detail: str | None = None
+
+
+@dataclass(slots=True)
+class ScreeningStats:
+    screening_id: int
+    starts_at: datetime
+    capacity: int
+    confirmed: int
+    fill_rate: float
+    waitlist: list[Person] = field(default_factory=list)
+    attended: list[Person] = field(default_factory=list)
+    no_shows: list[Person] = field(default_factory=list)
+    cancelled: int = 0
+    late_cancels: int = 0
+    # Кворум не набран, а до начала меньше early_warning_hours (§7).
+    low_attendance_warning: bool = False
+    min_attendance: int = 0
+    film_rating: float | None = None
+    film_rating_votes: int = 0
+    org_rating: float | None = None
+    org_rating_votes: int = 0
+
+
+async def shortlist_misses(
+    session: AsyncSession, film_ids: list[int]
+) -> dict[int, tuple[int, int]]:
+    """{film_id: (сколько раз попадал в шорт-лист без показа, сколько с показом)}.
+
+    Попадание без показа — единственный сигнал, что фильм систематически
+    проигрывает расстановку: по весам он проходит, а вечера ему не достаётся.
+    """
+    if not film_ids:
+        return {}
+
+    held = (
+        sa.select(Screening.round_id, Screening.film_id)
+        .where(Screening.status != ScreeningStatus.CANCELLED, Screening.round_id.is_not(None))
+        .subquery()
+    )
+    rows = await session.execute(
+        sa.select(
+            ShortlistItem.film_id,
+            sa.func.count().filter(held.c.film_id.is_(None)).label("missed"),
+            sa.func.count().filter(held.c.film_id.is_not(None)).label("hit"),
+        )
+        .outerjoin(
+            held,
+            sa.and_(
+                held.c.round_id == ShortlistItem.round_id,
+                held.c.film_id == ShortlistItem.film_id,
+            ),
+        )
+        .where(ShortlistItem.film_id.in_(film_ids))
+        .group_by(ShortlistItem.film_id)
+    )
+    return {film_id: (missed, hit) for film_id, missed, hit in rows}
+
+
+async def screening_history(
+    session: AsyncSession, film_ids: list[int]
+) -> dict[int, list[ScreeningRecord]]:
+    """Прошлые показы фильма: дата, ожидаемая и фактическая явка, оценка."""
+    if not film_ids:
+        return {}
+
+    rows = await session.execute(
+        sa.select(
+            Screening.film_id,
+            Screening.id,
+            Slot.starts_at,
+            Screening.status,
+            Screening.expected_attendance,
+            sa.select(sa.func.count())
+            .select_from(Attendance)
+            .where(Attendance.screening_id == Screening.id)
+            .scalar_subquery()
+            .label("came"),
+            sa.select(sa.func.avg(Feedback.film_rating))
+            .where(Feedback.screening_id == Screening.id, Feedback.film_rating.is_not(None))
+            .scalar_subquery()
+            .label("rating"),
+        )
+        .join(Slot, Slot.id == Screening.slot_id)
+        .where(Screening.film_id.in_(film_ids))
+        .order_by(Slot.starts_at.desc())
+    )
+    history: dict[int, list[ScreeningRecord]] = {}
+    for film_id, screening_id, starts_at, status, expected, came, rating in rows:
+        history.setdefault(film_id, []).append(
+            ScreeningRecord(
+                screening_id=screening_id,
+                starts_at=starts_at,
+                status=status,
+                expected=expected,
+                came=came or 0,
+                rating=round(float(rating), 2) if rating is not None else None,
+            )
+        )
+    return history
+
+
+async def interest_dynamics(
+    session: AsyncSession, film_id: int, weeks: int = DYNAMICS_WEEKS
+) -> list[WeekPoint]:
+    """Сколько отметок каждого вида ставили на фильм по неделям.
+
+    Считаем по моменту постановки отметки, а не по её нынешнему состоянию:
+    вопрос «когда интерес рос» не имеет отношения к тому, жива ли отметка
+    сегодня.
+    """
+    since = datetime.now(UTC) - timedelta(weeks=weeks)
+    week = sa.func.date_trunc("week", Interest.created_at)
+    rows = await session.execute(
+        sa.select(
+            week.label("week"),
+            sa.func.count().filter(Interest.kind == InterestKind.WISHLIST),
+            sa.func.count().filter(Interest.kind == InterestKind.SOON),
+        )
+        .where(Interest.film_id == film_id, Interest.created_at >= since)
+        .group_by(week)
+        .order_by(week)
+    )
+    return [
+        WeekPoint(week_start=start.date().isoformat(), wishlist=wishlist, soon=soon)
+        for start, wishlist, soon in rows
+    ]
+
+
+async def film_stats(
+    session: AsyncSession, film_id: int, params: WeightParams, long_wait_days: int
+) -> FilmStats | None:
+    if await session.get(Film, film_id) is None:
+        return None
+
+    age = age_days_expr(Interest.created_at)
+    counts = (
+        await session.execute(
+            sa.select(
+                sa.func.coalesce(sa.func.sum(interest_weight_expr(params)), 0.0),
+                sa.func.count().filter(Interest.kind == InterestKind.WISHLIST),
+                sa.func.count().filter(Interest.kind == InterestKind.SOON),
+                sa.func.count(sa.distinct(Interest.user_id)).filter(age > long_wait_days),
+            ).where(active_interest_clause(), Interest.film_id == film_id)
+        )
+    ).one()
+    weight, wishlist_count, soon_count, long_wait_count = counts
+
+    rating_row = (
+        await session.execute(
+            sa.select(sa.func.avg(Feedback.film_rating), sa.func.count(Feedback.film_rating)).where(
+                Feedback.film_id == film_id, Feedback.film_rating.is_not(None)
+            )
+        )
+    ).one()
+
+    missed, hit = (await shortlist_misses(session, [film_id])).get(film_id, (0, 0))
+    return FilmStats(
+        film_id=film_id,
+        weight=round(float(weight or 0.0), 3),
+        wishlist_count=wishlist_count,
+        soon_count=soon_count,
+        long_wait_count=long_wait_count,
+        shortlist_misses=missed,
+        shortlist_hits=hit,
+        internal_rating=round(float(rating_row[0]), 2) if rating_row[1] else None,
+        internal_votes=rating_row[1],
+        dynamics=await interest_dynamics(session, film_id),
+        history=(await screening_history(session, [film_id])).get(film_id, []),
+    )
+
+
+ORG_FIELDS = (Feedback.org_sound, Feedback.org_picture, Feedback.org_hall, Feedback.org_time)
+
+
+async def _people(session: AsyncSession, user_ids: list[int]) -> dict[int, str]:
+    if not user_ids:
+        return {}
+    rows = await session.execute(
+        sa.select(User.id, User.display_name).where(User.id.in_(user_ids))
+    )
+    return dict(rows.all())
+
+
+async def screening_stats(
+    session: AsyncSession, screening_id: int, values: dict
+) -> ScreeningStats | None:
+    """Всё про один сеанс: до показа — кто придёт, после — кто пришёл."""
+    screening = await session.get(Screening, screening_id)
+    if screening is None:
+        return None
+    slot = await session.get(Slot, screening.slot_id)
+    hall = await session.get(Hall, slot.hall_id)
+
+    confirmations = (
+        await session.execute(
+            sa.select(Confirmation)
+            .where(Confirmation.screening_id == screening_id)
+            .order_by(Confirmation.created_at)
+        )
+    ).scalars().all()
+
+    confirmed = [c for c in confirmations if c.state == ConfirmationState.CONFIRMED]
+    waitlist = [c for c in confirmations if c.state == ConfirmationState.WAITLIST]
+    cancelled = [c for c in confirmations if c.state == ConfirmationState.CANCELLED]
+
+    attendance = (
+        await session.execute(
+            sa.select(Attendance)
+            .where(Attendance.screening_id == screening_id)
+            .order_by(Attendance.marked_at)
+        )
+    ).scalars().all()
+
+    came_ids = {a.user_id for a in attendance}
+    names = await _people(
+        session,
+        [c.user_id for c in confirmations] + [a.user_id for a in attendance],
+    )
+
+    def person(user_id: int, detail: str | None = None) -> Person:
+        return Person(user_id=user_id, display_name=names.get(user_id, "—"), detail=detail)
+
+    capacity = hall.capacity if hall else 0
+    minimum = int(values["min_attendance"])
+    hours_left = (slot.starts_at - datetime.now(UTC)).total_seconds() / 3600
+
+    film_rating = (
+        await session.execute(
+            sa.select(sa.func.avg(Feedback.film_rating), sa.func.count(Feedback.film_rating)).where(
+                Feedback.screening_id == screening_id, Feedback.film_rating.is_not(None)
+            )
+        )
+    ).one()
+
+    # Оценка организации — отдельное число и в рейтинг фильма не входит (§8).
+    # Средним по четырём полям, чтобы «звук, картинка, зал, время» читались
+    # одной цифрой; пустые поля просто не участвуют.
+    org_rows = await session.execute(
+        sa.select(*ORG_FIELDS).where(Feedback.screening_id == screening_id)
+    )
+    marks = [value for row in org_rows for value in row if value is not None]
+
+    return ScreeningStats(
+        screening_id=screening_id,
+        starts_at=slot.starts_at,
+        capacity=capacity,
+        confirmed=len(confirmed),
+        fill_rate=round(len(confirmed) / capacity * 100, 1) if capacity else 0.0,
+        waitlist=[person(c.user_id, f"в очереди {index + 1}") for index, c in enumerate(waitlist)],
+        attended=[person(a.user_id, a.method) for a in attendance],
+        # Подтвердил и не пришёл. Отменившие сюда не попадают: они предупредили.
+        no_shows=[person(c.user_id) for c in confirmed if c.user_id not in came_ids],
+        cancelled=len(cancelled),
+        late_cancels=sum(1 for c in cancelled if c.was_late_cancel),
+        low_attendance_warning=(
+            screening.status == ScreeningStatus.SCHEDULED
+            and 0 < hours_left <= int(values["early_warning_hours"])
+            and len(confirmed) < minimum
+        ),
+        min_attendance=minimum,
+        film_rating=round(float(film_rating[0]), 2) if film_rating[1] else None,
+        film_rating_votes=film_rating[1],
+        org_rating=round(sum(marks) / len(marks), 2) if marks else None,
+        org_rating_votes=len(marks),
+    )

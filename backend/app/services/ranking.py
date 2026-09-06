@@ -10,8 +10,9 @@ from dataclasses import dataclass, field
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Feedback, Film, Interest, Screening
-from app.models.enums import FilmStatus, InterestKind, ScreeningStatus
+from app.models import Feedback, Film, Interest
+from app.models.enums import FilmStatus, InterestKind
+from app.services import insights
 from app.services.weights import WeightParams, active_interest_clause, interest_weight_expr
 
 
@@ -30,6 +31,8 @@ class FilmRank:
     ext_votes: int | None
     internal_rating: float | None = None
     internal_votes: int = 0
+    # Сколько раз фильм попадал в шорт-лист и так и не получил вечера.
+    shortlist_misses: int = 0
     screening_history: list[dict] = field(default_factory=list)
     # Заполняется только в рейтинге по покрытию: прирост охвата на своём шаге.
     marginal_weight: float | None = None
@@ -118,22 +121,28 @@ async def _film_facts(
             row.internal_rating = round(float(avg), 2)
             row.internal_votes = count
 
-    # История показов: админу при отборе показывается, когда фильм уже крутили,
-    # с ожидаемой и фактической явкой (§5, §8 — кулдаунов нет, но контекст нужен).
-    history = await session.execute(
-        sa.select(Screening)
-        .where(Screening.film_id.in_(film_ids), Screening.status != ScreeningStatus.CANCELLED)
-        .order_by(Screening.created_at.desc())
-    )
-    for screening in history.scalars():
-        if row := rows.get(screening.film_id):
-            row.screening_history.append(
+    # История показов: админу при отборе видно, когда фильм уже крутили, с
+    # ожидаемой и фактической явкой (§5, §8 — кулдаунов нет, но контекст нужен).
+    for film_id, records in (await insights.screening_history(session, film_ids)).items():
+        if row := rows.get(film_id):
+            row.screening_history = [
                 {
-                    "screening_id": screening.id,
-                    "status": screening.status,
-                    "expected_attendance": screening.expected_attendance,
+                    "screening_id": record.screening_id,
+                    "starts_at": record.starts_at.isoformat() if record.starts_at else None,
+                    "status": record.status,
+                    "expected_attendance": record.expected,
+                    "came": record.came,
+                    "rating": record.rating,
                 }
-            )
+                for record in records
+            ]
+
+    # Попадания в шорт-лист без показа: фильм проходит по весам, а вечера ему
+    # не достаётся — повод поставить его вручную, а не ждать ещё цикл.
+    for film_id, (missed, _) in (await insights.shortlist_misses(session, film_ids)).items():
+        if row := rows.get(film_id):
+            row.shortlist_misses = missed
+
     return rows
 
 

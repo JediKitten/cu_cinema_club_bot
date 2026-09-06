@@ -22,6 +22,8 @@ import type {
   Slot,
   ClubEvent,
   EventChanges,
+  FilmStats,
+  ScreeningStats,
   TeamMember,
   User,
 } from "./types";
@@ -243,6 +245,13 @@ export const getAttendees = (screeningId: number) =>
 // --- Аналитика -------------------------------------------------------------
 
 export const getAnalytics = () => request<Analytics>("/api/admin/analytics");
+
+// Разрезы по одному объекту: «почему этот фильм» и «кто придёт на этот сеанс».
+export const getFilmStats = (filmId: number) =>
+  request<FilmStats>(`/api/admin/films/${filmId}/stats`);
+
+export const getScreeningStats = (screeningId: number) =>
+  request<ScreeningStats>(`/api/admin/screenings/${screeningId}/stats`);
 
 export const getPastScreenings = () => request<PastScreening[]>("/api/screenings/past");
 

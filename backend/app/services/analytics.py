@@ -8,7 +8,7 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,8 +24,10 @@ from app.models import (
     Round,
     Screening,
     Slot,
+    User,
 )
-from app.models.enums import ConfirmationState, RoundStage, ScreeningStatus
+from app.models.enums import ConfirmationState, InterestKind, RoundStage, ScreeningStatus
+from app.services.weights import WeightParams, active_interest_clause, age_days_expr
 
 WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 
@@ -60,8 +62,15 @@ class Overview:
     active_users: int
     no_show_rate: float
     late_cancels: int
+    cancelled_share: float = 0.0
     by_weekday: dict[str, float] = field(default_factory=dict)
     long_wait_films: list[dict] = field(default_factory=list)
+    # Динамика активной аудитории: сколько разных людей что-то делали в неделю.
+    audience_by_week: list[dict] = field(default_factory=list)
+    # Кто чаще всех подтверждает и не приходит (§14).
+    no_show_users: list[dict] = field(default_factory=list)
+    # Отток на истечении «Ближайшего»: отметка стала «Желаемым», человек не вернулся.
+    soon_churn: dict = field(default_factory=dict)
 
 
 async def funnel(session: AsyncSession, limit: int = 8) -> list[Funnel]:
@@ -130,7 +139,7 @@ async def funnel(session: AsyncSession, limit: int = 8) -> list[Funnel]:
     return result
 
 
-async def overview(session: AsyncSession, long_wait_days: int) -> Overview:
+async def overview(session: AsyncSession, long_wait_days: int, params: WeightParams) -> Overview:
     rounds = await session.scalar(sa.select(sa.func.count()).select_from(Round)) or 0
 
     held = (
@@ -238,9 +247,121 @@ async def overview(session: AsyncSession, long_wait_days: int) -> Overview:
         active_users=active_users,
         no_show_rate=no_show,
         late_cancels=late_cancels,
+        cancelled_share=round(cancelled / (held + cancelled) * 100, 1) if held + cancelled else 0.0,
         by_weekday=by_weekday,
         long_wait_films=await long_waiting(session, long_wait_days),
+        audience_by_week=await audience_by_week(session),
+        no_show_users=await no_show_users(session),
+        soon_churn=await soon_churn(session, params),
     )
+
+
+async def audience_by_week(session: AsyncSession, weeks: int = 12) -> list[dict]:
+    """Сколько разных людей что-то делали каждую неделю.
+
+    «Что-то» — отметил фильм, проголосовал, подтвердил приход или пришёл:
+    активность клуба это все четыре действия сразу, и считать по одному
+    значило бы объявить мёртвыми тех, кто в эту неделю просто ходил в кино.
+    """
+    since = datetime.now(UTC) - timedelta(weeks=weeks)
+    sources = (
+        (Interest.created_at, Interest.user_id),
+        (FilmVote.created_at, FilmVote.user_id),
+        (Confirmation.created_at, Confirmation.user_id),
+        (Attendance.marked_at, Attendance.user_id),
+    )
+
+    people: dict[date, set[int]] = {}
+    for stamp, user in sources:
+        week = sa.func.date_trunc("week", stamp)
+        rows = await session.execute(
+            sa.select(week, user).where(stamp >= since).group_by(week, user)
+        )
+        for start, user_id in rows:
+            people.setdefault(start.date(), set()).add(user_id)
+
+    return [
+        {"week_start": week.isoformat(), "people": len(users)}
+        for week, users in sorted(people.items())
+    ]
+
+
+async def no_show_users(session: AsyncSession, limit: int = 10) -> list[dict]:
+    """Кто подтверждает и не приходит.
+
+    Считаем только по состоявшимся показам: на отменённом не был никто,
+    и ставить это человеку в вину нельзя.
+    """
+    came = (
+        sa.select(Attendance.screening_id, Attendance.user_id)
+        .subquery()
+    )
+    rows = await session.execute(
+        sa.select(
+            User.id,
+            User.display_name,
+            sa.func.count().label("misses"),
+        )
+        .select_from(Confirmation)
+        .join(Screening, Screening.id == Confirmation.screening_id)
+        .join(User, User.id == Confirmation.user_id)
+        .outerjoin(
+            came,
+            sa.and_(
+                came.c.screening_id == Confirmation.screening_id,
+                came.c.user_id == Confirmation.user_id,
+            ),
+        )
+        .where(
+            Confirmation.state == ConfirmationState.CONFIRMED,
+            Screening.status == ScreeningStatus.COMPLETED,
+            came.c.user_id.is_(None),
+        )
+        .group_by(User.id, User.display_name)
+        .order_by(sa.desc("misses"))
+        .limit(limit)
+    )
+    return [
+        {"user_id": user_id, "display_name": name, "misses": misses}
+        for user_id, name, misses in rows
+    ]
+
+
+async def soon_churn(session: AsyncSession, params: WeightParams) -> dict:
+    """Отток на истечении «Ближайшего».
+
+    Отметка не сгорает — по истечении срока она сама становится «Желаемым»
+    (см. README, отступления от спека). «Не продлил» значит: срок вышел, а
+    новой отметки «Ближайшее» у человека нет ни на один фильм. Это и есть
+    те, кто собирался пойти и пропал.
+    """
+    age = age_days_expr(Interest.created_at)
+    expired = sa.and_(
+        active_interest_clause(),
+        Interest.kind == InterestKind.SOON,
+        age >= params.soon_ttl_days,
+    )
+
+    marks = await session.scalar(sa.select(sa.func.count()).where(expired)) or 0
+    people = (
+        await session.scalar(sa.select(sa.func.count(sa.distinct(Interest.user_id))).where(expired))
+        or 0
+    )
+
+    still_active = sa.select(sa.distinct(Interest.user_id)).where(
+        active_interest_clause(),
+        Interest.kind == InterestKind.SOON,
+        age < params.soon_ttl_days,
+    )
+    lapsed = (
+        await session.scalar(
+            sa.select(sa.func.count(sa.distinct(Interest.user_id))).where(
+                expired, Interest.user_id.not_in(still_active)
+            )
+        )
+        or 0
+    )
+    return {"expired_marks": marks, "people": people, "lapsed": lapsed}
 
 
 async def long_waiting(session: AsyncSession, long_wait_days: int, limit: int = 10) -> list[dict]:

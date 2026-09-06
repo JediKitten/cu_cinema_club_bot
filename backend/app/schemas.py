@@ -129,8 +129,54 @@ class RankRow(BaseModel):
     ext_votes: int | None
     internal_rating: float | None
     internal_votes: int
+    # Сколько раз фильм попадал в шорт-лист и не был назначен (§14).
+    shortlist_misses: int = 0
     marginal_weight: float | None = None
     screening_history: list[dict] = Field(default_factory=list)
+
+
+class FilmStatsOut(BaseModel):
+    """Разрез по фильму для админа (§14)."""
+
+    film_id: int
+    weight: float
+    wishlist_count: int
+    soon_count: int
+    long_wait_count: int
+    long_wait_days: int
+    shortlist_misses: int
+    shortlist_hits: int
+    internal_rating: float | None = None
+    internal_votes: int = 0
+    dynamics: list[dict] = Field(default_factory=list)
+    history: list[dict] = Field(default_factory=list)
+
+
+class PersonOut(BaseModel):
+    user_id: int
+    display_name: str
+    detail: str | None = None
+
+
+class ScreeningStatsOut(BaseModel):
+    """Разрез по сеансу (§14): до показа — кто придёт, после — кто пришёл."""
+
+    screening_id: int
+    starts_at: datetime
+    capacity: int
+    confirmed: int
+    fill_rate: float
+    waitlist: list[PersonOut] = Field(default_factory=list)
+    attended: list[PersonOut] = Field(default_factory=list)
+    no_shows: list[PersonOut] = Field(default_factory=list)
+    cancelled: int = 0
+    late_cancels: int = 0
+    low_attendance_warning: bool = False
+    min_attendance: int = 0
+    film_rating: float | None = None
+    film_rating_votes: int = 0
+    org_rating: float | None = None
+    org_rating_votes: int = 0
 
 
 class RankingsOut(BaseModel):
@@ -232,6 +278,12 @@ class MatrixCell(BaseModel):
     count: int
 
 
+class Assignment(BaseModel):
+    film_id: int
+    slot_id: int
+    expected: int
+
+
 class MatrixOut(BaseModel):
     films: list[FilmBrief]
     slots: list[SlotOut]
@@ -240,6 +292,14 @@ class MatrixOut(BaseModel):
     film_votes: dict[int, int] = Field(default_factory=dict)
     slot_free: dict[int, int] = Field(default_factory=dict)
     voters_without_evening: int = 0
+    # Закрытые вечера: назначать на них нельзя, но видеть, скольких мы теряем,
+    # администратору нужно — иначе блокировка выглядит бесплатной.
+    blocked_slots: list[SlotOut] = Field(default_factory=list)
+    # Решение автопилота рядом с ручным, в теневом режиме (§5, §6).
+    autopilot: list[Assignment] = Field(default_factory=list)
+    manual: list[Assignment] = Field(default_factory=list)
+    autopilot_expected: int = 0
+    manual_expected: int = 0
 
 
 # --- Этап 3: расписание и подтверждения (§7) --------------------------------
@@ -371,8 +431,14 @@ class OverviewOut(BaseModel):
     # Подтвердил и не пришёл — доля от подтверждений на прошедших показах.
     no_show_rate: float
     late_cancels: int
+    # Доля отменённых сеансов от всех назначенных.
+    cancelled_share: float = 0.0
     by_weekday: dict[str, float] = Field(default_factory=dict)
     long_wait_films: list[dict] = Field(default_factory=list)
+    audience_by_week: list[dict] = Field(default_factory=list)
+    no_show_users: list[dict] = Field(default_factory=list)
+    # Отток на истечении «Ближайшего»: {expired_marks, people, lapsed}.
+    soon_churn: dict = Field(default_factory=dict)
 
 
 class AnalyticsOut(BaseModel):

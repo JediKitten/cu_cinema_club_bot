@@ -24,6 +24,9 @@ const TABS: { key: Tab; icon: string; label: string }[] = [
 // а не защита: права проверяет бэкенд на каждом запросе.
 const ADMIN_ROLES = new Set(["moderator", "admin", "superadmin"]);
 
+// Статистика по фильму — админам и главному: модератор ведёт показы, а не отбор.
+const STATS_ROLES = new Set(["admin", "superadmin"]);
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -98,6 +101,7 @@ export default function App() {
             <FilmDetail
               filmId={openFilm.id}
               tmdbId={openFilm.tmdb_id}
+              withStats={STATS_ROLES.has(user.role)}
               onBack={() => setOpenFilm(null)}
             />
           </div>

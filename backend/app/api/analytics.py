@@ -11,6 +11,7 @@ from app.schemas import AnalyticsOut, FunnelStep, OverviewOut, PastScreeningOut
 from app.services import analytics
 from app.services.settings import SettingsService
 from app.services.tmdb import poster_url
+from app.services.weights import WeightParams
 
 router = APIRouter(prefix="/api", tags=["analytics"])
 
@@ -23,7 +24,9 @@ async def full_analytics(
     values = await SettingsService(session).all()
 
     steps = await analytics.funnel(session)
-    overview = await analytics.overview(session, int(values["long_wait_days"]))
+    overview = await analytics.overview(
+        session, int(values["long_wait_days"]), WeightParams.from_settings(values)
+    )
 
     return AnalyticsOut(
         funnel=[FunnelStep(**step.as_dict()) for step in steps],
@@ -36,8 +39,12 @@ async def full_analytics(
             active_users=overview.active_users,
             no_show_rate=overview.no_show_rate,
             late_cancels=overview.late_cancels,
+            cancelled_share=overview.cancelled_share,
             by_weekday=overview.by_weekday,
             long_wait_films=overview.long_wait_films,
+            audience_by_week=overview.audience_by_week,
+            no_show_users=overview.no_show_users,
+            soon_churn=overview.soon_churn,
         ),
         top_rated=await analytics.top_rated(
             session, int(values["internal_rating_min_votes"])
