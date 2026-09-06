@@ -3,8 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Тема всегда тёмная. Цвет фона прямо здесь, до загрузки CSS: иначе
+         первым кадром вспыхивает белый лист. -->
+    <meta name="color-scheme" content="dark" />
+    <style>
+      html,
+      body {
+        background: #0f1012;
+      }
+    </style>
     <title>Киноклуб</title>
-    <!-- SDK обязан загрузиться до приложения: из него берутся initData и тема. -->
+    <!-- SDK обязан загрузиться до приложения: из него берётся initData. -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>

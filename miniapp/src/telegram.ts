@@ -25,6 +25,8 @@ type WebApp = {
   HapticFeedback: HapticFeedback;
   ready(): void;
   expand(): void;
+  setHeaderColor?(color: string): void;
+  setBackgroundColor?(color: string): void;
   showAlert(message: string): void;
   openTelegramLink?(url: string): void;
 };
@@ -37,10 +39,22 @@ declare global {
 
 export const webApp = (): WebApp | undefined => window.Telegram?.WebApp;
 
+// Тот же цвет, что и --bg в index.css. Дублируется намеренно: шапку и фон
+// вокруг окна красит сам Telegram, до CSS приложения он не добирается.
+const BACKGROUND = "#0f1012";
+
 export function initTelegram(): void {
   const app = webApp();
   app?.ready();
   app?.expand();
+  // Методы появились в Bot API 6.9: в старых клиентах их просто нет, и это
+  // не повод падать — тогда шапка останется в теме мессенджера.
+  try {
+    app?.setHeaderColor?.(BACKGROUND);
+    app?.setBackgroundColor?.(BACKGROUND);
+  } catch {
+    /* клиент старее нужного — переживём */
+  }
 }
 
 export function haptic(style: "light" | "medium" | "heavy" = "light"): void {

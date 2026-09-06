@@ -176,18 +176,26 @@ async def update(
     return event
 
 
-async def upcoming(session: AsyncSession, within_days: int = 60) -> list[Screening]:
-    """Будущие ручные события — они показываются вне зависимости от цикла."""
-    horizon = datetime.now(UTC) + timedelta(days=within_days)
+async def upcoming(session: AsyncSession, within_days: int | None = None) -> list[Screening]:
+    """Будущие ручные события — они показываются вне зависимости от цикла.
+
+    По умолчанию без горизонта: событие могут анонсировать за полгода, и
+    администратор, который его не видит, не может ни поправить, ни отменить.
+    Горизонт остаётся параметром для тех, кому нужны только ближайшие.
+    """
+    conditions = [
+        Screening.is_manual.is_(True),
+        Screening.status != ScreeningStatus.CANCELLED,
+        # Шесть часов назад, а не «сейчас»: идущее сегодня событие ещё актуально.
+        Slot.starts_at >= datetime.now(UTC) - timedelta(hours=6),
+    ]
+    if within_days is not None:
+        conditions.append(Slot.starts_at <= datetime.now(UTC) + timedelta(days=within_days))
+
     rows = await session.execute(
         sa.select(Screening)
         .join(Slot, Slot.id == Screening.slot_id)
-        .where(
-            Screening.is_manual.is_(True),
-            Screening.status != ScreeningStatus.CANCELLED,
-            Slot.starts_at >= datetime.now(UTC) - timedelta(hours=6),
-            Slot.starts_at <= horizon,
-        )
+        .where(*conditions)
         .order_by(Slot.starts_at)
     )
     return list(rows.scalars())

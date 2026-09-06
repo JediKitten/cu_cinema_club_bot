@@ -1,13 +1,15 @@
-/* Цвета берём из темы Telegram. Фолбэки нужны не для красоты: без них приложение
-   нечитаемо в обычном браузере, где переменных --tg-theme-* просто нет. */
+/* Тёмная тема всегда, независимо от темы Telegram.
+   Раньше цвета брались из --tg-theme-*, и приложение выглядело по-разному в
+   разных клиентах: на телефоне чёрное, на компьютере синеватое. Про кино
+   разговор особый — тёмный зал и тёмный интерфейс, один и тот же везде. */
 :root {
-  --bg: var(--tg-theme-bg-color, #ffffff);
-  --text: var(--tg-theme-text-color, #14171a);
-  --hint: var(--tg-theme-hint-color, #7d8b99);
-  --link: var(--tg-theme-link-color, #2481cc);
-  --button: var(--tg-theme-button-color, #2481cc);
-  --button-text: var(--tg-theme-button-text-color, #ffffff);
-  --surface: var(--tg-theme-secondary-bg-color, #f1f4f7);
+  --bg: #0f1012;
+  --text: #f1f3f5;
+  --hint: #8b949e;
+  --link: #57a6ff;
+  --button: #2f6fed;
+  --button-text: #ffffff;
+  --surface: #1a1c20;
   --border: color-mix(in srgb, var(--hint) 22%, transparent);
 
   --wishlist: #8b5cf6;
@@ -16,7 +18,9 @@
   --radius: 12px;
   --gap: 12px;
 
-  color-scheme: light dark;
+  /* Родные элементы — поля даты и времени, выпадающие списки, полосы прокрутки —
+     красит браузер, и без этого они остались бы белыми пятнами. */
+  color-scheme: dark;
 }
 
 * {

@@ -183,6 +183,23 @@ async def test_upcoming_skips_the_past(session):
     assert old.id not in listed
 
 
+async def test_upcoming_does_not_cut_off_far_future_events(session):
+    """Анонс за полгода админ обязан видеть — иначе его не поправить и не снять."""
+    boss = await make_user(session, "Админ")
+    await session.commit()
+
+    far = await events.create(
+        session,
+        starts_at=datetime.now(UTC) + timedelta(days=200),
+        actor_id=boss.id,
+        title="День рождения клуба",
+    )
+
+    assert far.id in [e.id for e in await events.upcoming(session)]
+    # Горизонт остаётся доступен тем, кому нужны только ближайшие.
+    assert far.id not in [e.id for e in await events.upcoming(session, within_days=60)]
+
+
 async def test_manual_event_ignores_one_film_per_round_rule(session):
     """У ручных событий нет цикла, поэтому правило §6 к ним не относится."""
     boss = await make_user(session, "Админ")
