@@ -4,6 +4,17 @@ import { showMessage } from "../telegram";
 import { Section } from "./Section";
 import type { InviteCode } from "../types";
 
+/** «2 кода», но «5 кодов»: русские числительные согласуются, и кнопка,
+ *  которая этого не умеет, выглядит недоделанной. */
+function codesWord(count: number): string {
+  const tail = count % 100;
+  if (tail >= 11 && tail <= 14) return "кодов";
+  const last = count % 10;
+  if (last === 1) return "код";
+  if (last >= 2 && last <= 4) return "кода";
+  return "кодов";
+}
+
 /** Коды-приглашения закрытой беты.
  *
  * Коды выдают все администраторы, а выключает бету только главный: это решение
@@ -52,7 +63,7 @@ export function InvitePanel({ isSuperadmin }: { isSuperadmin: boolean }) {
       showMessage(
         created.length === 1
           ? `Код ${created[0].code} готов — на ${perCode} чел.`
-          : `Готово ${created.length} кодов по ${perCode} чел.`,
+          : `Готово ${created.length} ${codesWord(created.length)} по ${perCode} чел.`,
       );
     } catch (e) {
       showMessage(e instanceof ApiError ? e.message : "Не получилось");
@@ -126,26 +137,33 @@ export function InvitePanel({ isSuperadmin }: { isSuperadmin: boolean }) {
       )}
 
       <h3>Новые коды</h3>
+      {/* Подписи у самих полей, а не «слева и справа»: на узком экране
+          порядок полей — не то, на что стоит опираться. */}
       <div className="setting__pair">
-        <input
-          className="field"
-          type="number"
-          min={1}
-          value={count}
-          onChange={(event) => setCount(event.target.value)}
-        />
-        <input
-          className="field"
-          type="number"
-          min={1}
-          value={activations}
-          onChange={(event) => setActivations(event.target.value)}
-        />
+        <label className="field-cell">
+          <span>Сколько кодов</span>
+          <input
+            className="field"
+            type="number"
+            min={1}
+            value={count}
+            onChange={(event) => setCount(event.target.value)}
+          />
+        </label>
+        <label className="field-cell">
+          <span>Человек по коду</span>
+          <input
+            className="field"
+            type="number"
+            min={1}
+            value={activations}
+            onChange={(event) => setActivations(event.target.value)}
+          />
+        </label>
       </div>
       <p className="hint">
-        Слева — сколько кодов выдать, справа — по сколько человек войдёт
-        по каждому. Один код на компанию экономит переписку, отдельный код
-        каждому отвечает на вопрос, кто именно вошёл.
+        Один код на компанию экономит переписку, отдельный код каждому отвечает
+        на вопрос, кто именно вошёл.
       </p>
       <input
         className="field"
@@ -154,7 +172,7 @@ export function InvitePanel({ isSuperadmin }: { isSuperadmin: boolean }) {
         onChange={(event) => setNote(event.target.value)}
       />
       <button className="primary" disabled={busy} onClick={create}>
-        {Number(count) > 1 ? `Выдать ${Number(count)} кодов` : "Выдать код"}
+        {Number(count) > 1 ? `Выдать ${Number(count)} ${codesWord(Number(count))}` : "Выдать код"}
       </button>
 
       {fresh.length > 1 && (
@@ -167,7 +185,7 @@ export function InvitePanel({ isSuperadmin }: { isSuperadmin: boolean }) {
               onClick={() =>
                 copy(
                   fresh.map((item) => item.code).join("\n"),
-                  `Скопировано ${fresh.length} кодов`,
+                  `Скопировано ${fresh.length} ${codesWord(fresh.length)}`,
                 )
               }
             >

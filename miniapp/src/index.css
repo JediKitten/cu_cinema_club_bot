@@ -272,6 +272,28 @@ input {
   opacity: 0.6;
 }
 
+/* Два поля одной настройки: день и время, дата и время, число и число.
+   Класс использовался в трёх местах, но описан не был, и поля вставали друг
+   под друга — подписи «слева» и «справа» переставали иметь смысл. */
+.setting__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.field-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-cell > span {
+  color: var(--hint);
+  font-size: 12px;
+}
+
 .field {
   width: 100%;
   background: var(--surface);
