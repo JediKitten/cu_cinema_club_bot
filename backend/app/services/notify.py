@@ -124,6 +124,12 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                 "Откройте приложение — вкладка «Клуб» уже на месте.",
             ]
             return "\n\n".join(part for part in parts if part)
+        case NotificationKind.BETA_OPENED:
+            return (
+                "🎉 Киноклуб открыт для всех!\n\n"
+                "Код-приглашение больше не нужен — доступ у вас есть.\n"
+                "Нажмите /start: покажу, как всё устроено."
+            )
         case NotificationKind.FILM_REQUEST_RESOLVED:
             if payload.get("approved"):
                 return "✅ Ваш фильм добавлен в каталог — можно отмечать."
@@ -143,8 +149,17 @@ async def pending(session: AsyncSession, limit: int = BATCH) -> list[Notificatio
     return list(rows.scalars())
 
 
-async def deliver(session: AsyncSession, bot, tz_convert: Callable[[object], str]) -> int:
-    """Отправляет накопившиеся уведомления. Возвращает число отправленных."""
+async def deliver(
+    session: AsyncSession,
+    bot,
+    tz_convert: Callable[[object], str],
+    keyboard: Callable[[NotificationKind, dict], object | None] | None = None,
+) -> int:
+    """Отправляет накопившиеся уведомления. Возвращает число отправленных.
+
+    `keyboard` даёт вызывающему приложить к сообщению кнопку — типы клавиатур
+    живут в aiogram, а этот модуль о мессенджере знать не обязан.
+    """
     sent = 0
     for notification in await pending(session):
         user = await session.get(User, notification.user_id)
@@ -163,7 +178,13 @@ async def deliver(session: AsyncSession, bot, tz_convert: Callable[[object], str
             continue
 
         try:
-            await bot.send_message(user.tg_id, text)
+            await bot.send_message(
+                user.tg_id,
+                text,
+                reply_markup=(
+                    keyboard(notification.kind, notification.payload or {}) if keyboard else None
+                ),
+            )
             notification.sent_at = sa.func.now()
             sent += 1
         except Exception as exc:  # noqa: BLE001 — причина уходит в поле и в лог

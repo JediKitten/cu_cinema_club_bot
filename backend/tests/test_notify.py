@@ -21,12 +21,14 @@ class FakeBot:
 
     def __init__(self, fail_for: set[int] | None = None) -> None:
         self.sent: list[tuple[int, str]] = []
+        self.markups: list[object] = []
         self.fail_for = fail_for or set()
 
-    async def send_message(self, chat_id: int, text: str) -> None:
+    async def send_message(self, chat_id: int, text: str, reply_markup=None) -> None:
         if chat_id in self.fail_for:
             raise RuntimeError("bot was blocked by the user")
         self.sent.append((chat_id, text))
+        self.markups.append(reply_markup)
 
 
 def moscow(value) -> str:

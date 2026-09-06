@@ -191,6 +191,14 @@ REGISTRY: tuple[SettingSpec, ...] = (
         336,
     ),
     # --- Прочее ---
+    SettingSpec(
+        "beta_invite_required",
+        "bool",
+        True,
+        "misc",
+        "Закрытый бета-тест: вход только по коду",
+        help="Пока включено, новые участники должны ввести код-приглашение.",
+    ),
     SettingSpec("display_timezone", "str", "Europe/Moscow", "misc", "Часовой пояс отображения"),
     SettingSpec(
         "internal_rating_min_votes",

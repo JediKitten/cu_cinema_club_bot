@@ -4,6 +4,8 @@ import { Analytics } from "../components/Analytics";
 import { EventPanel } from "../components/EventPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { TeamPanel } from "../components/TeamPanel";
+import { InvitePanel } from "../components/InvitePanel";
+import { PeoplePanel } from "../components/PeoplePanel";
 import { Matrix } from "../components/Matrix";
 import { Section } from "../components/Section";
 import { ScheduleBuilder } from "../components/ScheduleBuilder";
@@ -69,14 +71,20 @@ function windowNotice(round: Round): string {
     : `Окно сборки закрылось ${clock(closes)}: список ушёл в голосование.`;
 }
 
-type Panel = "round" | "events" | "stats" | "team" | "settings";
+type Panel = "round" | "events" | "stats" | "team" | "invites" | "people" | "settings";
 
-const PANELS: { key: Panel; label: string; superadminOnly?: boolean }[] = [
-  { key: "round", label: "Цикл" },
-  { key: "events", label: "События" },
-  { key: "stats", label: "Аналитика" },
-  { key: "team", label: "Команда" },
-  { key: "settings", label: "Параметры", superadminOnly: true },
+// Порядок ролей тот же, что на сервере: вкладка, которую нельзя открыть,
+// не должна и показываться — иначе она встречает ошибкой доступа.
+const RANK: Record<string, number> = { user: 0, moderator: 1, admin: 2, superadmin: 3 };
+
+const PANELS: { key: Panel; label: string; minRole: keyof typeof RANK }[] = [
+  { key: "round", label: "Цикл", minRole: "moderator" },
+  { key: "events", label: "События", minRole: "admin" },
+  { key: "stats", label: "Аналитика", minRole: "admin" },
+  { key: "team", label: "Команда", minRole: "admin" },
+  { key: "invites", label: "Коды", minRole: "admin" },
+  { key: "people", label: "Люди", minRole: "superadmin" },
+  { key: "settings", label: "Параметры", minRole: "superadmin" },
 ];
 
 export function Admin({ me }: { me: User }) {
@@ -94,7 +102,12 @@ export function Admin({ me }: { me: User }) {
   useEffect(() => {
     (async () => {
       try {
-        const [currentRound, ranks] = await Promise.all([getRound(), getRankings()]);
+        // Рейтинги — админские, цикл видит и модератор: одна недоступная
+        // ручка не должна оставлять его с пустым экраном.
+        const [currentRound, ranks] = await Promise.all([
+          getRound(),
+          getRankings().catch(() => null),
+        ]);
         setRound(currentRound);
         setRankings(ranks);
         setPicked(currentRound?.shortlist.map((item) => item.film_id) ?? []);
@@ -142,7 +155,7 @@ export function Admin({ me }: { me: User }) {
     round !== null &&
     JSON.stringify(picked) !== JSON.stringify(round.shortlist.map((i) => i.film_id));
 
-  const panels = PANELS.filter((s) => !s.superadminOnly || role === "superadmin");
+  const panels = PANELS.filter((item) => RANK[role] >= RANK[item.minRole]);
 
   return (
     <div className="screen">
@@ -159,6 +172,8 @@ export function Admin({ me }: { me: User }) {
       </div>
 
       {panel === "team" && <TeamPanel me={me} />}
+      {panel === "invites" && <InvitePanel isSuperadmin={role === "superadmin"} />}
+      {panel === "people" && <PeoplePanel />}
       {panel === "settings" && <SettingsPanel />}
       {panel === "events" && <EventPanel onCreated={() => setPanel("round")} />}
       {panel === "stats" && <Analytics />}

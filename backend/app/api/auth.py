@@ -6,12 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_config
-from app.core.auth import CurrentUser, issue_token
+from app.core.auth import AuthenticatedUser, issue_token
 from app.core.telegram_auth import BotNotConfigured, InitDataError, parse_init_data
 from app.db import get_session
 from app.models import User
 from app.models.enums import UserRole
 from app.schemas import AuthOut, TelegramAuthIn, UserOut
+from app.services import invites
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +64,20 @@ async def login_via_telegram(
 
     await session.commit()
     await session.refresh(user)
-    return AuthOut(
-        token=issue_token(user.id), user=UserOut.model_validate(user, from_attributes=True)
+    return AuthOut(token=issue_token(user.id), user=await _out(session, user))
+
+
+async def _out(session: AsyncSession, user: User) -> UserOut:
+    """Признак доступа считается здесь: приложению нужно решить, показывать
+    экран кода или сам клуб."""
+    return UserOut(
+        **UserOut.model_validate(user, from_attributes=True).model_dump(exclude={"access"}),
+        access=invites.has_access(user, await invites.beta_enabled(session)),
     )
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: CurrentUser) -> UserOut:
-    return UserOut.model_validate(user, from_attributes=True)
+async def me(
+    user: AuthenticatedUser, session: Annotated[AsyncSession, Depends(get_session)]
+) -> UserOut:
+    return await _out(session, user)

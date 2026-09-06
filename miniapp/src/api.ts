@@ -23,6 +23,8 @@ import type {
   ClubEvent,
   EventChanges,
   FilmStats,
+  InviteCode,
+  PersonRow,
   ScreeningStats,
   TeamMember,
   User,
@@ -266,6 +268,33 @@ export const saveSettings = (values: Record<string, unknown>) =>
   });
 
 export const getTeam = () => request<TeamMember[]>("/api/admin/team");
+
+// --- Закрытая бета ----------------------------------------------------------
+
+export const redeemCode = (code: string) =>
+  request<{ access: boolean; code: string }>("/api/invites/redeem", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+
+export const getInviteCodes = () => request<InviteCode[]>("/api/admin/invites");
+
+export const createInviteCode = (maxActivations: number, note: string | null) =>
+  request<InviteCode>("/api/admin/invites", {
+    method: "POST",
+    body: JSON.stringify({ max_activations: maxActivations, note }),
+  });
+
+export const getBetaState = () =>
+  request<{ enabled: boolean; waiting: number }>("/api/admin/beta");
+
+export const setBeta = (enabled: boolean) =>
+  request<{ enabled: boolean; opened: number }>("/api/admin/beta", {
+    method: "POST",
+    body: JSON.stringify({ enabled }),
+  });
+
+export const getPeople = () => request<PersonRow[]>("/api/admin/people");
 
 export const findUsers = (query: string) =>
   request<TeamMember[]>(`/api/admin/users?q=${encodeURIComponent(query)}`);

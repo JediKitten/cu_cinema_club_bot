@@ -15,7 +15,7 @@ from app.models.cycle import (
     Slot,
 )
 from app.models.interest import Interest
-from app.models.system import AuditLog, Notification, Setting
+from app.models.system import AuditLog, InviteCode, Notification, Setting
 from app.models.user import User
 
 __all__ = [
@@ -32,6 +32,7 @@ __all__ = [
     "FilmVote",
     "Hall",
     "Interest",
+    "InviteCode",
     "Notification",
     "Referral",
     "Round",

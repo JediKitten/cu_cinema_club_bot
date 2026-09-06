@@ -12,6 +12,7 @@ from app.config import get_config
 from app.db import get_session
 from app.models import User
 from app.models.enums import UserRole
+from app.services import invites
 
 ALGORITHM = "HS256"
 
@@ -26,10 +27,15 @@ def issue_token(user_id: int) -> str:
     return jwt.encode(payload, config.secret_key, algorithm=ALGORITHM)
 
 
-async def current_user(
+async def authenticated_user(
     session: Annotated[AsyncSession, Depends(get_session)],
     authorization: Annotated[str | None, Header()] = None,
 ) -> User:
+    """Вошедший, но, возможно, ещё без доступа: на время беты нужен код.
+
+    Ею пользуются ровно те ручки, которые обязаны работать до кода — иначе
+    ввести его было бы негде.
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Требуется авторизация")
     token = authorization.split(" ", 1)[1]
@@ -51,6 +57,23 @@ async def current_user(
         sa.update(User).where(User.id == user.id).values(last_seen_at=sa.func.now())
     )
     await session.commit()
+    return user
+
+
+AuthenticatedUser = Annotated[User, Depends(authenticated_user)]
+
+
+async def current_user(
+    user: AuthenticatedUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> User:
+    """Обычная зависимость: вход плюс доступ.
+
+    Проверка стоит здесь, в единственной точке, через которую проходят все
+    ручки, — гейт, который где-то забыли повесить, не гейт вовсе.
+    """
+    if not invites.has_access(user, await invites.beta_enabled(session)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, invites.NEED_CODE)
     return user
 
 

@@ -8,6 +8,8 @@ export type User = {
   role: UserRole;
   photo_url: string | null;
   tg_username: string | null;
+  /** Пускать ли внутрь: на время закрытой беты нужен код-приглашение. */
+  access: boolean;
 };
 
 export type FilmBrief = {
@@ -387,4 +389,29 @@ export type ScreeningStats = {
   film_rating_votes: number;
   org_rating: number | null;
   org_rating_votes: number;
+};
+
+/** Код-приглашение закрытой беты. */
+export type InviteCode = {
+  id: number;
+  code: string;
+  max_activations: number;
+  used: number;
+  left: number;
+  note: string | null;
+  created_at: string;
+  created_by: number;
+  created_by_name: string;
+  invitees: { user_id: number; display_name: string }[];
+};
+
+export type PersonRow = {
+  id: number;
+  display_name: string;
+  tg_username: string | null;
+  role: Role;
+  created_at: string;
+  has_access: boolean;
+  invite_code: string | null;
+  invited_by: string | null;
 };

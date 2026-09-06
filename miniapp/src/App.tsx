@@ -3,6 +3,7 @@ import { login } from "./api";
 import { Admin } from "./screens/Admin";
 import { Catalog } from "./screens/Catalog";
 import { FilmDetail } from "./screens/FilmDetail";
+import { Gate } from "./screens/Gate";
 import { More } from "./screens/More";
 import { Week } from "./screens/Week";
 import { MyList } from "./screens/MyList";
@@ -78,6 +79,12 @@ export default function App() {
   }
 
   if (!user) return <div className="center">Входим…</div>;
+
+  // Закрытая бета: без кода внутрь не пускают. Проверяет всё равно сервер —
+  // здесь мы только показываем, куда его вводить.
+  if (!user.access) {
+    return <Gate onOpen={() => setUser({ ...user, access: true })} />;
+  }
 
   function open(film: FilmBrief) {
     if (film.id !== null || film.tmdb_id !== null) setOpenFilm(film);

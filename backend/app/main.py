@@ -14,6 +14,7 @@ from app.api import (
     film_requests,
     films,
     interests,
+    invites,
     manage,
     rounds,
     schedule,
@@ -59,6 +60,7 @@ app.include_router(schedule.router)
 app.include_router(attendance.router)
 app.include_router(analytics.router)
 app.include_router(manage.router)
+app.include_router(invites.router)
 
 
 @app.get("/health", tags=["ops"])
