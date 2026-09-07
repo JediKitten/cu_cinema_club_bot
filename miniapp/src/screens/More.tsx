@@ -17,12 +17,7 @@ const STATUS: Record<FilmRequest["status"], string> = {
 // а не защита: права проверяет бэкенд на каждом запросе.
 const ADMIN_ROLES = new Set(["moderator", "admin", "superadmin"]);
 
-type Props = {
-  user: User;
-  onOpenProfile(userId: number): void;
-};
-
-export function More({ user, onOpenProfile }: Props) {
+export function More({ user }: { user: User }) {
   const [showHistory, setShowHistory] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [title, setTitle] = useState("");
@@ -91,10 +86,11 @@ export function More({ user, onOpenProfile }: Props) {
 
   return (
     <div className="screen">
-      {/* Своя карточка — вход в профиль: там же живут четыре любимых фильма. */}
-      <button className="slot-row person-row" onClick={() => onOpenProfile(user.id)}>
+      {/* Профиль настраивают во вкладке «Друзья» — здесь только напоминание,
+          кто вошёл, и роль, если она есть. */}
+      <div className="person-row" style={{ padding: "0 2px" }}>
         <span className="person-row__main">
-          <Avatar url={user.photo_url} name={user.display_name} size={44} />
+          <Avatar url={user.photo_url} name={user.display_name} size={40} />
           <span>
             <p className="film-row__title">{user.display_name}</p>
             <p className="meta">
@@ -103,8 +99,7 @@ export function More({ user, onOpenProfile }: Props) {
             </p>
           </span>
         </span>
-        <span className="hint">мой профиль →</span>
-      </button>
+      </div>
 
       {ADMIN_ROLES.has(user.role) && (
         <button className="primary" onClick={() => setShowAdmin(true)}>

@@ -14,7 +14,16 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Favourite, Feedback, Film, Friendship, Interest, User, Watch
+from app.models import (
+    Favourite,
+    Feedback,
+    Film,
+    FilmRating,
+    Friendship,
+    Interest,
+    User,
+    Watch,
+)
 from app.models.enums import FilmStatus, InterestKind
 
 # Четыре фильма — ровно строка постеров в профиле. Больше превращает витрину
@@ -51,7 +60,7 @@ class FeedItem:
     film_title: str
     film_year: int | None
     film_poster: str | None
-    rating: int | None = None
+    rating: float | None = None
     text: str | None = None
 
 
@@ -183,24 +192,45 @@ async def feed(
     if not user_ids:
         return []
 
-    raw: list[tuple[str, datetime, int, int, int | None, str | None]] = []
+    raw: list[tuple[str, datetime, int, int, float | None, str | None]] = []
 
-    for feedback, in await session.execute(
-        sa.select(Feedback)
-        .where(
-            Feedback.user_id.in_(user_ids),
-            sa.or_(Feedback.film_rating.is_not(None), Feedback.review_text.is_not(None)),
+    # Оценки берём из рейтингов, а не из формы после показа: оценить можно и
+    # из каталога, и в ленте это то же самое событие.
+    for rating in (
+        await session.execute(
+            sa.select(FilmRating)
+            .where(FilmRating.user_id.in_(user_ids))
+            .order_by(FilmRating.updated_at.desc())
+            .limit(limit)
         )
-        .order_by(Feedback.created_at.desc())
-        .limit(limit)
-    ):
+    ).scalars():
         raw.append(
             (
                 "rating",
+                rating.updated_at,
+                rating.user_id,
+                rating.film_id,
+                rating.score / 2,
+                None,
+            )
+        )
+
+    # Отзыв — отдельное событие: у него есть текст, а оценка уже учтена выше.
+    for feedback in (
+        await session.execute(
+            sa.select(Feedback)
+            .where(Feedback.user_id.in_(user_ids), Feedback.review_text.is_not(None))
+            .order_by(Feedback.created_at.desc())
+            .limit(limit)
+        )
+    ).scalars():
+        raw.append(
+            (
+                "review",
                 feedback.created_at,
                 feedback.user_id,
                 feedback.film_id,
-                feedback.film_rating,
+                None,
                 feedback.review_text,
             )
         )

@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { getFilm, getTmdbFilm } from "../api";
+import { ApiError, getFilm, getTmdbFilm, rateFilm } from "../api";
 import { Poster } from "../components/FilmRow";
 import { MarkButtons } from "../components/MarkButtons";
 import { InviteButton } from "../components/InviteButton";
 import { WatchedButton } from "../components/WatchedButton";
+import { StarRating } from "../components/StarRating";
 import { FilmStatsPanel } from "../components/FilmStatsPanel";
 import { Section } from "../components/Section";
-import { useTelegramBackButton } from "../telegram";
+import { haptic, showMessage, useTelegramBackButton } from "../telegram";
+import { plural } from "../plural";
 import { publishFilmChange } from "../filmChanges";
 import type { FilmBrief, FilmCard, InterestKind } from "../types";
 
@@ -27,6 +29,7 @@ function runtime(minutes: number | null): string | null {
 export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props) {
   const [film, setFilm] = useState<FilmCard | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rating, setRating] = useState(false);
 
   useEffect(() => useTelegramBackButton(true, onBack), [onBack]);
 
@@ -45,6 +48,30 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
   const facts = [film.year, runtime(film.runtime_min), film.genres.join(", ")]
     .filter(Boolean)
     .join(" · ");
+
+  /** Оценка ставится сразу: подтверждать нечего, а повторное нажатие снимает. */
+  async function rate(stars: number | null) {
+    if (!film?.id || rating) return;
+    setRating(true);
+    try {
+      const result = await rateFilm(film.id, stars);
+      setFilm((current) =>
+        current
+          ? {
+              ...current,
+              my_rating: result.my_rating,
+              internal_rating: result.internal_rating,
+              internal_votes: result.internal_votes,
+            }
+          : current,
+      );
+      haptic();
+    } catch (e) {
+      showMessage(e instanceof ApiError ? e.message : "Не удалось сохранить оценку");
+    } finally {
+      setRating(false);
+    }
+  }
 
   function updateMarks(kinds: InterestKind[], updated: FilmBrief) {
     // Берём всё, что вернул сервер: вместе с отметкой меняются «Просмотрено»
@@ -88,18 +115,21 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
         <InviteButton film={film} />
       </div>
 
-      {/* Три числа принципиально разные — не смешиваем их в одну «оценку» (§11). */}
+      {/* Три числа принципиально разные — не смешиваем их в одну «оценку» (§11).
+          Рейтинг клуба стоит отдельно и по своей шкале: пять звёзд, а не десять
+          баллов внешнего рейтинга. */}
       <div className="ratings">
         <div className="rating">
           <b>{film.interested_count}</b>
           <span>хотят посмотреть</span>
         </div>
-        {film.internal_rating !== null && (
-          <div className="rating">
-            <b>{film.internal_rating}</b>
-            <span>клуб · {film.internal_votes} оценок</span>
-          </div>
-        )}
+        <div className="rating rating--club">
+          <b>{film.internal_rating !== null ? `${film.internal_rating.toFixed(1)} ★` : "—"}</b>
+          <span>
+            клуб · {film.internal_votes}{" "}
+            {plural(film.internal_votes, ["оценка", "оценки", "оценок"])}
+          </span>
+        </div>
         {film.ext_rating !== null && (
           <div className="rating">
             <b>{film.ext_rating.toFixed(1)}</b>
@@ -108,10 +138,13 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
         )}
       </div>
 
-      {film.internal_rating === null && film.internal_votes > 0 && (
-        <p className="hint">
-          Оценок клуба пока слишком мало ({film.internal_votes}), рейтинг не показываем.
-        </p>
+      {film.id !== null && (
+        <div className="rate">
+          <p className="hint" style={{ margin: 0 }}>
+            {film.my_rating !== null ? "Ваша оценка" : "Оцените фильм"}
+          </p>
+          <StarRating value={film.my_rating} busy={rating} onChange={rate} />
+        </div>
       )}
 
       {film.trailer_key && (
@@ -140,7 +173,9 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
             <div className="review" key={index}>
               <div className="review__head">
                 <span>{review.author}</span>
-                {review.rating !== null && <span>{review.rating}/10</span>}
+                {/* Отзывы писали по десятибалльной форме после показа — на
+                    экране всё в одной шкале, звёздной. */}
+                {review.rating !== null && <span>{(review.rating / 2).toFixed(1)} ★</span>}
               </div>
               {review.text}
             </div>

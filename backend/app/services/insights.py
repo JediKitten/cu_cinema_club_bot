@@ -28,6 +28,7 @@ from app.models import (
     User,
 )
 from app.models.enums import ConfirmationState, InterestKind, ScreeningStatus
+from app.services import ratings
 from app.services.weights import (
     WeightParams,
     active_interest_clause,
@@ -227,13 +228,7 @@ async def film_stats(
     ).one()
     weight, wishlist_count, soon_count, long_wait_count = counts
 
-    rating_row = (
-        await session.execute(
-            sa.select(sa.func.avg(Feedback.film_rating), sa.func.count(Feedback.film_rating)).where(
-                Feedback.film_id == film_id, Feedback.film_rating.is_not(None)
-            )
-        )
-    ).one()
+    club = await ratings.summary(session, film_id)
 
     missed, hit = (await shortlist_misses(session, [film_id])).get(film_id, (0, 0))
     return FilmStats(
@@ -244,8 +239,8 @@ async def film_stats(
         long_wait_count=long_wait_count,
         shortlist_misses=missed,
         shortlist_hits=hit,
-        internal_rating=round(float(rating_row[0]), 2) if rating_row[1] else None,
-        internal_votes=rating_row[1],
+        internal_rating=club.average,
+        internal_votes=club.votes,
         dynamics=await interest_dynamics(session, film_id),
         history=(await screening_history(session, [film_id])).get(film_id, []),
     )

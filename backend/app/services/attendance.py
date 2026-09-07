@@ -25,6 +25,7 @@ from app.models.enums import (
     RevokeReason,
     ScreeningStatus,
 )
+from app.services import ratings
 
 CODE_LENGTH = 6
 
@@ -247,6 +248,13 @@ async def save_feedback(
     existing.org_hall = org.get("hall")
     existing.org_time = org.get("time")
     existing.org_comment = (org.get("comment") or "").strip() or None
+
+    # Рейтинг у фильма один, откуда бы оценка ни пришла: десятибалльная шкала
+    # формы — те же полубаллы, что и пять звёзд в каталоге.
+    if screening.film_id is not None and film_rating is not None:
+        await ratings.set_rating(
+            session, user_id, screening.film_id, film_rating / 2, source="screening"
+        )
 
     await session.commit()
     return existing

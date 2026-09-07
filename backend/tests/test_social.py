@@ -138,11 +138,13 @@ async def test_feed_collects_marks_ratings_and_watches(session):
 
     items = await social.feed(session, [watcher.id])
 
-    assert {item.kind for item in items} >= {"soon", "rating"}
+    assert {item.kind for item in items} >= {"soon", "rating", "review"}
+    # Оценка приходит в звёздах: восемь из десяти в форме — это четыре из пяти.
     rating = next(item for item in items if item.kind == "rating")
-    assert rating.rating == 8
-    assert rating.text == "Хорошо"
+    assert rating.rating == 4.0
     assert rating.film_title == films[0].title_ru
+    # Текст отзыва — отдельное событие: оценку он не дублирует.
+    assert next(item for item in items if item.kind == "review").text == "Хорошо"
 
 
 async def test_feed_of_nobody_is_empty(session):

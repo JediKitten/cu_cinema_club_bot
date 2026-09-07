@@ -5,7 +5,16 @@ type Bar = { label: string; value: number; extra?: number };
  * Данных здесь мало — недели семестра, — и ради них тянуть чарт-библиотеку
  * в приложение, которое грузится по мобильной сети, было бы расточительно.
  */
-export function Bars({ data, hint }: { data: Bar[]; hint?: string }) {
+export function Bars({
+  data,
+  hint,
+  color = "var(--link)",
+}: {
+  data: Bar[];
+  hint?: string;
+  /** Цвет основного ряда: у динамики интереса он совпадает с цветом отметки. */
+  color?: string;
+}) {
   const peak = Math.max(1, ...data.map((point) => point.value + (point.extra ?? 0)));
 
   return (
@@ -22,7 +31,7 @@ export function Bars({ data, hint }: { data: Bar[]; hint?: string }) {
               )}
               <div
                 className="bars__bar"
-                style={{ height: `${(point.value / peak) * 100}%` }}
+                style={{ height: `${(point.value / peak) * 100}%`, background: color }}
               />
             </div>
             <span className="bars__label">{point.label}</span>

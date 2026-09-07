@@ -18,6 +18,7 @@ from app.models import (
     Confirmation,
     Feedback,
     Film,
+    FilmRating,
     FilmVote,
     Hall,
     Interest,
@@ -387,23 +388,27 @@ async def long_waiting(session: AsyncSession, long_wait_days: int, limit: int = 
 
 
 async def top_rated(session: AsyncSession, min_votes: int, limit: int = 10) -> list[dict]:
-    """Внутренний рейтинг клуба — только фильмы с достаточным числом оценок (§11)."""
+    """Рейтинг клуба: только фильмы с достаточным числом оценок (§11).
+
+    На карточке фильма порог не действует — там рядом стоит число оценивших.
+    В списке «лучшее в клубе» он нужен: одна пятёрка не должна возглавлять топ.
+    """
     rows = await session.execute(
         sa.select(
             Film.title_ru,
             Film.year,
-            sa.func.avg(Feedback.film_rating).label("rating"),
-            sa.func.count(Feedback.film_rating).label("votes"),
+            sa.func.avg(FilmRating.score).label("rating"),
+            sa.func.count(FilmRating.score).label("votes"),
         )
-        .join(Feedback, Feedback.film_id == Film.id)
-        .where(Feedback.film_rating.is_not(None))
+        .join(FilmRating, FilmRating.film_id == Film.id)
         .group_by(Film.id, Film.title_ru, Film.year)
-        .having(sa.func.count(Feedback.film_rating) >= min_votes)
+        .having(sa.func.count(FilmRating.score) >= min_votes)
         .order_by(sa.desc("rating"))
         .limit(limit)
     )
     return [
-        {"title": title, "year": year, "rating": round(float(rating), 2), "votes": votes}
+        # Полубаллы в звёзды: в базе 1..10, на экране 0,5..5.
+        {"title": title, "year": year, "rating": round(float(rating) / 2, 2), "votes": votes}
         for title, year, rating, votes in rows
     ]
 

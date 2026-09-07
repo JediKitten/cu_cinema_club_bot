@@ -128,7 +128,9 @@ async def test_top_rated_hides_films_with_too_few_votes(session):
 
     listed = await analytics.top_rated(session, min_votes=1)
     assert listed[0]["title"] == films[0].title_ru
-    assert listed[0]["rating"] == 9.0
+    # Оценка из формы после показа — тот же рейтинг клуба: девять из десяти
+    # это 4,5 звезды из пяти.
+    assert listed[0]["rating"] == 4.5
 
 
 async def test_attendance_by_weekday(session):

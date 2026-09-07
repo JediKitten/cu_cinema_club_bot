@@ -979,3 +979,101 @@ h3 {
   place-items: center;
   font-size: 11px;
 }
+
+/* --- Звёзды ---------------------------------------------------------------- */
+
+.stars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.stars__star {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  font-size: 26px;
+}
+
+.stars__empty,
+.stars__fill {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stars__empty {
+  color: var(--border);
+}
+
+/* Половина — обрезанная звезда поверх пустой: символ половины есть не во всех
+   шрифтах, а обрезка работает везде одинаково. */
+.stars__fill {
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--soon);
+}
+
+.stars__half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: none;
+}
+
+.stars__half--left {
+  left: 0;
+}
+
+.stars__half--right {
+  right: 0;
+}
+
+.stars__value {
+  margin-left: 6px;
+  color: var(--hint);
+  font-size: 14px;
+}
+
+.rating--club b {
+  color: var(--soon);
+}
+
+.rate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+/* --- Листание недель ------------------------------------------------------- */
+
+/* Колонки по краям фиксированы, поэтому неделя стоит ровно посередине строки,
+   а не «примерно там»: с гибкими стрелками надпись съезжала, когда одна из них
+   гасла. */
+.week-nav {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+}
+
+.week-nav > b {
+  text-align: center;
+  font-size: 16px;
+}
+
+.week-nav__arrow {
+  font-size: 24px;
+  line-height: 1;
+  color: var(--link);
+  padding: 6px 0;
+}
+
+.week-nav__arrow:disabled {
+  opacity: 0.25;
+}

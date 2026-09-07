@@ -11,6 +11,7 @@ const MAX_FAVOURITES = 4;
 
 const ACTION: Record<string, string> = {
   rating: "оценил",
+  review: "написал отзыв",
   wishlist: "хочет посмотреть",
   soon: "готов пойти в ближайшее время",
   watched: "посмотрел",
@@ -296,7 +297,7 @@ export function Profile({
                 <p className="film-row__title">{item.film_title}</p>
                 <p className="meta">
                   {ACTION[item.kind] ?? item.kind}
-                  {item.rating !== null && ` · ${item.rating}/10`}
+                  {item.rating !== null && ` · ${item.rating.toFixed(1)} ★`}
                 </p>
                 {item.text && <p className="meta">{item.text}</p>}
               </div>

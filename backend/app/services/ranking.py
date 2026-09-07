@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Feedback, Film, Interest
+from app.models import Film, Interest
 from app.models.enums import FilmStatus, InterestKind
-from app.services import insights
+from app.services import insights, ratings
 from app.services.weights import WeightParams, active_interest_clause, interest_weight_expr
 
 
@@ -107,19 +107,10 @@ async def _film_facts(
             ext_votes=film.ext_votes,
         )
 
-    internal = await session.execute(
-        sa.select(
-            Feedback.film_id,
-            sa.func.avg(Feedback.film_rating),
-            sa.func.count(Feedback.film_rating),
-        )
-        .where(Feedback.film_id.in_(film_ids), Feedback.film_rating.is_not(None))
-        .group_by(Feedback.film_id)
-    )
-    for film_id, avg, count in internal:
+    for film_id, club in (await ratings.summaries(session, film_ids)).items():
         if row := rows.get(film_id):
-            row.internal_rating = round(float(avg), 2)
-            row.internal_votes = count
+            row.internal_rating = club.average
+            row.internal_votes = club.votes
 
     # История показов: админу при отборе видно, когда фильм уже крутили, с
     # ожидаемой и фактической явкой (§5, §8 — кулдаунов нет, но контекст нужен).

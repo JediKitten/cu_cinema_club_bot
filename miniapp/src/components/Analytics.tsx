@@ -60,16 +60,17 @@ export function Analytics() {
 
   return (
     <>
-      <h3>Воронка по неделям</h3>
-      <p className="hint">
-        Доля справа — от предыдущего шага. Провал между голосованием и подтверждением
-        означает неудобные слоты, между подтверждением и явкой — что подтверждение
-        не воспринимают всерьёз.
-      </p>
-      {data.funnel.length === 0 && <p className="hint">Циклов ещё не было.</p>}
-      {data.funnel.map((step) => (
-        <Funnel key={step.week_start} step={step} />
-      ))}
+      <Section
+        title="Воронка по неделям"
+        count={data.funnel.length}
+        storageKey="stats-funnel"
+        hint="Доля справа — от предыдущего шага. Провал между голосованием и подтверждением означает неудобные слоты, между подтверждением и явкой — что подтверждение не воспринимают всерьёз."
+      >
+        {data.funnel.length === 0 && <p className="hint">Циклов ещё не было.</p>}
+        {data.funnel.map((step) => (
+          <Funnel key={step.week_start} step={step} />
+        ))}
+      </Section>
 
       <h3>Итоги</h3>
       <div className="ratings">

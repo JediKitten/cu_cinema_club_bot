@@ -100,8 +100,8 @@ export default function App() {
         {tab === "catalog" && <Catalog onOpen={open} />}
         {tab === "mine" && <MyList onOpen={open} />}
         {tab === "vote" && <Week />}
-        {tab === "friends" && <Friends onOpenProfile={setOpenProfile} />}
-        {tab === "more" && <More user={user} onOpenProfile={setOpenProfile} />}
+        {tab === "friends" && <Friends me={user} onOpenProfile={setOpenProfile} />}
+        {tab === "more" && <More user={user} />}
 
         {/* Экраны не размонтируются под тем, что открылось поверх: вернувшись
             из карточки фильма, человек должен оказаться там же, где был. */}

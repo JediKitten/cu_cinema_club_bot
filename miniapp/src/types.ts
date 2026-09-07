@@ -52,6 +52,8 @@ export type FilmCard = FilmBrief & {
   my_interests: InterestKind[];
   watched: boolean;
   reviews: Review[];
+  /** Своя оценка: 0.5..5 с шагом в половину. */
+  my_rating: number | null;
 };
 
 export type InterestState = {
@@ -430,7 +432,7 @@ export type PersonBrief = {
 
 /** Событие ленты: отметка, просмотр или оценка. */
 export type FeedItem = {
-  kind: "rating" | "wishlist" | "soon" | "watched";
+  kind: "rating" | "review" | "wishlist" | "soon" | "watched";
   at: string;
   user_id: number;
   user_name: string;
@@ -439,6 +441,7 @@ export type FeedItem = {
   film_title: string;
   film_year: number | null;
   film_poster: string | null;
+  /** Оценка в звёздах: 0.5..5. */
   rating: number | null;
   text: string | null;
 };

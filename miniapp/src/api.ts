@@ -107,6 +107,13 @@ export const getInvite = (filmId: number) => request<Invite>(`/api/films/${filmI
 export const getTmdbFilm = (tmdbId: number) =>
   request<FilmCard>(`/api/films/tmdb/${tmdbId}`);
 
+/** Оценка фильма: 0.5..5 с шагом в половину, null снимает. */
+export const rateFilm = (filmId: number, stars: number | null) =>
+  request<{ film_id: number; my_rating: number | null; internal_rating: number | null; internal_votes: number }>(
+    `/api/films/${filmId}/rating`,
+    { method: "PUT", body: JSON.stringify({ stars }) },
+  );
+
 export const myInterests = () => request<InterestState[]>("/api/me/interests");
 
 export const myWatched = () => request<FilmBrief[]>("/api/me/watched");

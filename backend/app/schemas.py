@@ -104,9 +104,12 @@ class FilmCard(FilmBrief):
     trailer_key: str | None = None
     ext_rating: float | None = None
     ext_votes: int | None = None
-    # Внутренний рейтинг скрыт, пока оценок меньше порога (§11).
+    # Рейтинг клуба по пятибалльной шкале с половинками. Рядом всегда стоит
+    # число оценивших — оно честнее порога «показывать с пяти оценок».
     internal_rating: float | None = None
     internal_votes: int = 0
+    # Своя оценка: 0.5..5 или ничего.
+    my_rating: float | None = None
     # Публично видно только ЧИСЛО желающих, никогда не поимённый список (§11).
     interested_count: int = 0
     # Кто позвал на этот фильм по ссылке — подпись в карточке.
@@ -119,6 +122,19 @@ class ReviewOut(BaseModel):
     rating: int | None
     text: str | None
     created_at: datetime
+
+
+class RatingIn(BaseModel):
+    """Оценка в звёздах: 0.5..5 с шагом в половину. None снимает оценку."""
+
+    stars: float | None = Field(default=None, ge=0.5, le=5)
+
+
+class RatingOut(BaseModel):
+    film_id: int
+    my_rating: float | None = None
+    internal_rating: float | None = None
+    internal_votes: int = 0
 
 
 class InterestIn(BaseModel):
@@ -267,6 +283,8 @@ class PersonBrief(BaseModel):
 
 
 class FeedItemOut(BaseModel):
+    """Событие ленты: оценка, отзыв, отметка или просмотр."""
+
     kind: str
     at: datetime
     user_id: int
@@ -276,7 +294,8 @@ class FeedItemOut(BaseModel):
     film_title: str
     film_year: int | None = None
     film_poster: str | None = None
-    rating: int | None = None
+    # Оценка в звёздах: 0.5..5.
+    rating: float | None = None
     text: str | None = None
 
 

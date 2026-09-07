@@ -9,10 +9,11 @@ from app.core.auth import CurrentUser
 from app.db import get_session
 from app.models import Feedback, Film, Interest, User
 from app.models.enums import FilmStatus
-from app.schemas import FilmBrief, FilmCard, InviteOut, ReviewOut
+from app.schemas import FilmBrief, FilmCard, InviteOut, RatingIn, RatingOut, ReviewOut
 from app.services import interests as marks_service
-from app.services import matching, referrals
+from app.services import matching, ratings, referrals
 from app.services.interests import MarkState
+from app.services.ratings import RatingError
 from app.services.settings import SettingsService
 from app.services.tmdb import TmdbError, film_fields, get_tmdb, poster_url
 from app.services.weights import WeightParams, active_interest_clause, film_weight_expr
@@ -197,6 +198,32 @@ async def invite(
     )
 
 
+@router.put("/{film_id}/rating", response_model=RatingOut)
+async def rate_film(
+    film_id: int,
+    body: RatingIn,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RatingOut:
+    """Оценка фильма любым участником клуба.
+
+    Показ ждать не нужно: клуб выбирает кино в том числе по тому, что участники
+    уже видели. Повторная оценка заменяет прежнюю, пустая — снимает.
+    """
+    try:
+        club = await ratings.set_rating(session, user.id, film_id, body.stars)
+    except ratings.FilmNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except RatingError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return RatingOut(
+        film_id=film_id,
+        my_rating=body.stars,
+        internal_rating=club.average,
+        internal_votes=club.votes,
+    )
+
+
 @router.get("/tmdb/{tmdb_id}", response_model=FilmCard)
 async def tmdb_card(
     tmdb_id: int,
@@ -245,6 +272,7 @@ async def tmdb_card(
         # Внутренних данных нет: фильм ещё не в каталоге, отмечать его никто не мог.
         internal_rating=None,
         internal_votes=0,
+        my_rating=None,
         interested_count=0,
         reviews=[],
     )
@@ -260,9 +288,6 @@ async def film_card(
     if film is None or film.status == FilmStatus.HIDDEN:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Фильм не найден")
 
-    settings = SettingsService(session)
-    min_votes = int(await settings.get("internal_rating_min_votes"))
-
     interested_count = (
         await session.execute(
             sa.select(sa.func.count(sa.distinct(Interest.user_id))).where(
@@ -274,14 +299,10 @@ async def film_card(
     marks = await _my_marks(session, user.id, [film])
     inviter = await referrals.pending_invite(session, user.id, film_id)
 
-    rating_row = (
-        await session.execute(
-            sa.select(sa.func.avg(Feedback.film_rating), sa.func.count(Feedback.film_rating)).where(
-                Feedback.film_id == film_id, Feedback.film_rating.is_not(None)
-            )
-        )
-    ).one()
-    avg, votes = rating_row
+    # Рейтинг клуба — по оценкам участников, откуда бы они ни пришли: из
+    # каталога или из формы после показа. Порог «не показывать, пока оценок
+    # мало» снят: рядом всегда стоит их число, и оно честнее любого порога.
+    club = await ratings.summary(session, film_id)
 
     reviews = [
         ReviewOut(
@@ -306,8 +327,9 @@ async def film_card(
         trailer_key=film.trailer_key,
         ext_rating=film.ext_rating,
         ext_votes=film.ext_votes,
-        internal_rating=round(float(avg), 2) if votes >= min_votes and avg is not None else None,
-        internal_votes=votes,
+        internal_rating=club.average,
+        internal_votes=club.votes,
+        my_rating=await ratings.my_rating(session, user.id, film_id),
         interested_count=interested_count,
         invited_by=inviter.display_name if inviter else None,
         reviews=reviews,
