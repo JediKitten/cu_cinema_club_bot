@@ -3,8 +3,10 @@ import { login } from "./api";
 import { Admin } from "./screens/Admin";
 import { Catalog } from "./screens/Catalog";
 import { FilmDetail } from "./screens/FilmDetail";
+import { Friends } from "./screens/Friends";
 import { Gate } from "./screens/Gate";
 import { More } from "./screens/More";
+import { Profile } from "./screens/Profile";
 import { Week } from "./screens/Week";
 import { MyList } from "./screens/MyList";
 import { FilmOpenerProvider } from "./filmOpener";
@@ -34,6 +36,9 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("catalog");
   // Фильм из поиска ещё не в каталоге — у него есть только tmdb_id.
   const [openFilm, setOpenFilm] = useState<FilmBrief | null>(null);
+  // Профиль и друзья открываются поверх вкладок — как карточка фильма.
+  const [openProfile, setOpenProfile] = useState<number | null>(null);
+  const [showFriends, setShowFriends] = useState(false);
 
   // Бот открывает приложение адресом вида ?film=123 — сразу показываем карточку.
   useEffect(() => {
@@ -99,7 +104,35 @@ export default function App() {
         {tab === "mine" && <MyList onOpen={open} />}
         {tab === "vote" && <Week />}
         {tab === "admin" && <Admin me={user} />}
-        {tab === "more" && <More user={user} />}
+        {tab === "more" && (
+          <More
+            user={user}
+            onOpenProfile={setOpenProfile}
+            onOpenFriends={() => setShowFriends(true)}
+          />
+        )}
+
+        {/* Экраны не размонтируются под тем, что открылось поверх: вернувшись
+            из карточки фильма, человек должен оказаться там же, где был. */}
+        {showFriends && (
+          <div className="overlay" hidden={openProfile !== null || openFilm !== null}>
+            <Friends
+              active={openProfile === null && openFilm === null}
+              onBack={() => setShowFriends(false)}
+              onOpenProfile={setOpenProfile}
+            />
+          </div>
+        )}
+
+        {openProfile !== null && (
+          <div className="overlay" hidden={openFilm !== null}>
+            <Profile
+              userId={openProfile}
+              active={openFilm === null}
+              onBack={() => setOpenProfile(null)}
+            />
+          </div>
+        )}
 
         {openFilm !== null && (
           // Карточка накрывает список, а не заменяет его: список под ней жив
@@ -115,7 +148,7 @@ export default function App() {
         )}
 
         {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
-        {openFilm === null && (
+        {openFilm === null && openProfile === null && !showFriends && (
           <nav className="tabs">
             {TABS.filter(
               (item) => item.key !== "admin" || ADMIN_ROLES.has(user.role),

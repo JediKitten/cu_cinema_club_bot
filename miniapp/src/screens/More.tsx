@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { createFilmRequest, myFilmRequests } from "../api";
 import { haptic } from "../telegram";
 import type { FilmRequest, User } from "../types";
+import { ROLE_LABEL } from "../roles";
+import { Avatar } from "./Profile";
 import { History } from "./History";
 
 const STATUS: Record<FilmRequest["status"], string> = {
@@ -10,7 +12,13 @@ const STATUS: Record<FilmRequest["status"], string> = {
   rejected: "отклонён",
 };
 
-export function More({ user }: { user: User }) {
+type Props = {
+  user: User;
+  onOpenProfile(userId: number): void;
+  onOpenFriends(): void;
+};
+
+export function More({ user, onOpenProfile, onOpenFriends }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const [title, setTitle] = useState("");
   const [year, setYear] = useState("");
@@ -60,12 +68,24 @@ export function More({ user }: { user: User }) {
 
   return (
     <div className="screen">
-      <div>
-        <h2 style={{ fontSize: 16, margin: 0 }}>{user.display_name}</h2>
-        <p className="meta">
-          {user.role === "user" ? "участник клуба" : `роль: ${user.role}`}
-        </p>
-      </div>
+      {/* Своя карточка — вход в профиль: там же живут четыре любимых фильма. */}
+      <button className="slot-row person-row" onClick={() => onOpenProfile(user.id)}>
+        <span className="person-row__main">
+          <Avatar url={user.photo_url} name={user.display_name} size={44} />
+          <span>
+            <p className="film-row__title">{user.display_name}</p>
+            <p className="meta">
+              {user.tg_username ? `@${user.tg_username} · ` : ""}
+              {ROLE_LABEL[user.role]}
+            </p>
+          </span>
+        </span>
+        <span className="hint">мой профиль →</span>
+      </button>
+
+      <button className="primary" onClick={onOpenFriends}>
+        👥 Друзья и лента
+      </button>
 
       <button className="primary" onClick={() => setShowHistory(true)}>
         🕘 Что уже смотрели

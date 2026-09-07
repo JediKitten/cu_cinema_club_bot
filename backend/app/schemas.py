@@ -252,6 +252,65 @@ class SandboxIn(BaseModel):
 FilmCard.model_rebuild()
 
 
+# --- Профили, друзья и лента -------------------------------------------------
+
+
+class PersonBrief(BaseModel):
+    id: int
+    display_name: str
+    tg_username: str | None = None
+    photo_url: str | None = None
+    # Как мы связаны с этим человеком: взаимно, я на него, он на меня.
+    friends: bool = False
+    following: bool = False
+    follower: bool = False
+
+
+class FeedItemOut(BaseModel):
+    kind: str
+    at: datetime
+    user_id: int
+    user_name: str
+    user_photo: str | None = None
+    film_id: int
+    film_title: str
+    film_year: int | None = None
+    film_poster: str | None = None
+    rating: int | None = None
+    text: str | None = None
+
+
+class ProfileOut(BaseModel):
+    id: int
+    display_name: str
+    tg_username: str | None = None
+    photo_url: str | None = None
+    role: UserRole
+    joined_at: datetime
+    favourites: list[FilmBrief] = Field(default_factory=list)
+    marks: int = 0
+    watched: int = 0
+    ratings: int = 0
+    average_rating: float | None = None
+    friends: int = 0
+    is_me: bool = False
+    relation_friends: bool = False
+    relation_following: bool = False
+    relation_follower: bool = False
+    recent: list[FeedItemOut] = Field(default_factory=list)
+
+
+class CircleOut(BaseModel):
+    friends: list[PersonBrief] = Field(default_factory=list)
+    following: list[PersonBrief] = Field(default_factory=list)
+    followers: list[PersonBrief] = Field(default_factory=list)
+
+
+class FavouritesIn(BaseModel):
+    film_ids: list[int] = Field(default_factory=list, max_length=4)
+
+
+
 # --- Цикл и шорт-лист (§2, §5) ---------------------------------------------
 
 

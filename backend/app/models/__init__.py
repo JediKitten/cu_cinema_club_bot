@@ -15,6 +15,7 @@ from app.models.cycle import (
     Slot,
 )
 from app.models.interest import Interest
+from app.models.social import Favourite, Friendship
 from app.models.system import AuditLog, InviteCode, Notification, Setting
 from app.models.user import User
 
@@ -26,10 +27,12 @@ __all__ = [
     "Base",
     "CancelRequest",
     "Confirmation",
+    "Favourite",
     "Feedback",
     "Film",
     "FilmRequest",
     "FilmVote",
+    "Friendship",
     "Hall",
     "Interest",
     "InviteCode",

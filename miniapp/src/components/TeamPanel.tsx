@@ -1,14 +1,8 @@
 import { useEffect, useState } from "react";
 import { ApiError, findUsers, getGrantableRoles, getTeam, setUserRole } from "../api";
+import { ROLE_LABEL } from "../roles";
 import { showMessage } from "../telegram";
 import type { Role, TeamMember, User } from "../types";
-
-const ROLE_LABEL: Record<Role, string> = {
-  user: "участник",
-  moderator: "модератор",
-  admin: "администратор",
-  superadmin: "главный администратор",
-};
 
 // Тот же порядок, что и на сервере: менять роль можно только тому, кто ниже вас.
 const RANK: Record<Role, number> = { user: 0, moderator: 1, admin: 2, superadmin: 3 };

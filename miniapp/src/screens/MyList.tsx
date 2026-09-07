@@ -1,14 +1,28 @@
 import { useEffect, useState } from "react";
 import { myInterests, myWatched } from "../api";
-import { FilmRow } from "../components/FilmRow";
+import { PosterGrid } from "../components/PosterGrid";
 import { Section } from "../components/Section";
 import type { FilmBrief, InterestKind, InterestState } from "../types";
 import { isSameFilm, replaceFilm } from "../films";
+import { useFilmChanges } from "../filmChanges";
 
 type Props = { onOpen(film: FilmBrief): void };
 
 function daysLeft(expiresAt: string): number {
   return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000);
+}
+
+/** Сколько осталось у ближайшей к сгоранию отметки.
+ *
+ * В плитке подписи под каждым постером нет места, а знать, что срок поджимает,
+ * нужно — поэтому одна строка на весь раздел вместо строки на фильм.
+ */
+function soonestHint(items: InterestState[]): string {
+  const days = items
+    .map((item) => (item.expires_at ? daysLeft(item.expires_at) : null))
+    .filter((value): value is number => value !== null);
+  if (days.length === 0) return "Эти отметки сгорают сами — продлить можно, когда придёт напоминание.";
+  return `Сгорают сами: ближайшая — через ${Math.min(...days)} дн. Продлить можно, когда придёт напоминание.`;
 }
 
 export function MyList({ onOpen }: Props) {
@@ -27,6 +41,8 @@ export function MyList({ onOpen }: Props) {
       .finally(() => setLoading(false));
   }, []);
 
+  // Отметки меняют в карточке фильма, поэтому в плитке их нет. Обработчик
+  // остаётся: карточка возвращает обновлённый фильм, и списки надо поправить.
   function handleMarks(kinds: InterestKind[], updated: FilmBrief) {
     // Список просмотренного меняется той же кнопкой, что и отметки, поэтому
     // обновляем его здесь же — иначе фильм исчезал бы только после перезахода.
@@ -47,6 +63,9 @@ export function MyList({ onOpen }: Props) {
       ),
     );
   }
+
+  // Отметки меняют в карточке фильма — она сообщает, что изменилось.
+  useFilmChanges(handleMarks);
 
   const soon = items.filter((item) => item.kinds.includes("soon"));
   const wishlist = items.filter((item) => !item.kinds.includes("soon"));
@@ -71,31 +90,15 @@ export function MyList({ onOpen }: Props) {
           title="Ближайшее"
           count={soon.length}
           storageKey="mine-soon"
-          hint="Эти отметки сгорают сами — продлить можно, когда придёт напоминание."
+          hint={soonestHint(soon)}
         >
-          {soon.map((item) => (
-            <div key={item.film.id}>
-              <FilmRow film={item.film} onOpen={onOpen} onMarksChange={handleMarks} />
-              {item.expires_at && (
-                <p className="hint" style={{ margin: "4px 0 0 12px" }}>
-                  сгорит через {daysLeft(item.expires_at)} дн.
-                </p>
-              )}
-            </div>
-          ))}
+          <PosterGrid films={soon.map((item) => item.film)} onOpen={onOpen} />
         </Section>
       )}
 
       {wishlist.length > 0 && (
         <Section title="Желаемое" count={wishlist.length} storageKey="mine-wishlist">
-          {wishlist.map((item) => (
-            <FilmRow
-              key={item.film.id}
-              film={item.film}
-              onOpen={onOpen}
-              onMarksChange={handleMarks}
-            />
-          ))}
+          <PosterGrid films={wishlist.map((item) => item.film)} onOpen={onOpen} />
         </Section>
       )}
 
@@ -106,9 +109,7 @@ export function MyList({ onOpen }: Props) {
           storageKey="mine-watched"
           hint="Отметка «Смотрел» ничему не мешает: фильм может быть и здесь, и в желаемом."
         >
-          {watched.map((film) => (
-            <FilmRow key={film.id} film={film} onOpen={onOpen} onMarksChange={handleMarks} />
-          ))}
+          <PosterGrid films={watched} onOpen={onOpen} />
         </Section>
       )}
     </div>

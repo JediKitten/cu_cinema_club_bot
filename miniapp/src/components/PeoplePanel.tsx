@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
 import { getPeople } from "../api";
-import type { PersonRow, Role } from "../types";
-
-const ROLE_LABEL: Record<Role, string> = {
-  user: "участник",
-  moderator: "модератор",
-  admin: "администратор",
-  superadmin: "главный администратор",
-};
+import { ROLE_LABEL } from "../roles";
+import type { PersonRow } from "../types";
 
 /** Все участники клуба и то, как каждый сюда попал (просьба клуба).
  *

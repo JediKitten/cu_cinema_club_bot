@@ -7,6 +7,7 @@ import { WatchedButton } from "../components/WatchedButton";
 import { FilmStatsPanel } from "../components/FilmStatsPanel";
 import { Section } from "../components/Section";
 import { useTelegramBackButton } from "../telegram";
+import { publishFilmChange } from "../filmChanges";
 import type { FilmBrief, FilmCard, InterestKind } from "../types";
 
 type Props = {
@@ -49,6 +50,8 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
     // Берём всё, что вернул сервер: вместе с отметкой меняются «Просмотрено»
     // и признак истёкшего срока — обновляя только kinds, мы бы их потеряли.
     setFilm((current) => (current ? { ...current, ...updated, my_interests: kinds } : current));
+    // Списки под карточкой правят у себя ту же строку, не перезагружаясь.
+    publishFilmChange(kinds, updated);
   }
 
   return (

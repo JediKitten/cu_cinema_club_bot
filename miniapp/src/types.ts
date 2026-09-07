@@ -415,3 +415,56 @@ export type PersonRow = {
   invite_code: string | null;
   invited_by: string | null;
 };
+
+// --- Люди: профили, друзья, лента -------------------------------------------
+
+export type PersonBrief = {
+  id: number;
+  display_name: string;
+  tg_username: string | null;
+  photo_url: string | null;
+  friends: boolean;
+  following: boolean;
+  follower: boolean;
+};
+
+/** Событие ленты: отметка, просмотр или оценка. */
+export type FeedItem = {
+  kind: "rating" | "wishlist" | "soon" | "watched";
+  at: string;
+  user_id: number;
+  user_name: string;
+  user_photo: string | null;
+  film_id: number;
+  film_title: string;
+  film_year: number | null;
+  film_poster: string | null;
+  rating: number | null;
+  text: string | null;
+};
+
+export type Profile = {
+  id: number;
+  display_name: string;
+  tg_username: string | null;
+  photo_url: string | null;
+  role: Role;
+  joined_at: string;
+  favourites: FilmBrief[];
+  marks: number;
+  watched: number;
+  ratings: number;
+  average_rating: number | null;
+  friends: number;
+  is_me: boolean;
+  relation_friends: boolean;
+  relation_following: boolean;
+  relation_follower: boolean;
+  recent: FeedItem[];
+};
+
+export type Circle = {
+  friends: PersonBrief[];
+  following: PersonBrief[];
+  followers: PersonBrief[];
+};

@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { browseFilms, CATALOG_PAGE, searchFilms } from "../api";
 import { FilmRow } from "../components/FilmRow";
+import { PosterGrid } from "../components/PosterGrid";
+import {
+  LayoutSwitch,
+  rememberedLayout,
+  rememberLayout,
+  type Layout,
+} from "../components/LayoutSwitch";
 import type { FilmBrief, InterestKind } from "../types";
 import { replaceFilm } from "../films";
+import { useFilmChanges } from "../filmChanges";
 
 type Props = { onOpen(film: FilmBrief): void };
 
@@ -20,6 +28,7 @@ const SORTS: { key: Sort; label: string }[] = [
 export function Catalog({ onOpen }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("popular");
+  const [layout, setLayout] = useState<Layout>(rememberedLayout);
   const [films, setFilms] = useState<FilmBrief[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -85,6 +94,10 @@ export function Catalog({ onOpen }: Props) {
     );
   }
 
+  // Отметку могли поменять в карточке поверх списка: правим ту же строку,
+  // не перезагружая выдачу — иначе потерялись бы подгруженные страницы.
+  useFilmChanges(handleMarks);
+
   return (
     <div className="screen">
       <div className="search">
@@ -99,16 +112,27 @@ export function Catalog({ onOpen }: Props) {
       </div>
 
       {!query.trim() && (
-        <div className="marks">
-          {SORTS.map((option) => (
-            <button
-              key={option.key}
-              className={`mark ${sort === option.key ? "is-on mark--wishlist" : ""}`}
-              onClick={() => setSort(option.key)}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="sorts">
+          {/* Сортировки прокручиваются вбок, переключатель вида — нет:
+              он должен быть под рукой, а не уезжать за край. */}
+          <div className="sorts__options">
+            {SORTS.map((option) => (
+              <button
+                key={option.key}
+                className={`mark ${sort === option.key ? "is-on mark--wishlist" : ""}`}
+                onClick={() => setSort(option.key)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <LayoutSwitch
+            layout={layout}
+            onChange={(next) => {
+              setLayout(next);
+              rememberLayout(next);
+            }}
+          />
         </div>
       )}
 
@@ -123,14 +147,18 @@ export function Catalog({ onOpen }: Props) {
         </div>
       )}
 
-      {films.map((film) => (
-        <FilmRow
-          key={film.id ?? `tmdb-${film.tmdb_id}`}
-          film={film}
-          onOpen={onOpen}
-          onMarksChange={handleMarks}
-        />
-      ))}
+      {layout === "grid" ? (
+        <PosterGrid films={films} onOpen={onOpen} />
+      ) : (
+        films.map((film) => (
+          <FilmRow
+            key={film.id ?? `tmdb-${film.tmdb_id}`}
+            film={film}
+            onOpen={onOpen}
+            onMarksChange={handleMarks}
+          />
+        ))
+      )}
 
       {hasMore && (
         <button className="primary" disabled={loadingMore} onClick={loadMore}>

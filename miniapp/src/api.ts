@@ -22,8 +22,12 @@ import type {
   Slot,
   ClubEvent,
   EventChanges,
+  Circle,
+  FeedItem,
   FilmStats,
   InviteCode,
+  PersonBrief,
+  Profile,
   PersonRow,
   ScreeningStats,
   TeamMember,
@@ -144,6 +148,30 @@ export const createFilmRequest = (payload: {
 }) => request<FilmRequest>("/api/film-requests", { method: "POST", body: JSON.stringify(payload) });
 
 export const myFilmRequests = () => request<FilmRequest[]>("/api/me/film-requests");
+
+// --- Люди: профили, друзья, лента -------------------------------------------
+
+export const findPeople = (query: string) =>
+  request<PersonBrief[]>(`/api/people?q=${encodeURIComponent(query)}`);
+
+export const getProfile = (userId: number) => request<Profile>(`/api/users/${userId}`);
+
+export const getCircle = () => request<Circle>("/api/me/circle");
+
+export const getFeed = () => request<FeedItem[]>("/api/me/feed");
+
+export const addFriend = (userId: number) =>
+  request<PersonBrief>(`/api/users/${userId}/friend`, { method: "POST" });
+
+export const removeFriend = (userId: number) =>
+  request<PersonBrief>(`/api/users/${userId}/friend`, { method: "DELETE" });
+
+/** Четыре фильма в профиле: порядок задаёт сам человек. */
+export const setFavourites = (filmIds: number[]) =>
+  request<FilmBrief[]>("/api/me/favourites", {
+    method: "PUT",
+    body: JSON.stringify({ film_ids: filmIds }),
+  });
 
 // --- Админка ---------------------------------------------------------------
 

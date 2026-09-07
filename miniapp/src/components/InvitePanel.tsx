@@ -1,19 +1,11 @@
 import { useEffect, useState } from "react";
 import { ApiError, createInviteCodes, getBetaState, getInviteCodes, setBeta } from "../api";
 import { showMessage } from "../telegram";
+import { plural } from "../plural";
 import { Section } from "./Section";
 import type { InviteCode } from "../types";
 
-/** «2 кода», но «5 кодов»: русские числительные согласуются, и кнопка,
- *  которая этого не умеет, выглядит недоделанной. */
-function codesWord(count: number): string {
-  const tail = count % 100;
-  if (tail >= 11 && tail <= 14) return "кодов";
-  const last = count % 10;
-  if (last === 1) return "код";
-  if (last >= 2 && last <= 4) return "кода";
-  return "кодов";
-}
+const CODES: [string, string, string] = ["код", "кода", "кодов"];
 
 /** Коды-приглашения закрытой беты.
  *
@@ -63,7 +55,7 @@ export function InvitePanel({ isSuperadmin }: { isSuperadmin: boolean }) {
       showMessage(
         created.length === 1
           ? `Код ${created[0].code} готов — на ${perCode} чел.`
-          : `Готово ${created.length} ${codesWord(created.length)} по ${perCode} чел.`,
+          : `Готово ${created.length} ${plural(created.length, CODES)} по ${perCode} чел.`,
       );
     } catch (e) {
       showMessage(e instanceof ApiError ? e.message : "Не получилось");
@@ -172,7 +164,7 @@ export function InvitePanel({ isSuperadmin }: { isSuperadmin: boolean }) {
         onChange={(event) => setNote(event.target.value)}
       />
       <button className="primary" disabled={busy} onClick={create}>
-        {Number(count) > 1 ? `Выдать ${Number(count)} ${codesWord(Number(count))}` : "Выдать код"}
+        {Number(count) > 1 ? `Выдать ${Number(count)} ${plural(Number(count), CODES)}` : "Выдать код"}
       </button>
 
       {fresh.length > 1 && (
@@ -185,7 +177,7 @@ export function InvitePanel({ isSuperadmin }: { isSuperadmin: boolean }) {
               onClick={() =>
                 copy(
                   fresh.map((item) => item.code).join("\n"),
-                  `Скопировано ${fresh.length} ${codesWord(fresh.length)}`,
+                  `Скопировано ${fresh.length} ${plural(fresh.length, CODES)}`,
                 )
               }
             >
