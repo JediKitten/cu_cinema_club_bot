@@ -311,6 +311,8 @@ class ProfileOut(BaseModel):
     watched: int = 0
     ratings: int = 0
     average_rating: float | None = None
+    # Распределение оценок: десять чисел, от половины звезды до пяти.
+    ratings_by_score: list[int] = Field(default_factory=list)
     friends: int = 0
     is_me: bool = False
     relation_friends: bool = False
@@ -325,8 +327,19 @@ class CircleOut(BaseModel):
     followers: list[PersonBrief] = Field(default_factory=list)
 
 
+class FavouriteRef(BaseModel):
+    """Фильм из каталога — по id, найденный в TMDB — по tmdb_id.
+
+    Двумя полями, а не одним списком id: фильма из TMDB в каталоге ещё нет,
+    и он заводится в момент, когда его выбрали.
+    """
+
+    film_id: int | None = None
+    tmdb_id: int | None = None
+
+
 class FavouritesIn(BaseModel):
-    film_ids: list[int] = Field(default_factory=list, max_length=4)
+    films: list[FavouriteRef] = Field(default_factory=list, max_length=4)
 
 
 

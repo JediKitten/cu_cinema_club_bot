@@ -3,7 +3,7 @@
 import pytest
 import sqlalchemy as sa
 
-from app.models import Friendship, User
+from app.models import Film, Friendship, User
 from app.models.enums import InterestKind
 from app.services import attendance as att
 from app.services import social
@@ -166,7 +166,11 @@ async def test_profile_counts_what_the_person_did(session):
     assert profile.marks == 1
     assert profile.watched == 1  # приход на показ засчитан просмотром
     assert profile.ratings == 1
-    assert profile.average_rating == 9.0
+    # В профиле та же шкала, что и на карточке: девять из десяти — 4,5 звезды.
+    assert profile.average_rating == 4.5
+    # Распределение: одна оценка в корзине «4,5», остальные пусты.
+    assert profile.ratings_by_score[8] == 1
+    assert sum(profile.ratings_by_score) == 1
     assert [f.id for f in profile.favourites] == [films[0].id]
     assert profile.relation.following is False
 
@@ -211,7 +215,7 @@ async def test_profile_and_favourites_over_http(client, session):
     await session.commit()
 
     saved = await client.put(
-        "/api/me/favourites", json={"film_ids": [film.id]}, headers=headers
+        "/api/me/favourites", json={"films": [{"film_id": film.id}]}, headers=headers
     )
     assert saved.status_code == 200
     assert [row["title_ru"] for row in saved.json()] == ["Любимое"]
@@ -221,9 +225,52 @@ async def test_profile_and_favourites_over_http(client, session):
     assert [row["title_ru"] for row in profile["favourites"]] == ["Любимое"]
 
     too_many = await client.put(
-        "/api/me/favourites", json={"film_ids": [film.id] * 5}, headers=headers
+        "/api/me/favourites", json={"films": [{"film_id": film.id}] * 5}, headers=headers
     )
     assert too_many.status_code == 422
+
+
+async def test_favourite_from_tmdb_lands_in_the_catalog(client, session, monkeypatch):
+    """Любимый фильм можно взять и из TMDB — в каталог он попадает при выборе."""
+    from app.services import tmdb
+
+    me = await login(client, SUPERADMIN_TG_ID, "Главный")
+    headers = {"Authorization": f"Bearer {me['token']}"}
+
+    async def fake_movie(self, tmdb_id: int) -> dict:
+        return {
+            "id": tmdb_id,
+            "title": "Из TMDB",
+            "original_title": "From TMDB",
+            "release_date": "2001-01-01",
+            "genres": [],
+            "vote_average": 7.5,
+            "vote_count": 100,
+        }
+
+    monkeypatch.setattr(tmdb.TmdbClient, "movie", fake_movie)
+
+    saved = await client.put(
+        "/api/me/favourites", json={"films": [{"tmdb_id": 603}]}, headers=headers
+    )
+
+    assert saved.status_code == 200
+    assert [row["title_ru"] for row in saved.json()] == ["Из TMDB"]
+    # Фильм завёлся в каталоге: у него появился настоящий id.
+    assert saved.json()[0]["id"] is not None
+    stored = await session.scalar(sa.select(Film.title_ru).where(Film.tmdb_id == 603))
+    assert stored == "Из TMDB"
+
+
+async def test_favourite_without_any_id_is_refused(client):
+    me = await login(client, SUPERADMIN_TG_ID, "Главный")
+
+    bad = await client.put(
+        "/api/me/favourites",
+        json={"films": [{}]},
+        headers={"Authorization": f"Bearer {me['token']}"},
+    )
+    assert bad.status_code == 422
 
 
 async def test_people_search_skips_yourself(client, session):

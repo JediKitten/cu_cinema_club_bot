@@ -78,6 +78,9 @@ class Profile:
     ratings: int = 0
     average_rating: float | None = None
     friends: int = 0
+    # Сколько фильмов человек оценил на каждую половину звезды: индекс 0 —
+    # ползвезды, индекс 9 — пять. Строгий вкус видно с одного взгляда.
+    ratings_by_score: list[int] = field(default_factory=list)
     relation: Relation | None = None
     recent: list[FeedItem] = field(default_factory=list)
 
@@ -359,10 +362,11 @@ async def profile(session: AsyncSession, viewer_id: int, user_id: int) -> Profil
         )
         or 0
     )
+    # Средняя — по тем же оценкам, что и рейтинг клуба, и в той же шкале звёзд.
     average, ratings = (
         await session.execute(
-            sa.select(sa.func.avg(Feedback.film_rating), sa.func.count(Feedback.film_rating)).where(
-                Feedback.user_id == user_id, Feedback.film_rating.is_not(None)
+            sa.select(sa.func.avg(FilmRating.score), sa.func.count(FilmRating.score)).where(
+                FilmRating.user_id == user_id
             )
         )
     ).one()
@@ -378,6 +382,14 @@ async def profile(session: AsyncSession, viewer_id: int, user_id: int) -> Profil
         )
     )
 
+    histogram = [0] * 10
+    for score, count in await session.execute(
+        sa.select(FilmRating.score, sa.func.count())
+        .where(FilmRating.user_id == user_id)
+        .group_by(FilmRating.score)
+    ):
+        histogram[score - 1] = count
+
     return Profile(
         id=user.id,
         display_name=user.display_name,
@@ -389,8 +401,9 @@ async def profile(session: AsyncSession, viewer_id: int, user_id: int) -> Profil
         marks=marks,
         watched=watched,
         ratings=ratings,
-        average_rating=round(float(average), 2) if ratings else None,
+        average_rating=round(float(average) / 2, 2) if ratings else None,
         friends=mutual or 0,
+        ratings_by_score=histogram,
         relation=await relation(session, viewer_id, user_id),
         recent=await feed(session, [user_id], limit=10),
     )

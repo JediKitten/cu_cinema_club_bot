@@ -18,7 +18,7 @@ from app.schemas import (
 )
 from app.services import social
 from app.services.social import SocialError
-from app.services.tmdb import poster_url
+from app.services.tmdb import TmdbError, ensure_film, poster_url
 
 router = APIRouter(prefix="/api", tags=["social"])
 
@@ -107,9 +107,28 @@ async def set_favourites(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[FilmBrief]:
-    """Четыре фильма в профиле. Порядок задаёт сам человек."""
+    """Четыре фильма в профиле. Порядок задаёт сам человек.
+
+    Любимый фильм можно выбрать и из TMDB: в каталог он попадёт прямо здесь —
+    ровно как при первой отметке интереса. Иначе в витрину профиля попадала бы
+    только та сотня, что кто-то уже завёл до вас.
+    """
+    film_ids: list[int] = []
+    for ref in body.films:
+        if ref.film_id is not None:
+            film_ids.append(ref.film_id)
+            continue
+        if ref.tmdb_id is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, "Нужен film_id или tmdb_id"
+            )
+        try:
+            film_ids.append((await ensure_film(session, ref.tmdb_id)).id)
+        except TmdbError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"TMDB недоступен: {exc}") from exc
+
     try:
-        films = await social.set_favourites(session, user.id, body.film_ids)
+        films = await social.set_favourites(session, user.id, film_ids)
     except SocialError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     return [_film(film) for film in films]
@@ -166,6 +185,7 @@ async def profile(
         watched=found.watched,
         ratings=found.ratings,
         average_rating=found.average_rating,
+        ratings_by_score=found.ratings_by_score,
         friends=found.friends,
         is_me=found.id == user.id,
         relation_friends=bool(found.relation and found.relation.friends),

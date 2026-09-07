@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { addFriend, getProfile, removeFriend, searchFilms, setFavourites } from "../api";
+import { Bars } from "../components/Bars";
 import { Poster } from "../components/FilmRow";
 import { useOpenFilm } from "../filmOpener";
 import { haptic, showMessage, useTelegramBackButton } from "../telegram";
@@ -71,8 +72,10 @@ export function Profile({
       return;
     }
     const timer = setTimeout(() => {
+      // Ничего не отсеиваем: фильм из TMDB тоже годится в любимые, в каталог
+      // он попадёт в момент выбора.
       searchFilms(trimmed)
-        .then((films) => setFound(films.filter((film) => film.id !== null).slice(0, 6)))
+        .then((films) => setFound(films.slice(0, 6)))
         .catch(() => setFound([]));
     }, 350);
     return () => clearTimeout(timer);
@@ -103,7 +106,7 @@ export function Profile({
     if (!profile) return;
     setBusy(true);
     try {
-      const saved = await setFavourites(films.map((film) => film.id!).filter(Boolean));
+      const saved = await setFavourites(films);
       setProfile({ ...profile, favourites: saved });
       setQuery("");
       setFound([]);
@@ -157,7 +160,9 @@ export function Profile({
         </div>
       )}
 
-      <div className="stats-grid">
+      {/* Три числа: сколько хочет посмотреть, сколько посмотрел, сколько друзей.
+          Оценки живут ниже — там их не одно число, а целое распределение. */}
+      <div className="stats-grid stats-grid--three">
         <div className="stat">
           <b>{profile.marks}</b>
           <span>{plural(profile.marks, ["отметка", "отметки", "отметок"])}</span>
@@ -167,16 +172,34 @@ export function Profile({
           <span>просмотрено</span>
         </div>
         <div className="stat">
-          <b>{profile.average_rating ?? "—"}</b>
-          <span>
-            {profile.ratings} {plural(profile.ratings, ["оценка", "оценки", "оценок"])}
-          </span>
-        </div>
-        <div className="stat">
           <b>{profile.friends}</b>
           <span>{plural(profile.friends, ["друг", "друга", "друзей"])}</span>
         </div>
       </div>
+
+      {profile.ratings > 0 && (
+        <>
+          <div className="profile__row">
+            <h3 style={{ margin: 0 }}>Как оценивает</h3>
+            <span className="hint">
+              {profile.ratings} {plural(profile.ratings, ["оценка", "оценки", "оценок"])}
+            </span>
+          </div>
+          <Bars
+            data={profile.ratings_by_score.map((count, index) => ({
+              // Подписываем только целые звёзды: десять подписей в ряд на
+              // телефоне сливаются в кашу.
+              label: (index + 1) % 2 === 0 ? String((index + 1) / 2) : "",
+              value: count,
+            }))}
+            color="var(--soon)"
+            // Десятая доли достаточно, и запятая — как в остальных числах.
+            hint={`Сколько фильмов получили каждую оценку. Средняя — ${
+              profile.average_rating?.toFixed(1).replace(".", ",") ?? "—"
+            } из 5.`}
+          />
+        </>
+      )}
 
       <div className="profile__row">
         <h3 style={{ margin: 0 }}>Любимое</h3>
@@ -257,13 +280,17 @@ export function Profile({
               {found.map((film) => (
                 <button
                   className="slot-row"
-                  key={film.id}
+                  key={film.id ?? `tmdb-${film.tmdb_id}`}
                   disabled={busy}
                   onClick={() => saveFavourites([...profile.favourites, film])}
                 >
                   <div>
                     <p className="film-row__title">{film.title_ru}</p>
-                    <p className="meta">{film.year}</p>
+                    <p className="meta">
+                      {film.year}
+                      {/* Фильма ещё нет в каталоге — он заведётся при выборе. */}
+                      {film.id === null && " · найдено в TMDB"}
+                    </p>
                   </div>
                   <span />
                 </button>

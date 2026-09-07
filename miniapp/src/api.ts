@@ -173,11 +173,14 @@ export const addFriend = (userId: number) =>
 export const removeFriend = (userId: number) =>
   request<PersonBrief>(`/api/users/${userId}/friend`, { method: "DELETE" });
 
-/** Четыре фильма в профиле: порядок задаёт сам человек. */
-export const setFavourites = (filmIds: number[]) =>
+/** Четыре фильма в профиле: порядок задаёт сам человек.
+ *  Фильм из TMDB ещё не в каталоге — тогда шлём tmdb_id, и он заводится там. */
+export const setFavourites = (films: FilmBrief[]) =>
   request<FilmBrief[]>("/api/me/favourites", {
     method: "PUT",
-    body: JSON.stringify({ film_ids: filmIds }),
+    body: JSON.stringify({
+      films: films.map((film) => ({ film_id: film.id, tmdb_id: film.tmdb_id })),
+    }),
   });
 
 // --- Админка ---------------------------------------------------------------

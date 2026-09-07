@@ -1077,3 +1077,8 @@ h3 {
 .week-nav__arrow:disabled {
   opacity: 0.25;
 }
+
+/* Три плитки — ровно в ряд, без переноса последней на свою строку. */
+.stats-grid--three {
+  grid-template-columns: repeat(3, 1fr);
+}

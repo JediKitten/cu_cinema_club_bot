@@ -458,6 +458,8 @@ export type Profile = {
   watched: number;
   ratings: number;
   average_rating: number | null;
+  /** Распределение оценок: десять чисел, от половины звезды до пяти. */
+  ratings_by_score: number[];
   friends: number;
   is_me: boolean;
   relation_friends: boolean;
