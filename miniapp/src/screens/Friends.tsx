@@ -3,7 +3,7 @@ import { addFriend, findPeople, getCircle, getFeed, removeFriend } from "../api"
 import { Poster } from "../components/FilmRow";
 import { Section } from "../components/Section";
 import { useOpenFilmById } from "../filmOpener";
-import { haptic, showMessage, useTelegramBackButton } from "../telegram";
+import { haptic, showMessage } from "../telegram";
 import { Avatar } from "./Profile";
 import type { Circle, FeedItem, PersonBrief } from "../types";
 
@@ -26,15 +26,7 @@ function when(iso: string): string {
  * Лента собрана из событий, которые и так есть: отметок, просмотров и оценок.
  * Ничего нового ради неё не сохраняется.
  */
-export function Friends({
-  active = true,
-  onBack,
-  onOpenProfile,
-}: {
-  active?: boolean;
-  onBack(): void;
-  onOpenProfile(id: number): void;
-}) {
+export function Friends({ onOpenProfile }: { onOpenProfile(id: number): void }) {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [circle, setCircle] = useState<Circle | null>(null);
   const [query, setQuery] = useState("");
@@ -42,8 +34,6 @@ export function Friends({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const openFilm = useOpenFilmById();
-
-  useEffect(() => useTelegramBackButton(active, onBack), [active, onBack]);
 
   async function reload() {
     const [items, groups] = await Promise.all([getFeed(), getCircle()]);

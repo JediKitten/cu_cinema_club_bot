@@ -3,6 +3,7 @@ import { createFilmRequest, myFilmRequests } from "../api";
 import { haptic } from "../telegram";
 import type { FilmRequest, User } from "../types";
 import { ROLE_LABEL } from "../roles";
+import { Admin } from "./Admin";
 import { Avatar } from "./Profile";
 import { History } from "./History";
 
@@ -12,14 +13,18 @@ const STATUS: Record<FilmRequest["status"], string> = {
   rejected: "отклонён",
 };
 
+// Кнопка «Клуб» видна только тем, кому есть что там делать. Это удобство,
+// а не защита: права проверяет бэкенд на каждом запросе.
+const ADMIN_ROLES = new Set(["moderator", "admin", "superadmin"]);
+
 type Props = {
   user: User;
   onOpenProfile(userId: number): void;
-  onOpenFriends(): void;
 };
 
-export function More({ user, onOpenProfile, onOpenFriends }: Props) {
+export function More({ user, onOpenProfile }: Props) {
   const [showHistory, setShowHistory] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [title, setTitle] = useState("");
   const [year, setYear] = useState("");
   const [note, setNote] = useState("");
@@ -53,16 +58,34 @@ export function More({ user, onOpenProfile, onOpenFriends }: Props) {
     }
   }
 
-  if (showHistory) {
+  /** Подраздел «Ещё»: своя кнопка возврата, потому что родная «назад»
+   *  Telegram занята карточкой фильма, которая может открыться поверх. */
+  function Subscreen({ onClose, children }: { onClose(): void; children: React.ReactNode }) {
     return (
       <>
         <div className="screen" style={{ paddingBottom: 0 }}>
-          <button className="mark" style={{ alignSelf: "flex-start" }} onClick={() => setShowHistory(false)}>
+          <button className="mark" style={{ alignSelf: "flex-start" }} onClick={onClose}>
             ← Назад
           </button>
         </div>
-        <History />
+        {children}
       </>
+    );
+  }
+
+  if (showHistory) {
+    return (
+      <Subscreen onClose={() => setShowHistory(false)}>
+        <History />
+      </Subscreen>
+    );
+  }
+
+  if (showAdmin) {
+    return (
+      <Subscreen onClose={() => setShowAdmin(false)}>
+        <Admin me={user} />
+      </Subscreen>
     );
   }
 
@@ -83,9 +106,11 @@ export function More({ user, onOpenProfile, onOpenFriends }: Props) {
         <span className="hint">мой профиль →</span>
       </button>
 
-      <button className="primary" onClick={onOpenFriends}>
-        👥 Друзья и лента
-      </button>
+      {ADMIN_ROLES.has(user.role) && (
+        <button className="primary" onClick={() => setShowAdmin(true)}>
+          ⚙ Клуб
+        </button>
+      )}
 
       <button className="primary" onClick={() => setShowHistory(true)}>
         🕘 Что уже смотрели

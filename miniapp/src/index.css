@@ -879,6 +879,21 @@ h3 {
   text-align: center;
 }
 
+/* Свободное место в витрине профиля: пунктир говорит, что плитку можно занять,
+   а сплошной фон читался бы как «фильм без постера». */
+.poster--slot {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--hint);
+  font-size: 20px;
+}
+
+.poster-grid__item--empty:disabled {
+  opacity: 0.6;
+}
+
 /* Переключатель «список / плитка» рядом с сортировками. */
 .layout-switch {
   display: flex;
@@ -901,10 +916,7 @@ h3 {
   align-items: center;
 }
 
-.sorts__options {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
+.sorts__select {
   flex: 1;
   min-width: 0;
 }

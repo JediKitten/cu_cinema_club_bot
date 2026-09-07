@@ -9,10 +9,14 @@ describe("markButtons", () => {
     ]);
   });
 
-  it("после выбора оставляет только выбранное — второе состояние невозможно", () => {
+  it("при «Желаемом» кнопка «Ближайшее» остаётся: пойти можно и на давнее желание", () => {
     expect(markButtons("wishlist", false)).toEqual([
       { kind: "wishlist", active: true, renew: false },
+      { kind: "soon", active: false, renew: false },
     ]);
+  });
+
+  it("при «Ближайшем» второй кнопки нет: оно само станет «Желаемым» по сроку", () => {
     expect(markButtons("soon", false)).toEqual([{ kind: "soon", active: true, renew: false }]);
   });
 

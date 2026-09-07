@@ -113,19 +113,20 @@ export function Catalog({ onOpen }: Props) {
 
       {!query.trim() && (
         <div className="sorts">
-          {/* Сортировки прокручиваются вбок, переключатель вида — нет:
-              он должен быть под рукой, а не уезжать за край. */}
-          <div className="sorts__options">
+          {/* Порядок выбирают редко и всегда один — трём кнопкам незачем
+              занимать строку целиком, тем более рядом с переключателем вида. */}
+          <select
+            className="field sorts__select"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as Sort)}
+            aria-label="Сортировка"
+          >
             {SORTS.map((option) => (
-              <button
-                key={option.key}
-                className={`mark ${sort === option.key ? "is-on mark--wishlist" : ""}`}
-                onClick={() => setSort(option.key)}
-              >
+              <option key={option.key} value={option.key}>
                 {option.label}
-              </button>
+              </option>
             ))}
-          </div>
+          </select>
           <LayoutSwitch
             layout={layout}
             onChange={(next) => {

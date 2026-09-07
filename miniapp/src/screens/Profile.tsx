@@ -206,6 +206,20 @@ export function Profile({
             {editing && <span className="poster-grid__remove">✕</span>}
           </button>
         ))}
+
+        {/* Пустые места видно: четыре плитки — это витрина, и незаполненная
+            говорит, что её можно занять, а не что здесь ничего нет. */}
+        {Array.from({ length: MAX_FAVOURITES - profile.favourites.length }).map((_, index) => (
+          <button
+            className="poster-grid__item poster-grid__item--empty"
+            key={`empty-${index}`}
+            disabled={!profile.is_me}
+            onClick={() => setEditing(true)}
+            title={profile.is_me ? "Добавить любимый фильм" : "Место свободно"}
+          >
+            <span className="poster poster--tile poster--slot">{profile.is_me ? "+" : ""}</span>
+          </button>
+        ))}
       </div>
 
       {editing && (

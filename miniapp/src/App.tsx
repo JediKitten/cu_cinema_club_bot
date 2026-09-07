@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { login } from "./api";
-import { Admin } from "./screens/Admin";
 import { Catalog } from "./screens/Catalog";
 import { FilmDetail } from "./screens/FilmDetail";
 import { Friends } from "./screens/Friends";
@@ -13,19 +12,18 @@ import { FilmOpenerProvider } from "./filmOpener";
 import { initTelegram } from "./telegram";
 import type { FilmBrief, User } from "./types";
 
-type Tab = "catalog" | "mine" | "vote" | "admin" | "more";
+type Tab = "catalog" | "mine" | "vote" | "friends" | "more";
 
+// Пять вкладок у всех одинаковые. «Клуб» переехал кнопкой в «Ещё»: им
+// пользуется меньшинство, и постоянное место в панели он не окупал —
+// а вкладки, которые у разных людей разные, сбивают с толку при объяснении.
 const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: "catalog", icon: "🎞", label: "Каталог" },
   { key: "mine", icon: "★", label: "Мои" },
   { key: "vote", icon: "📅", label: "Расписание" },
-  { key: "admin", icon: "⚙", label: "Клуб" },
+  { key: "friends", icon: "👥", label: "Друзья" },
   { key: "more", icon: "☰", label: "Ещё" },
 ];
-
-// Вкладка админки видна только тем, кто может ей пользоваться. Это удобство,
-// а не защита: права проверяет бэкенд на каждом запросе.
-const ADMIN_ROLES = new Set(["moderator", "admin", "superadmin"]);
 
 // Статистика по фильму — админам и главному: модератор ведёт показы, а не отбор.
 const STATS_ROLES = new Set(["admin", "superadmin"]);
@@ -36,9 +34,8 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("catalog");
   // Фильм из поиска ещё не в каталоге — у него есть только tmdb_id.
   const [openFilm, setOpenFilm] = useState<FilmBrief | null>(null);
-  // Профиль и друзья открываются поверх вкладок — как карточка фильма.
+  // Профиль открывается поверх вкладок — как карточка фильма.
   const [openProfile, setOpenProfile] = useState<number | null>(null);
-  const [showFriends, setShowFriends] = useState(false);
 
   // Бот открывает приложение адресом вида ?film=123 — сразу показываем карточку.
   useEffect(() => {
@@ -103,27 +100,11 @@ export default function App() {
         {tab === "catalog" && <Catalog onOpen={open} />}
         {tab === "mine" && <MyList onOpen={open} />}
         {tab === "vote" && <Week />}
-        {tab === "admin" && <Admin me={user} />}
-        {tab === "more" && (
-          <More
-            user={user}
-            onOpenProfile={setOpenProfile}
-            onOpenFriends={() => setShowFriends(true)}
-          />
-        )}
+        {tab === "friends" && <Friends onOpenProfile={setOpenProfile} />}
+        {tab === "more" && <More user={user} onOpenProfile={setOpenProfile} />}
 
         {/* Экраны не размонтируются под тем, что открылось поверх: вернувшись
             из карточки фильма, человек должен оказаться там же, где был. */}
-        {showFriends && (
-          <div className="overlay" hidden={openProfile !== null || openFilm !== null}>
-            <Friends
-              active={openProfile === null && openFilm === null}
-              onBack={() => setShowFriends(false)}
-              onOpenProfile={setOpenProfile}
-            />
-          </div>
-        )}
-
         {openProfile !== null && (
           <div className="overlay" hidden={openFilm !== null}>
             <Profile
@@ -148,11 +129,9 @@ export default function App() {
         )}
 
         {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
-        {openFilm === null && openProfile === null && !showFriends && (
+        {openFilm === null && openProfile === null && (
           <nav className="tabs">
-            {TABS.filter(
-              (item) => item.key !== "admin" || ADMIN_ROLES.has(user.role),
-            ).map((item) => (
+            {TABS.map((item) => (
               <button
                 key={item.key}
                 className={tab === item.key ? "is-active" : ""}
