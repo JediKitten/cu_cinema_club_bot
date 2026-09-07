@@ -473,3 +473,21 @@ export type Circle = {
   following: PersonBrief[];
   followers: PersonBrief[];
 };
+
+/** Карточка ленты: всё, что нужно, чтобы решить за секунду. */
+export type DeckCard = {
+  id: number;
+  title_ru: string;
+  title_orig: string | null;
+  year: number | null;
+  poster_url: string | null;
+  genres: string[];
+  directors: string[];
+  runtime_min: number | null;
+  overview: string | null;
+  ext_rating: number | null;
+  internal_rating: number | null;
+  internal_votes: number;
+};
+
+export type Deck = { cards: DeckCard[]; left: number };

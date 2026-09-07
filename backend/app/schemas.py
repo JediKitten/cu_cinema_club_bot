@@ -124,6 +124,29 @@ class ReviewOut(BaseModel):
     created_at: datetime
 
 
+class DeckCard(BaseModel):
+    """Карточка ленты: всё, что нужно решить за секунду."""
+
+    id: int
+    title_ru: str
+    title_orig: str | None = None
+    year: int | None = None
+    poster_url: str | None = None
+    genres: list[str] = Field(default_factory=list)
+    directors: list[str] = Field(default_factory=list)
+    runtime_min: int | None = None
+    overview: str | None = None
+    ext_rating: float | None = None
+    internal_rating: float | None = None
+    internal_votes: int = 0
+
+
+class DeckOut(BaseModel):
+    cards: list[DeckCard] = Field(default_factory=list)
+    # Сколько ещё не размечено: лента должна уметь кончиться.
+    left: int = 0
+
+
 class RatingIn(BaseModel):
     """Оценка в звёздах: 0.5..5 с шагом в половину. None снимает оценку."""
 

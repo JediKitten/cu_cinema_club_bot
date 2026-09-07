@@ -9,7 +9,17 @@ from app.core.auth import CurrentUser
 from app.db import get_session
 from app.models import Feedback, Film, Interest, User
 from app.models.enums import FilmStatus
-from app.schemas import FilmBrief, FilmCard, InviteOut, RatingIn, RatingOut, ReviewOut
+from app.schemas import (
+    DeckCard,
+    DeckOut,
+    FilmBrief,
+    FilmCard,
+    InviteOut,
+    RatingIn,
+    RatingOut,
+    ReviewOut,
+)
+from app.services import deck as deck_service
 from app.services import interests as marks_service
 from app.services import matching, ratings, referrals
 from app.services.interests import MarkState
@@ -165,6 +175,62 @@ async def browse_films(
     films = list((await session.execute(stmt)).scalars())
     marks = await _my_marks(session, user.id, films)
     return [_brief(film, marks) for film in films]
+
+
+@router.get("/deck", response_model=DeckOut)
+async def deck(
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=40)] = 20,
+    exclude: Annotated[str, Query(max_length=500)] = "",
+) -> DeckOut:
+    """Лента для быстрой разметки: только то, о чём человек ещё не высказался.
+
+    `exclude` — карточки, которые уже лежат в очереди на экране: дозагрузка
+    не должна выдавать их второй раз.
+    """
+    holding = [int(part) for part in exclude.split(",") if part.strip().isdigit()]
+    films = await deck_service.next_films(session, user.id, limit, holding)
+    club = await ratings.summaries(session, [film.id for film in films])
+
+    def card(film: Film) -> DeckCard:
+        summary = club.get(film.id)
+        return DeckCard(
+            id=film.id,
+            title_ru=film.title_ru,
+            title_orig=film.title_orig,
+            year=film.year,
+            # Постер крупнее каталожного: здесь он занимает весь экран.
+            poster_url=poster_url(film.poster_path, "w500"),
+            genres=list(film.genres or []),
+            directors=list(film.directors or []),
+            runtime_min=film.runtime_min,
+            overview=film.overview,
+            ext_rating=film.ext_rating,
+            internal_rating=summary.average if summary else None,
+            internal_votes=summary.votes if summary else 0,
+        )
+
+    return DeckOut(
+        cards=[card(film) for film in films],
+        left=await deck_service.left(session, user.id),
+    )
+
+
+@router.post("/{film_id}/skip", status_code=204)
+async def skip_film(
+    film_id: int,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """«Не интересно»: фильм больше не появится в ленте.
+
+    Весов это не меняет — отрицательного интереса в формуле §4 нет и не было.
+    """
+    film = await session.get(Film, film_id)
+    if film is None or film.status == FilmStatus.HIDDEN:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Фильм не найден")
+    await deck_service.skip(session, user.id, film_id)
 
 
 @router.get("/{film_id}/invite", response_model=InviteOut)

@@ -23,6 +23,7 @@ import type {
   ClubEvent,
   EventChanges,
   Circle,
+  Deck,
   FeedItem,
   FilmStats,
   InviteCode,
@@ -97,6 +98,14 @@ export const CATALOG_PAGE = 40;
 
 export const browseFilms = (sort: string, offset = 0, limit = CATALOG_PAGE) =>
   request<FilmBrief[]>(`/api/films?sort=${sort}&offset=${offset}&limit=${limit}`);
+
+/** Лента для быстрой разметки. `holding` — карточки, ещё лежащие на экране:
+ *  дозагрузка не должна выдать их второй раз. */
+export const getDeck = (holding: number[] = []) =>
+  request<Deck>(`/api/films/deck${holding.length ? `?exclude=${holding.join(",")}` : ""}`);
+
+export const skipFilm = (filmId: number) =>
+  request<void>(`/api/films/${filmId}/skip`, { method: "POST" });
 
 export const getFilm = (filmId: number) => request<FilmCard>(`/api/films/${filmId}`);
 

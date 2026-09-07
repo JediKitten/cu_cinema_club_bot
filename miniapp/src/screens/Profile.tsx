@@ -43,7 +43,8 @@ export function Profile({
   /** Экран остаётся смонтированным под карточкой фильма — но кнопка «назад»
    *  в это время принадлежит карточке, а не ему. */
   active?: boolean;
-  onBack(): void;
+  /** Нет, когда профиль открыт вкладкой: возвращаться оттуда некуда. */
+  onBack?(): void;
 }) {
   const [profile, setProfile] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +54,11 @@ export function Profile({
   const [found, setFound] = useState<FilmBrief[]>([]);
   const openFilm = useOpenFilm();
 
-  useEffect(() => useTelegramBackButton(active, onBack), [active, onBack]);
+  useEffect(
+    // Кнопку «назад» показываем, только когда есть куда возвращаться.
+    () => useTelegramBackButton(active && onBack !== undefined, onBack ?? (() => {})),
+    [active, onBack],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -187,9 +192,9 @@ export function Profile({
           </div>
           <Bars
             data={profile.ratings_by_score.map((count, index) => ({
-              // Подписываем только целые звёзды: десять подписей в ряд на
-              // телефоне сливаются в кашу.
-              label: (index + 1) % 2 === 0 ? String((index + 1) / 2) : "",
+              // Подпись у каждого столбика: без неё половинки приходилось
+              // отсчитывать глазами от ближайшей целой звезды.
+              label: String((index + 1) / 2).replace(".", ","),
               value: count,
             }))}
             color="var(--soon)"

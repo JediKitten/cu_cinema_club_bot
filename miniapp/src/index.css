@@ -806,6 +806,8 @@ h3 {
   color: var(--hint);
   font-size: 10px;
   white-space: nowrap;
+  /* Десять подписей в ряд: пусть жмутся, но каждая на своём столбике. */
+  letter-spacing: -0.2px;
 }
 
 .stats-grid {
@@ -1081,4 +1083,161 @@ h3 {
 /* Три плитки — ровно в ряд, без переноса последней на свою строку. */
 .stats-grid--three {
   grid-template-columns: repeat(3, 1fr);
+}
+
+/* --- Лента ----------------------------------------------------------------- */
+
+.deck {
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Карточка занимает экран целиком: решение принимается по одной, и соседние
+     строки на нём только мешали бы. */
+  min-height: calc(100vh - 72px);
+}
+
+.deck__card {
+  position: relative;
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* Жест по карточке — свайп, а не выделение текста и не прокрутка страницы. */
+  touch-action: pan-y;
+  user-select: none;
+  will-change: transform;
+}
+
+.deck__poster {
+  width: 100%;
+  height: 46vh;
+  object-fit: cover;
+  object-position: top center;
+  background: var(--border);
+}
+
+.deck__poster--empty {
+  display: grid;
+  place-items: center;
+  font-size: 42px;
+  color: var(--hint);
+}
+
+.deck__body {
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.deck__title {
+  font-size: 20px;
+  margin: 0;
+}
+
+.deck__ratings {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.deck__badge--club {
+  background: color-mix(in srgb, var(--soon) 22%, transparent);
+  color: var(--soon);
+}
+
+.deck__overview {
+  margin: 0;
+  color: var(--hint);
+  font-size: 14px;
+  /* Четыре строки: карточку читают по диагонали, а не изучают. */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Печать поверх карточки: решение видно до того, как палец отпущен. */
+.deck__stamp {
+  position: absolute;
+  top: 16px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.deck__stamp--like {
+  right: 16px;
+  background: var(--wishlist);
+  color: #fff;
+}
+
+.deck__stamp--skip {
+  left: 16px;
+  background: var(--border);
+  color: var(--text);
+}
+
+.deck__actions {
+  display: flex;
+  gap: 10px;
+}
+
+.deck__action {
+  flex: 1;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 20px;
+  color: var(--hint);
+}
+
+.deck__action span {
+  font-size: 11px;
+}
+
+.deck__action--like {
+  color: var(--wishlist);
+}
+
+.deck__action--watched {
+  color: var(--link);
+}
+
+.deck__action:disabled {
+  opacity: 0.5;
+}
+
+.deck__rate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+}
+
+.deck__counter {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text);
+  background: color-mix(in srgb, #000 55%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.profile__doors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }

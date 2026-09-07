@@ -1,27 +1,27 @@
 import { useEffect, useState } from "react";
 import { login } from "./api";
 import { Catalog } from "./screens/Catalog";
+import { Deck } from "./screens/Deck";
 import { FilmDetail } from "./screens/FilmDetail";
-import { Friends } from "./screens/Friends";
 import { Gate } from "./screens/Gate";
 import { More } from "./screens/More";
 import { Profile } from "./screens/Profile";
+import { ProfileTab } from "./screens/ProfileTab";
 import { Week } from "./screens/Week";
-import { MyList } from "./screens/MyList";
 import { FilmOpenerProvider } from "./filmOpener";
 import { initTelegram } from "./telegram";
 import type { FilmBrief, User } from "./types";
 
-type Tab = "catalog" | "mine" | "vote" | "friends" | "more";
+type Tab = "catalog" | "deck" | "vote" | "profile" | "more";
 
-// Пять вкладок у всех одинаковые. «Клуб» переехал кнопкой в «Ещё»: им
-// пользуется меньшинство, и постоянное место в панели он не окупал —
-// а вкладки, которые у разных людей разные, сбивают с толку при объяснении.
+// Пять вкладок у всех одинаковые. «Клуб» — кнопка в «Ещё», «Мои» и «Друзья» —
+// двери из профиля: вкладки, которые у разных людей разные, сбивают с толку,
+// а панель на пять кнопок и так полна.
 const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: "catalog", icon: "🎞", label: "Каталог" },
-  { key: "mine", icon: "★", label: "Мои" },
+  { key: "deck", icon: "🔥", label: "Лента" },
   { key: "vote", icon: "📅", label: "Расписание" },
-  { key: "friends", icon: "👥", label: "Друзья" },
+  { key: "profile", icon: "👤", label: "Профиль" },
   { key: "more", icon: "☰", label: "Ещё" },
 ];
 
@@ -98,9 +98,11 @@ export default function App() {
         {/* Вкладка остаётся смонтированной под карточкой: иначе возврат из фильма
           терял бы поисковый запрос, выдачу и место прокрутки. */}
         {tab === "catalog" && <Catalog onOpen={open} />}
-        {tab === "mine" && <MyList onOpen={open} />}
+        {tab === "deck" && <Deck onOpen={open} />}
         {tab === "vote" && <Week />}
-        {tab === "friends" && <Friends me={user} onOpenProfile={setOpenProfile} />}
+        {tab === "profile" && (
+          <ProfileTab me={user} onOpenFilm={open} onOpenProfile={setOpenProfile} />
+        )}
         {tab === "more" && <More user={user} />}
 
         {/* Экраны не размонтируются под тем, что открылось поверх: вернувшись
