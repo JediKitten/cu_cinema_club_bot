@@ -23,8 +23,11 @@ type WebApp = {
   colorScheme: "light" | "dark";
   BackButton: BackButton;
   HapticFeedback: HapticFeedback;
+  version?: string;
+  isVersionAtLeast?(version: string): boolean;
   ready(): void;
   expand(): void;
+  showConfirm?(message: string, callback: (ok: boolean) => void): void;
   setHeaderColor?(color: string): void;
   setBackgroundColor?(color: string): void;
   showAlert(message: string): void;
@@ -90,18 +93,41 @@ export function useTelegramBackButton(visible: boolean, onBack: () => void): () 
   };
 }
 
+/** Умеет ли клиент показывать окна сам.
+ *
+ * Метод в SDK есть всегда, но вне Telegram и в клиентах старее Bot API 6.2 он
+ * молча ничего не делает — а `showConfirm` при этом никогда не зовёт колбэк,
+ * и обещание, которого ждёт вызывающий, не разрешается никогда.
+ */
+function supportsPopups(): boolean {
+  const app = webApp();
+  return Boolean(app?.showAlert && app.isVersionAtLeast?.("6.2"));
+}
+
 /** Показать сообщение пользователю.
  *
  * Раньше здесь было `webApp()?.showAlert(m) ?? alert(m)`, и это давало два окна
  * подряд: showAlert ничего не возвращает, поэтому `??` срабатывал всегда.
  */
 export function showMessage(message: string): void {
-  const app = webApp();
-  if (app?.showAlert) {
-    app.showAlert(message);
+  if (supportsPopups()) {
+    webApp()!.showAlert!(message);
   } else {
     alert(message);
   }
+}
+
+/** Спросить «точно?» и дождаться ответа.
+ *
+ * В Telegram это родное окно, вне его — браузерное confirm. Возвращаем
+ * промис: вызывающему нужен ответ, а не колбэк посреди обработчика.
+ */
+export function askConfirm(message: string): Promise<boolean> {
+  const app = webApp();
+  if (supportsPopups() && app?.showConfirm) {
+    return new Promise((resolve) => app.showConfirm!(message, resolve));
+  }
+  return Promise.resolve(window.confirm(message));
 }
 
 /** Переслать ссылку через Telegram.

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { addInterest, getDeck, rateFilm, setWatched, skipFilm } from "../api";
 import { StarRating } from "../components/StarRating";
 import { useFilmChanges } from "../filmChanges";
-import { haptic, showMessage } from "../telegram";
+import { askConfirm, haptic, showMessage } from "../telegram";
 import type { DeckCard, FilmBrief } from "../types";
 
 /** Насколько далеко нужно утащить карточку, чтобы это считалось свайпом.
@@ -12,6 +12,9 @@ const THRESHOLD = 90;
 /** Когда в очереди осталось столько карточек, просим следующую пачку —
  *  дозагрузка должна случиться до того, как экран опустеет. */
 const REFILL_AT = 5;
+
+const LOSES_RATING =
+  "Оценка не сохранится: чтобы она осталась, нажмите «Смотрел». Продолжить?";
 
 type Decision = "like" | "skip" | "watched";
 
@@ -52,10 +55,17 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Оценка, выставленная на этой карточке и ещё не сохранённая: сохраняет её
+  // только «Смотрел» — звёзды сами по себе не решают судьбу фильма.
+  const [stars, setStars] = useState<number | null>(null);
   // Смещение карточки под пальцем и направление, в которое она улетает.
   const [drag, setDrag] = useState(0);
   const [flying, setFlying] = useState<Decision | null>(null);
   const start = useRef<number | null>(null);
+  // Смещение дублируется ссылкой: между «палец двинулся» и «палец отпущен»
+  // React может не успеть перерисоваться, и обработчик отпускания увидел бы
+  // старое состояние — быстрый свайп тогда просто не срабатывал.
+  const shift = useRef(0);
   const loadingMore = useRef(false);
 
   const card = queue[0] ?? null;
@@ -100,8 +110,22 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
     }
   });
 
-  async function decide(decision: Decision, stars: number | null = null) {
+  function advance() {
+    setQueue((current) => current.slice(1));
+    setLeft((value) => (value === null ? null : Math.max(0, value - 1)));
+    setStars(null);
+  }
+
+  async function decide(decision: Decision) {
     if (!card || busy) return;
+
+    // Свайп поверх выставленной оценки её потеряет — предупреждаем до того,
+    // как карточка улетит, а не после.
+    if (decision !== "watched" && stars !== null && !(await askConfirm(LOSES_RATING))) {
+      setDrag(0);
+      return;
+    }
+
     setBusy(true);
     setFlying(decision);
     haptic(decision === "skip" ? "light" : "medium");
@@ -109,14 +133,11 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
     try {
       if (decision === "like") await addInterest(asFilm(card), "wishlist");
       else if (decision === "watched") {
-        // Оценка сама по себе значит «смотрел»: спрашивать об этом отдельно
-        // после того, как человек поставил звёзды, было бы издевательством.
         if (stars !== null) await rateFilm(card.id, stars);
         await setWatched(asFilm(card), true);
       } else await skipFilm(card.id);
 
-      setQueue((current) => current.slice(1));
-      setLeft((value) => (value === null ? null : Math.max(0, value - 1)));
+      advance();
     } catch (e) {
       showMessage(e instanceof Error ? e.message : "Не получилось");
     } finally {
@@ -134,15 +155,17 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
 
   function onPointerMove(event: React.PointerEvent) {
     if (start.current === null) return;
-    setDrag(event.clientX - start.current);
+    shift.current = event.clientX - start.current;
+    setDrag(shift.current);
   }
 
   function onPointerUp() {
     if (start.current === null) return;
-    const shift = drag;
+    const moved = shift.current;
     start.current = null;
-    if (shift > THRESHOLD) void decide("like");
-    else if (shift < -THRESHOLD) void decide("skip");
+    shift.current = 0;
+    if (moved > THRESHOLD) void decide("like");
+    else if (moved < -THRESHOLD) void decide("skip");
     else setDrag(0);
   }
 
@@ -165,6 +188,18 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
 
   return (
     <div className="deck">
+      {/* Куда тянуть — написано над карточкой: жест, о котором не сказали,
+          не существует. Подсказка подсвечивается по ходу свайпа. */}
+      <div className="deck__legend">
+        <span className={hint === "skip" ? "is-on" : ""}>← не моё</span>
+        <span className="hint">
+          {left !== null && left > 0 ? `осталось ${left}` : ""}
+        </span>
+        <span className={hint === "like" ? "is-on deck__legend--like" : ""}>
+          хочу посмотреть →
+        </span>
+      </div>
+
       <div
         className="deck__card"
         style={{
@@ -182,14 +217,12 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
           <div className="deck__poster deck__poster--empty">🎬</div>
         )}
 
-        {/* Счётчик поверх постера, а не строкой внизу: вертикаль на этом
-            экране дороже всего, а знать, сколько осталось, полезно. */}
-        {left !== null && left > 0 && <div className="deck__counter">осталось {left}</div>}
-
-        {/* Подсказка о решении появляется до того, как палец отпущен. */}
-        {hint && <div className={`deck__stamp deck__stamp--${hint}`}>
-          {hint === "like" ? "Хочу посмотреть" : "Не моё"}
-        </div>}
+        {/* Печать поверх карточки: решение видно до того, как палец отпущен. */}
+        {hint && (
+          <div className={`deck__stamp deck__stamp--${hint}`}>
+            {hint === "like" ? "Хочу посмотреть" : "Не моё"}
+          </div>
+        )}
 
         <div className="deck__body">
           <h2 className="deck__title">{card.title_ru}</h2>
@@ -215,35 +248,23 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
         </div>
       </div>
 
-      {/* Кнопки — не украшение: свайп на десктопе неудобен, а «уже смотрел»
-          третьим направлением быть не может. */}
-      <div className="deck__actions">
-        <button className="deck__action" disabled={busy} onClick={() => decide("skip")}>
-          ✕<span>не моё</span>
-        </button>
+      {/* Внизу только то, чего нельзя показать жестом: оценка и «смотрел».
+          Свайпы отвечают за «хочу» и «не моё», дублировать их кнопками незачем. */}
+      <div className="deck__footer">
+        <StarRating value={stars} busy={busy} onChange={setStars} />
         <button
-          className="deck__action deck__action--watched"
+          className={`mark mark--soon ${stars !== null ? "is-on" : ""}`}
           disabled={busy}
           onClick={() => decide("watched")}
         >
-          👁<span>уже смотрел</span>
-        </button>
-        <button
-          className="deck__action deck__action--like"
-          disabled={busy}
-          onClick={() => decide("like")}
-        >
-          ♥<span>хочу</span>
+          Смотрел
         </button>
       </div>
-
-      {/* Смотревшему есть что сказать точнее, чем «смотрел»: оценка тут же
-          и засчитывает просмотр, и попадает в рейтинг клуба. */}
-      <div className="deck__rate">
-        <span className="hint">Смотрели? Оцените:</span>
-        <StarRating value={null} busy={busy} onChange={(stars) => decide("watched", stars)} />
-      </div>
-
+      <p className="hint deck__note">
+        {stars !== null
+          ? "Нажмите «Смотрел», чтобы сохранить оценку."
+          : "Оценка сохранится по кнопке «Смотрел»."}
+      </p>
     </div>
   );
 }

@@ -4,9 +4,11 @@
 открывает, когда спрашивает «почему этот фильм» и «кто придёт».
 """
 
+from datetime import UTC, datetime, timedelta
+
 import sqlalchemy as sa
 
-from app.models import Confirmation, Hall
+from app.models import Confirmation, Hall, Slot
 from app.models.enums import ConfirmationState, InterestKind, ScreeningStatus
 from app.services import attendance as att
 from app.services import insights
@@ -109,6 +111,11 @@ async def test_no_shows_are_empty_until_the_show_starts(session):
     screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
     await sched.publish_schedule(session, round_, boss.id)
     await sched.confirm(session, screening.id, voters[0].id)
+    # Явно отодвигаем показ в будущее: неделя цикла фиксированная, и прогон
+    # после её вечера иначе видел бы уже начавшийся сеанс.
+    slot = await session.get(Slot, screening.slot_id)
+    slot.starts_at = datetime.now(UTC) + timedelta(days=2)
+    await session.commit()
 
     stats = await insights.screening_stats(
         session, screening.id, await SettingsService(session).all()
@@ -141,6 +148,11 @@ async def test_low_attendance_warning_only_near_the_start(session):
     screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
     await sched.publish_schedule(session, round_, boss.id)
     await sched.confirm(session, screening.id, voters[0].id)
+    # Предупреждение считается от «сколько осталось до начала», поэтому время
+    # показа задаём явно, а не полагаемся на день прогона.
+    slot = await session.get(Slot, screening.slot_id)
+    slot.starts_at = datetime.now(UTC) + timedelta(days=2)
+    await session.commit()
 
     values = dict(await SettingsService(session).all())
     values["min_attendance"] = 10
