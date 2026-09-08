@@ -155,24 +155,23 @@ class KinopoiskClient:
         Порог по рейтингу лишь отсекает откровенный мусор; выбирает дальше
         рекомендация, а не этот список.
 
-        Одна страница — до 250 фильмов, поэтому даже полторы тысячи стоят
-        нескольких запросов: бесплатный лимит Кинопоиска небольшой.
+        Отбор идёт на нашей стороне намеренно. Те же условия параметрами запроса
+        (`rating.kp`, `notNullFields`) заставляют Кинопоиск перебирать миллион
+        документов: страница отвечает не за секунду, а за полминуты, и импорт
+        упирается в таймаут. Отсортированная по голосам выдача приходит быстро,
+        а отбросить неподходящее дешевле здесь.
         """
-        docs: list[dict] = []
+        kept: list[dict] = []
         page, per_page = 1, 250
 
-        while len(docs) < limit:
+        while len(kept) < limit:
             data = await self._request(
                 "/movie",
                 {
                     "type": "movie",
-                    "rating.kp": f"{min_rating}-10",
-                    "votes.kp": f"{min_votes}-100000000",
-                    # Без постера и описания карточка в ленте бесполезна.
-                    "notNullFields": ["poster.url", "description"],
                     "sortField": "votes.kp",
                     "sortType": "-1",
-                    "limit": min(per_page, limit - len(docs)),
+                    "limit": per_page,
                     "page": page,
                     "selectFields": FULL_FIELDS,
                 },
@@ -180,17 +179,34 @@ class KinopoiskClient:
             batch = data.get("docs", [])
             if not batch:
                 break
-            docs.extend(batch)
+            for doc in batch:
+                if _worth_showing(doc, min_rating, min_votes):
+                    kept.append(doc)
             if page >= data.get("pages", page):
                 break
             page += 1
 
-        return docs[:limit]
+        return kept[:limit]
 
     async def aclose(self) -> None:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+
+
+def _worth_showing(doc: dict, min_rating: float, min_votes: int) -> bool:
+    """Годится ли фильм для ленты: карточку решают за секунду.
+
+    Без постера и описания решать не по чему, а низкий рейтинг при большом
+    числе голосов — это уже приговор, а не неизвестность.
+    """
+    if not (doc.get("poster") or {}).get("url"):
+        return False
+    if not (doc.get("description") or doc.get("shortDescription")):
+        return False
+    rating = (doc.get("rating") or {}).get("kp")
+    votes = (doc.get("votes") or {}).get("kp")
+    return bool(rating and votes) and rating >= min_rating and votes >= min_votes
 
 
 _client: KinopoiskClient | None = None
