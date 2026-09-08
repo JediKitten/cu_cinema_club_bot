@@ -6,7 +6,12 @@ import pytest
 import sqlalchemy as sa
 
 from app.models import Confirmation, Notification, Screening, Slot
-from app.models.enums import ConfirmationState, ScreeningStatus, UserRole
+from app.models.enums import (
+    ConfirmationState,
+    NotificationKind,
+    ScreeningStatus,
+    UserRole,
+)
 from app.services import events, notify, roles
 from app.services.events import EventError
 from app.services.roles import RoleError
@@ -91,6 +96,46 @@ async def test_reveal_replaces_the_teaser_with_a_film(session):
     revealed = await events.reveal(session, event.id, film.id, boss.id)
 
     assert revealed.film_id == film.id
+
+
+async def test_reveal_keeps_everyone_signed_up_and_calls_it_an_announcement(session):
+    """Записавшиеся на «секретный показ» остаются записанными: вечер тот же,
+    меняется только название. И сообщение им приходит как анонс, а не как
+    «изменение» — они именно его и ждали."""
+    boss = await make_user(session, "Админ")
+    guest = await make_user(session, "Гость")
+    film = await make_film(session, "Бойцовский клуб")
+    await session.commit()
+
+    event = await events.create(
+        session, starts_at=SOON, actor_id=boss.id, title="Секретный показ", note="Ждите анонса"
+    )
+    session.add(
+        Confirmation(screening_id=event.id, user_id=guest.id, state=ConfirmationState.CONFIRMED)
+    )
+    await session.commit()
+
+    await events.reveal(session, event.id, film.id, boss.id)
+
+    kept = await session.scalar(
+        sa.select(sa.func.count())
+        .select_from(Confirmation)
+        .where(
+            Confirmation.screening_id == event.id,
+            Confirmation.state == ConfirmationState.CONFIRMED,
+        )
+    )
+    assert kept == 1
+
+    notice = (
+        await session.execute(
+            sa.select(Notification).where(
+                Notification.user_id == guest.id,
+                Notification.kind == NotificationKind.SCREENING_CHANGED,
+            )
+        )
+    ).scalar_one()
+    assert notice.payload["revealed"] is True
 
 
 async def test_event_can_be_moved_and_confirmations_reset(session):

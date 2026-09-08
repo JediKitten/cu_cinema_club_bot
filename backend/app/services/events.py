@@ -127,6 +127,9 @@ async def update(
     if film_id is not None and await session.get(Film, film_id) is None:
         raise EventError("Фильм не найден")
 
+    # Фильм появился там, где его не было: это анонс, а не правка. Считаем до
+    # присвоения — после event.film_id уже новый.
+    revealed = event.film_id is None and film_id is not None
     time_changed = False
     if "starts_at" in changes:
         starts_at = changes["starts_at"]
@@ -155,7 +158,11 @@ async def update(
             session,
             event,
             NotificationKind.SCREENING_CHANGED,
-            {"time_changed": time_changed, "starts_at": slot.starts_at.isoformat()},
+            {
+                "time_changed": time_changed,
+                "revealed": revealed,
+                "starts_at": slot.starts_at.isoformat(),
+            },
         )
     if time_changed:
         await schedule_service.reset_confirmations(session, event)

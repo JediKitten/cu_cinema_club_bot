@@ -95,6 +95,14 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                     f"🔄 Показ перенесён\n\n{film_line}\nНовое время: {when}\n\n"
                     "Подтверждения сброшены — отметьтесь заново, если придёте."
                 )
+            if payload.get("revealed"):
+                # Ради этого «секретный показ» и заводят: время объявили заранее,
+                # название — сейчас. Для записавшихся это не «изменение», а тот
+                # самый анонс, которого они ждали.
+                return (
+                    f"🎬 Фильм объявлен!\n\n{film_line}\n{when}\n\n"
+                    "Вы записаны — место за вами."
+                )
             return f"🔄 Изменение\n\n{film_line}\n{when}"
         case NotificationKind.REMINDER_24H:
             return (

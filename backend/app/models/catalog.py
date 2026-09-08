@@ -43,11 +43,19 @@ class Film(Base, CreatedAtMixin):
         ARRAY(sa.String(128)), default=list, server_default="{}"
     )
 
+    # Рейтинг того источника, из которого фильм приехал. Оставлен ради истории
+    # и сортировок, которые не различают источник; показывать его подписанным
+    # чужим именем нельзя — для этого есть колонки ниже.
     ext_rating: Mapped[float | None] = mapped_column(sa.Float)
     ext_votes: Mapped[int | None]
+    tmdb_rating: Mapped[float | None] = mapped_column(sa.Float, index=True)
+    tmdb_votes: Mapped[int | None]
     # Рейтинг Кинопоиска подтягивается лениво и кэшируется на 30 дней (§11).
-    kp_rating: Mapped[float | None] = mapped_column(sa.Float)
+    kp_rating: Mapped[float | None] = mapped_column(sa.Float, index=True)
     kp_votes: Mapped[int | None]
+    # Место в топ-250 Кинопоиска, если фильм там есть. Именно «топ», а не
+    # рейтинг: список курируемый и сортирует лучше средней оценки.
+    kp_top250: Mapped[int | None]
     kp_fetched_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
     status: Mapped[FilmStatus] = mapped_column(

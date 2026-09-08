@@ -532,8 +532,8 @@ async def test_tmdb_card_falls_back_to_the_catalog_one(client, session, monkeypa
 
 async def test_watched_list_and_wanted_sorting(client, session):
     """«Мои» показывают просмотренное, каталог умеет сортировать по числу желающих."""
-    popular = Film(title_ru="Многие хотят", year=2000, ext_votes=10)
-    lonely = Film(title_ru="Один хочет", year=2001, ext_votes=9999)
+    popular = Film(title_ru="Многие хотят", year=2000, kp_rating=6.0, kp_votes=10_000)
+    lonely = Film(title_ru="Один хочет", year=2001, kp_rating=8.5, kp_votes=10_000)
     session.add_all([popular, lonely])
     await session.commit()
 
@@ -553,9 +553,9 @@ async def test_watched_list_and_wanted_sorting(client, session):
     by_wanted = (await client.get("/api/films?sort=wanted", headers=h1)).json()
     assert [f["title_ru"] for f in by_wanted][:2] == ["Многие хотят", "Один хочет"]
 
-    # По популярности — наоборот.
-    by_popular = (await client.get("/api/films?sort=popular", headers=h1)).json()
-    assert by_popular[0]["title_ru"] == "Один хочет"
+    # По оценке Кинопоиска — наоборот.
+    by_kp = (await client.get("/api/films?sort=kp", headers=h1)).json()
+    assert by_kp[0]["title_ru"] == "Один хочет"
 
     # Просмотренное — отдельный список, отметку не отменяет.
     await client.post(f"/api/films/{popular.id}/watched", json={"watched": True}, headers=h1)
@@ -602,3 +602,46 @@ async def test_wanted_sorting_uses_weight_not_headcount(client, session):
     listed = (await client.get("/api/films?sort=wanted", headers=h1)).json()
     # Один свежий голос перевешивает двух давних: 3.0 против 2 × 0.2.
     assert [f["title_ru"] for f in listed][:2] == ["Хотят сейчас", "Хотели давно"]
+
+
+async def test_catalog_sorts_by_each_source(client, session):
+    """Три порядка, три источника: топ Кинопоиска, оценки TMDB, оценки клуба."""
+    top = Film(title_ru="В топе", kp_top250=3, kp_rating=8.0, kp_votes=10_000, tmdb_rating=7.0,
+               tmdb_votes=5_000)
+    loved_abroad = Film(title_ru="Любят за рубежом", kp_rating=8.9, kp_votes=10_000,
+                        tmdb_rating=8.8, tmdb_votes=5_000)
+    ours = Film(title_ru="Наш выбор", kp_rating=6.6, kp_votes=10_000, tmdb_rating=6.0,
+                tmdb_votes=5_000)
+    session.add_all([top, loved_abroad, ours])
+    await session.commit()
+
+    me = await login(client, SUPERADMIN_TG_ID, "Главный")
+    headers = {"Authorization": f"Bearer {me['token']}"}
+    await client.put(f"/api/films/{ours.id}/rating", json={"stars": 5}, headers=headers)
+
+    # Место в топ-250 бьёт любую среднюю оценку — список курируемый.
+    by_kp = (await client.get("/api/films?sort=kp", headers=headers)).json()
+    assert [f["title_ru"] for f in by_kp] == ["В топе", "Любят за рубежом", "Наш выбор"]
+
+    by_tmdb = (await client.get("/api/films?sort=tmdb", headers=headers)).json()
+    assert [f["title_ru"] for f in by_tmdb] == ["Любят за рубежом", "В топе", "Наш выбор"]
+
+    by_club = (await client.get("/api/films?sort=club", headers=headers)).json()
+    assert by_club[0]["title_ru"] == "Наш выбор"
+
+
+async def test_ratings_from_a_handful_of_votes_do_not_lead(client, session):
+    """9,4 по десятку голосов — не оценка, а случайность: такие уходят вниз."""
+    loud = Film(title_ru="Десять восторгов", tmdb_rating=9.4, tmdb_votes=10)
+    solid = Film(title_ru="Проверенное", tmdb_rating=7.5, tmdb_votes=50_000)
+    session.add_all([loud, solid])
+    await session.commit()
+
+    me = await login(client, SUPERADMIN_TG_ID, "Главный")
+    listing = (
+        await client.get(
+            "/api/films?sort=tmdb", headers={"Authorization": f"Bearer {me['token']}"}
+        )
+    ).json()
+
+    assert [f["title_ru"] for f in listing] == ["Проверенное", "Десять восторгов"]

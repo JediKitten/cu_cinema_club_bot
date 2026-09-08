@@ -102,8 +102,12 @@ class FilmCard(FilmBrief):
     runtime_min: int | None = None
     overview: str | None = None
     trailer_key: str | None = None
-    ext_rating: float | None = None
-    ext_votes: int | None = None
+    # Оценки источников по отдельности: каталог наполняется из двух, и одну
+    # подписывать именем другой нельзя.
+    kp_rating: float | None = None
+    kp_votes: int | None = None
+    tmdb_rating: float | None = None
+    tmdb_votes: int | None = None
     # Рейтинг клуба по пятибалльной шкале с половинками. Рядом всегда стоит
     # число оценивших — оно честнее порога «показывать с пяти оценок».
     internal_rating: float | None = None
@@ -136,7 +140,8 @@ class DeckCard(BaseModel):
     directors: list[str] = Field(default_factory=list)
     runtime_min: int | None = None
     overview: str | None = None
-    ext_rating: float | None = None
+    kp_rating: float | None = None
+    tmdb_rating: float | None = None
     internal_rating: float | None = None
     internal_votes: int = 0
     # Почему карточка здесь: рекомендация без объяснения выглядит случайной.

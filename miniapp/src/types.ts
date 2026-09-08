@@ -42,8 +42,11 @@ export type FilmCard = FilmBrief & {
   runtime_min: number | null;
   overview: string | null;
   trailer_key: string | null;
-  ext_rating: number | null;
-  ext_votes: number | null;
+  // Оценки источников по отдельности: каталог наполняется из двух.
+  kp_rating: number | null;
+  kp_votes: number | null;
+  tmdb_rating: number | null;
+  tmdb_votes: number | null;
   internal_rating: number | null;
   internal_votes: number;
   interested_count: number;
@@ -485,7 +488,8 @@ export type DeckCard = {
   directors: string[];
   runtime_min: number | null;
   overview: string | null;
-  ext_rating: number | null;
+  kp_rating: number | null;
+  tmdb_rating: number | null;
   internal_rating: number | null;
   internal_votes: number;
   // Почему карточка здесь: «друг оценил на 5» решает быстрее любого рейтинга.

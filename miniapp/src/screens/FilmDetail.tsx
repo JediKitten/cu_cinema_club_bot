@@ -130,10 +130,18 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
             {plural(film.internal_votes, ["оценка", "оценки", "оценок"])}
           </span>
         </div>
-        {film.ext_rating !== null && (
+        {/* Оценки источников по отдельности: раньше рейтинг Кинопоиска
+            показывался с подписью TMDB — каталог наполняется из обоих. */}
+        {film.kp_rating !== null && (
           <div className="rating">
-            <b>{film.ext_rating.toFixed(1)}</b>
-            <span>TMDB · {film.ext_votes ?? 0}</span>
+            <b>{film.kp_rating.toFixed(1)}</b>
+            <span>Кинопоиск · {film.kp_votes ?? 0}</span>
+          </div>
+        )}
+        {film.tmdb_rating !== null && (
+          <div className="rating">
+            <b>{film.tmdb_rating.toFixed(1)}</b>
+            <span>TMDB · {film.tmdb_votes ?? 0}</span>
           </div>
         )}
       </div>

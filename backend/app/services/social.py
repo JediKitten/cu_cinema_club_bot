@@ -413,14 +413,53 @@ async def search(session: AsyncSession, query: str, exclude_id: int, limit: int 
     """Поиск людей по имени или @username — чтобы было кого добавлять."""
     pattern = f"%{query.strip()}%"
     rows = await session.execute(
-        sa.select(User)
-        .where(
-            User.is_active,
-            User.id != exclude_id,
-            User.tg_id.is_not(None),
-            sa.or_(User.display_name.ilike(pattern), User.tg_username.ilike(pattern)),
-        )
-        .order_by(User.display_name)
+        _people(exclude_id)
+        .where(sa.or_(User.display_name.ilike(pattern), User.tg_username.ilike(pattern)))
         .limit(limit)
     )
     return list(rows.scalars())
+
+
+async def everyone(session: AsyncSession, exclude_id: int, limit: int = 200) -> list[User]:
+    """Все участники клуба.
+
+    Искать по имени можно, только если знаешь, кого искать, — а в клубе на
+    полсотни человек новичок не знает никого. Поэтому список открыт целиком.
+    """
+    return list((await session.execute(_people(exclude_id).limit(limit))).scalars())
+
+
+def _people(exclude_id: int):
+    """Живые участники клуба, кроме самого смотрящего."""
+    return (
+        sa.select(User)
+        .where(User.is_active, User.id != exclude_id, User.tg_id.is_not(None))
+        .order_by(User.display_name)
+    )
+
+
+async def relations(
+    session: AsyncSession, viewer_id: int, ids: list[int]
+) -> dict[int, Relation]:
+    """Связи сразу со всеми — на список в полсотни человек по два запроса
+    на каждого превратились бы в сотню."""
+    if not ids:
+        return {}
+    rows = (
+        await session.execute(
+            sa.select(Friendship.user_id, Friendship.friend_id).where(
+                sa.or_(
+                    sa.and_(Friendship.user_id == viewer_id, Friendship.friend_id.in_(ids)),
+                    sa.and_(Friendship.user_id.in_(ids), Friendship.friend_id == viewer_id),
+                )
+            )
+        )
+    ).all()
+    pairs = set(rows)
+    return {
+        other: Relation(
+            following=(viewer_id, other) in pairs,
+            follower=(other, viewer_id) in pairs,
+        )
+        for other in ids
+    }

@@ -14,20 +14,22 @@ import { useFilmChanges } from "../filmChanges";
 
 type Props = { onOpen(film: FilmBrief): void };
 
-type Sort = "popular" | "wanted" | "year";
+type Sort = "kp" | "tmdb" | "club" | "wanted" | "year";
 
-// Популярность первой и по умолчанию — по решению клуба. §11 просил обратного:
-// такая сортировка усиливает эффект присоединения к большинству и прячет хвост
-// каталога. Компромисс: остальные порядки рядом, в один тап.
+// Первым — курируемый топ Кинопоиска. Голоса толпы (сортировка по числу
+// оценок) усиливали эффект присоединения к большинству, о чём и предупреждал
+// §11; список, который не зависит от того, кто что отметил, честнее.
 const SORTS: { key: Sort; label: string }[] = [
-  { key: "popular", label: "По популярности" },
+  { key: "kp", label: "Топ Кинопоиска" },
+  { key: "tmdb", label: "По оценкам TMDB" },
+  { key: "club", label: "По оценкам клуба" },
   { key: "wanted", label: "Хотят в клубе" },
   { key: "year", label: "По году" },
 ];
 
 export function Catalog({ onOpen }: Props) {
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<Sort>("popular");
+  const [sort, setSort] = useState<Sort>("kp");
   const [layout, setLayout] = useState<Layout>(rememberedLayout);
   const [films, setFilms] = useState<FilmBrief[]>([]);
   const [loading, setLoading] = useState(true);

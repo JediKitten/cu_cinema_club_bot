@@ -170,6 +170,10 @@ export const myFilmRequests = () => request<FilmRequest[]>("/api/me/film-request
 export const findPeople = (query: string) =>
   request<PersonBrief[]>(`/api/people?q=${encodeURIComponent(query)}`);
 
+/** Все участники клуба: искать по имени можно, только если знаешь, кого.
+ *  Не путать с getPeople из админки — там список с ролями и приглашениями. */
+export const listMembers = () => request<PersonBrief[]>("/api/people");
+
 export const getProfile = (userId: number) => request<Profile>(`/api/users/${userId}`);
 
 export const getCircle = () => request<Circle>("/api/me/circle");

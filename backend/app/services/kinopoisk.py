@@ -236,6 +236,9 @@ FULL_FIELDS = [
     "videos",
     "top250",
     "persons",
+    # Связка с TMDB: по ней рейтинг TMDB подтягивается точно, а не поиском
+    # по названию, и по ней же узнаётся фильм, уже заведённый из TMDB.
+    "externalId",
 ]
 
 
@@ -279,18 +282,53 @@ def film_fields(doc: dict) -> dict:
         "ext_votes": votes.get("kp"),
         "kp_rating": rating.get("kp"),
         "kp_votes": votes.get("kp"),
+        "kp_top250": doc.get("top250"),
     }
 
 
+def tmdb_id_of(doc: dict) -> int | None:
+    """Идентификатор фильма в TMDB, если Кинопоиск его знает."""
+    raw = (doc.get("externalId") or {}).get("tmdb")
+    try:
+        return int(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
 async def upsert_from_kinopoisk(session, doc: dict):
-    """Идемпотентная запись по kp_id — зеркало upsert_from_tmdb."""
-    from sqlalchemy.dialects.postgresql import insert
+    """Идемпотентная запись — зеркало upsert_from_tmdb.
+
+    Фильм узнаётся сначала по kp_id, а если такого ещё нет — по tmdb_id: тот же
+    фильм мог приехать раньше из TMDB, и вторая строка для него превратила бы
+    каталог в список с двойниками. Такую строку дополняем данными Кинопоиска,
+    а не заводим соседнюю.
+    """
+    import sqlalchemy as sa
 
     from app.models import Film
 
     fields = film_fields(doc)
-    stmt = insert(Film).values(**fields)
-    stmt = stmt.on_conflict_do_update(index_elements=[Film.kp_id], set_=fields).returning(Film)
-    film = (await session.execute(stmt)).scalar_one()
+    tmdb_id = tmdb_id_of(doc)
+
+    film = (
+        await session.execute(sa.select(Film).where(Film.kp_id == fields["kp_id"]))
+    ).scalar_one_or_none()
+    if film is None and tmdb_id is not None:
+        film = (
+            await session.execute(sa.select(Film).where(Film.tmdb_id == tmdb_id))
+        ).scalar_one_or_none()
+
+    if film is None:
+        film = Film(**fields, tmdb_id=tmdb_id)
+        session.add(film)
+    else:
+        for key, value in fields.items():
+            setattr(film, key, value)
+        # Связку с TMDB проставляем только в пустое место: чужой id перезаписью
+        # мы бы «переселили» фильм на другую карточку.
+        if film.tmdb_id is None:
+            film.tmdb_id = tmdb_id
+
     await session.commit()
+    await session.refresh(film)
     return film

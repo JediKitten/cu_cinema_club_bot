@@ -68,11 +68,20 @@ def _person(user: User, relation: social.Relation | None = None) -> PersonBrief:
 async def find_people(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-    q: Annotated[str, Query(min_length=2, max_length=100)],
+    q: Annotated[str | None, Query(min_length=2, max_length=100)] = None,
 ) -> list[PersonBrief]:
-    """Поиск участников клуба — чтобы было кого добавить."""
-    found = await social.search(session, q, exclude_id=user.id)
-    return [_person(person, await social.relation(session, user.id, person.id)) for person in found]
+    """Участники клуба: поиск по имени, а без запроса — все.
+
+    Найти человека поиском можно, только если знаешь, кого ищешь; новичку
+    список нужен целиком.
+    """
+    found = (
+        await social.search(session, q, exclude_id=user.id)
+        if q
+        else await social.everyone(session, exclude_id=user.id)
+    )
+    links = await social.relations(session, user.id, [person.id for person in found])
+    return [_person(person, links.get(person.id)) for person in found]
 
 
 @router.get("/me/circle", response_model=CircleOut)

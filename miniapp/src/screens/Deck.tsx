@@ -59,6 +59,8 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
   // Оценка, выставленная на этой карточке и ещё не сохранённая: сохраняет её
   // только «Смотрел» — звёзды сами по себе не решают судьбу фильма.
   const [stars, setStars] = useState<number | null>(null);
+  // «Смотрел» нажали, а оценки нет: подсвечиваем звёзды и ждём второго нажатия.
+  const [asking, setAsking] = useState(false);
   // Смещение карточки под пальцем и направление, в которое она улетает.
   const [drag, setDrag] = useState(0);
   const [flying, setFlying] = useState<Decision | null>(null);
@@ -123,6 +125,7 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
     setQueue((current) => current.slice(1));
     setLeft((value) => (value === null ? null : Math.max(0, value - 1)));
     setStars(null);
+    setAsking(false);
   }
 
   async function decide(decision: Decision) {
@@ -132,6 +135,15 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
     // как карточка улетит, а не после.
     if (decision !== "watched" && stars !== null && !(await askConfirm(LOSES_RATING))) {
       setDrag(0);
+      return;
+    }
+
+    // «Смотрел» без оценки: сначала показываем, где её ставят. Половина
+    // проходит мимо звёзд просто потому, что не заметила их. Второе нажатие
+    // проходит дальше — настаивать на оценке мы не вправе.
+    if (decision === "watched" && stars === null && !asking) {
+      setAsking(true);
+      haptic("light");
       return;
     }
 
@@ -158,8 +170,12 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
 
   function onPointerDown(event: React.PointerEvent) {
     if (busy) return;
+    // Кнопке внутри карточки жест не мешаем: она сама решает, что с ним делать.
+    if ((event.target as HTMLElement).closest("button")) return;
     start.current = event.clientX;
-    (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+    // Захват на самой карточке, а не на том, где оказался палец: иначе жест,
+    // начатый на тексте, обрывался, стоило пальцу уйти за пределы абзаца.
+    event.currentTarget.setPointerCapture?.(event.pointerId);
   }
 
   function onPointerMove(event: React.PointerEvent) {
@@ -249,8 +265,11 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
                 клуб {card.internal_rating.toFixed(1)} ★ · {card.internal_votes}
               </span>
             )}
-            {card.ext_rating !== null && (
-              <span className="badge">TMDB {card.ext_rating.toFixed(1)}</span>
+            {card.kp_rating !== null && (
+              <span className="badge">КП {card.kp_rating.toFixed(1)}</span>
+            )}
+            {card.tmdb_rating !== null && (
+              <span className="badge">TMDB {card.tmdb_rating.toFixed(1)}</span>
             )}
           </div>
           {card.overview && <p className="deck__overview">{card.overview}</p>}
@@ -262,8 +281,15 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
 
       {/* Внизу только то, чего нельзя показать жестом: оценка и «смотрел».
           Свайпы отвечают за «хочу» и «не моё», дублировать их кнопками незачем. */}
-      <div className="deck__footer">
-        <StarRating value={stars} busy={busy} onChange={setStars} />
+      <div className={`deck__footer ${asking ? "is-asking" : ""}`}>
+        <StarRating
+          value={stars}
+          busy={busy}
+          onChange={(value) => {
+            setStars(value);
+            setAsking(false);
+          }}
+        />
         <button
           className={`mark mark--soon ${stars !== null ? "is-on" : ""}`}
           disabled={busy}
@@ -272,10 +298,12 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
           Смотрел
         </button>
       </div>
-      <p className="hint deck__note">
-        {stars !== null
-          ? "Нажмите «Смотрел», чтобы сохранить оценку."
-          : "Оценка сохранится по кнопке «Смотрел»."}
+      <p className={`hint deck__note ${asking ? "deck__note--asking" : ""}`}>
+        {asking
+          ? "Оцените фильм — или нажмите «Смотрел» ещё раз, без оценки."
+          : stars !== null
+            ? "Нажмите «Смотрел», чтобы сохранить оценку."
+            : "Оценка сохранится по кнопке «Смотрел»."}
       </p>
     </div>
   );

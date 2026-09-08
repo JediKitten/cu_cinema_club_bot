@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_config
 from app.core.auth import CurrentUser
 from app.db import get_session
-from app.models import Feedback, Film, Interest, User
+from app.models import Feedback, Film, FilmRating, Interest, User
 from app.models.enums import FilmStatus
 from app.schemas import (
     DeckCard,
@@ -30,7 +30,17 @@ from app.services.weights import WeightParams, active_interest_clause, film_weig
 
 router = APIRouter(prefix="/api/films", tags=["films"])
 
-SortKey = Literal["popular", "wanted", "year", "recent"]
+SortKey = Literal["kp", "tmdb", "club", "wanted", "year", "recent"]
+
+# Сколько голосов делают оценку осмысленной. Без порога наверх вылезает кино
+# с 9,4 по десятку голосов, и сортировка «по оценкам» превращается в лотерею.
+KP_VOTES = 5_000
+TMDB_VOTES = 300
+
+
+def _confident(rating, votes, minimum: int):
+    """Оценка, если голосов достаточно; иначе ничего — такие уходят вниз."""
+    return sa.case((sa.func.coalesce(votes, 0) >= minimum, rating), else_=None)
 
 
 def _brief(film: Film, marks: dict[int, MarkState] | None = None) -> FilmBrief:
@@ -128,21 +138,40 @@ async def search_films(
 async def browse_films(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-    sort: SortKey = "popular",
+    sort: SortKey = "kp",
     genre: str | None = None,
     offset: int = 0,
     limit: Annotated[int, Query(ge=1, le=60)] = 30,
 ) -> list[FilmBrief]:
-    """Сортировка по умолчанию — по популярности.
+    """Сортировка по умолчанию — топ Кинопоиска.
 
-    §11 просит обратного: эффект присоединения к большинству убивает хвост
-    каталога. Изменено по решению клуба, см. «Отступления от спека» в README.
+    §11 просит сортировать не по популярности: эффект присоединения к
+    большинству убивает хвост каталога. Курируемый топ — компромисс, принятый
+    клубом: он тоже ставит известное вперёд, но не голосами толпы, а списком,
+    который не меняется от того, кто что отметил. См. «Отступления от спека».
     """
     stmt = sa.select(Film).where(Film.status == FilmStatus.ACTIVE)
     if genre:
         stmt = stmt.where(Film.genres.any(genre))
 
-    if sort == "wanted":
+    if sort == "club":
+        # Оценки клуба: одна пятёрка от одного человека — не рейтинг, поэтому
+        # фильмы без оценок уходят вниз, а не наверх с пустым средним.
+        club = (
+            sa.select(
+                FilmRating.film_id.label("film_id"),
+                sa.func.avg(FilmRating.score).label("average"),
+                sa.func.count().label("votes"),
+            )
+            .group_by(FilmRating.film_id)
+            .subquery()
+        )
+        stmt = stmt.outerjoin(club, club.c.film_id == Film.id).order_by(
+            club.c.average.desc().nulls_last(),
+            club.c.votes.desc().nulls_last(),
+            Film.id,
+        )
+    elif sort == "wanted":
         # Сортировка по весу §4, а не по числу отметок: «Ближайшее» весит больше
         # «Желаемого», а давняя отметка — меньше свежей. Считать головы значило бы
         # уравнять «трое хотят прямо сейчас» и «трое захотели год назад».
@@ -160,11 +189,24 @@ async def browse_films(
             sa.func.coalesce(Film.ext_votes, 0).desc(),
             Film.id,
         )
+    elif sort == "kp":
+        # Сначала топ-250 в порядке мест, потом остальное по оценке КП. Место
+        # в курируемом списке говорит больше средней: у «Крёстного отца» и
+        # у проходного фильма с горсткой восторженных голосов она одинакова.
+        stmt = stmt.order_by(
+            Film.kp_top250.asc().nulls_last(),
+            _confident(Film.kp_rating, Film.kp_votes, KP_VOTES).desc().nulls_last(),
+            Film.id,
+        )
+    elif sort == "tmdb":
+        stmt = stmt.order_by(
+            _confident(Film.tmdb_rating, Film.tmdb_votes, TMDB_VOTES).desc().nulls_last(),
+            Film.id,
+        )
     else:
         order = {
             "recent": Film.created_at.desc(),
             "year": sa.func.coalesce(Film.year, 0).desc(),
-            "popular": sa.func.coalesce(Film.ext_votes, 0).desc(),
         }[sort]
         # Film.id последним ключом — иначе у фильмов с равным рейтингом или
         # годом порядок между запросами плавает, и подгрузка следующей
@@ -207,7 +249,8 @@ async def deck(
             directors=list(film.directors or []),
             runtime_min=film.runtime_min,
             overview=film.overview,
-            ext_rating=film.ext_rating,
+            kp_rating=film.kp_rating,
+            tmdb_rating=film.tmdb_rating,
             internal_rating=summary.average if summary else None,
             internal_votes=summary.votes if summary else 0,
             reason=pick.reason,
@@ -335,8 +378,8 @@ async def tmdb_card(
         runtime_min=fields["runtime_min"],
         overview=fields["overview"],
         trailer_key=fields["trailer_key"],
-        ext_rating=fields["ext_rating"],
-        ext_votes=fields["ext_votes"],
+        tmdb_rating=fields["tmdb_rating"],
+        tmdb_votes=fields["tmdb_votes"],
         # Внутренних данных нет: фильм ещё не в каталоге, отмечать его никто не мог.
         internal_rating=None,
         internal_votes=0,
@@ -393,8 +436,10 @@ async def film_card(
         runtime_min=film.runtime_min,
         overview=film.overview,
         trailer_key=film.trailer_key,
-        ext_rating=film.ext_rating,
-        ext_votes=film.ext_votes,
+        kp_rating=film.kp_rating,
+        kp_votes=film.kp_votes,
+        tmdb_rating=film.tmdb_rating,
+        tmdb_votes=film.tmdb_votes,
         internal_rating=club.average,
         internal_votes=club.votes,
         my_rating=await ratings.my_rating(session, user.id, film_id),

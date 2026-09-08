@@ -18,7 +18,9 @@ import logging
 import sqlalchemy as sa
 
 from app.db import SessionLocal
-from app.models import Film
+from app.models import Favourite, Film, FilmRating, Interest, Watch
+from app.models.enums import FilmStatus
+from app.services import matching
 from app.services.kinopoisk import KinopoiskError, get_kinopoisk, upsert_from_kinopoisk
 from app.services.tmdb import TmdbError, get_tmdb, upsert_from_tmdb
 
@@ -58,10 +60,123 @@ async def run_kinopoisk(limit: int, listing: str = "top250") -> int:
             imported += 1
             logger.info("%-4d %s (%s)", imported, film.title_ru, film.year or "—")
 
+        # Оценку TMDB Кинопоиск не отдаёт, а сортировать по ней клуб хочет.
+        # Идём за ней отдельно — по той самой связке externalId.tmdb.
+        if get_tmdb().configured:
+            await enrich_tmdb(session)
+
+        await hide_duplicates(session)
+
     total = await _count_films()
     logger.info("Готово. Импортировано: %d. Всего в каталоге: %d", imported, total)
     await kinopoisk.aclose()
     return imported
+
+
+async def hide_duplicates(session) -> int:
+    """Прячет двойников: тот же фильм, заведённый дважды разными путями.
+
+    Совпадение считаем по названию и году (`matching.keys`) — id разных
+    источников у двойников по определению не совпадают. Прячем только строку,
+    к которой никто не притрагивался: если фильм кто-то отметил, оценил или
+    посмотрел, он остаётся, даже когда выглядит копией.
+    """
+    hidden = 0
+    films = list(
+        (
+            await session.execute(
+                sa.select(Film).where(Film.status == FilmStatus.ACTIVE).order_by(Film.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    marks = await _activity(session)
+
+    seen: dict[tuple[str, int], Film] = {}
+    for film in films:
+        keys = matching.keys(film.title_ru, film.title_orig, film.year)
+        twin = next((seen[key] for key in keys if key in seen), None)
+
+        if twin is not None:
+            # Остаётся тот, за кем больше следов; при равенстве — тот, что
+            # с данными Кинопоиска: у него русское описание и живой постер.
+            keep, drop = sorted(
+                (twin, film),
+                key=lambda f: (marks.get(f.id, 0), f.kp_id is not None),
+                reverse=True,
+            )
+            if marks.get(drop.id, 0) > 0:
+                # За обоими что-то стоит: склеивать вслепую нельзя, чужие
+                # отметки при этом потерялись бы. Оставляем как есть.
+                continue
+            drop.status = FilmStatus.HIDDEN
+            hidden += 1
+            logger.info("Двойник: прячем «%s» (%s)", drop.title_ru, drop.year or "—")
+            keys |= matching.keys(keep.title_ru, keep.title_orig, keep.year)
+            film = keep
+
+        for key in keys:
+            seen[key] = film
+
+    await session.commit()
+    if hidden:
+        logger.info("Спрятано двойников: %d", hidden)
+    return hidden
+
+
+async def _activity(session) -> dict[int, int]:
+    """Сколько следов оставили люди на каждом фильме — отметки, оценки, просмотры."""
+    counts: dict[int, int] = {}
+    for table in (Interest.film_id, FilmRating.film_id, Watch.film_id, Favourite.film_id):
+        rows = await session.execute(sa.select(table, sa.func.count()).group_by(table))
+        for film_id, count in rows:
+            counts[film_id] = counts.get(film_id, 0) + count
+    return counts
+
+
+async def enrich_tmdb(session, batch: int = 16) -> int:
+    """Проставляет рейтинг TMDB фильмам, у которых он ещё не известен.
+
+    Проход идемпотентный и возобновляемый: берём только те строки, где рейтинга
+    нет, поэтому прерванный импорт можно просто запустить заново, а не начинать
+    с начала. Запросы идут пачками — по одному полторы тысячи фильмов заняли бы
+    десяток минут.
+    """
+    tmdb = get_tmdb()
+    logger.info("Подтягиваем оценки TMDB…")
+    filled = failed = 0
+
+    rows = (
+        await session.execute(
+            sa.select(Film.id, Film.tmdb_id).where(
+                Film.tmdb_id.is_not(None), Film.tmdb_rating.is_(None)
+            )
+        )
+    ).all()
+
+    for start in range(0, len(rows), batch):
+        chunk = rows[start : start + batch]
+        payloads = await asyncio.gather(
+            *(tmdb.movie(tmdb_id) for _, tmdb_id in chunk), return_exceptions=True
+        )
+        for (film_id, _), payload in zip(chunk, payloads, strict=True):
+            if isinstance(payload, BaseException) or not payload.get("vote_count"):
+                failed += 1
+                continue
+            await session.execute(
+                sa.update(Film)
+                .where(Film.id == film_id)
+                .values(
+                    tmdb_rating=payload.get("vote_average"),
+                    tmdb_votes=payload.get("vote_count"),
+                )
+            )
+            filled += 1
+        await session.commit()
+
+    logger.info("Оценки TMDB: проставлено %d, не вышло %d", filled, failed)
+    return filled
 
 
 async def run(limit: int, delay: float) -> int:

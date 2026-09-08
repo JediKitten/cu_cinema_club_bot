@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addFriend, findPeople, getCircle, getFeed, removeFriend } from "../api";
+import { addFriend, findPeople, getCircle, getFeed, listMembers, removeFriend } from "../api";
 import { Poster } from "../components/FilmRow";
 import { Section } from "../components/Section";
 import { useOpenFilmById } from "../filmOpener";
@@ -38,14 +38,16 @@ export function Friends({
   const [circle, setCircle] = useState<Circle | null>(null);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<PersonBrief[]>([]);
+  const [people, setPeople] = useState<PersonBrief[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const openFilm = useOpenFilmById();
 
   async function reload() {
-    const [items, groups] = await Promise.all([getFeed(), getCircle()]);
+    const [items, groups, everyone] = await Promise.all([getFeed(), getCircle(), listMembers()]);
     setFeed(items);
     setCircle(groups);
+    setPeople(everyone);
   }
 
   useEffect(() => {
@@ -72,9 +74,10 @@ export function Friends({
         ? await removeFriend(person.id)
         : await addFriend(person.id);
       haptic();
-      setFound((current) =>
-        current.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)),
-      );
+      const patch = (rows: PersonBrief[]) =>
+        rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row));
+      setFound(patch);
+      setPeople(patch);
       await reload();
     } catch (e) {
       showMessage(e instanceof Error ? e.message : "Не получилось");
@@ -145,6 +148,22 @@ export function Friends({
       {found.map((person) => (
         <Person key={person.id} person={person} action />
       ))}
+
+      {/* Весь клуб под поиском. Свёрнут по умолчанию: список на полсотни имён
+          закрыл бы собой друзей и ленту, а искать поиском можно, только если
+          знаешь, кого ищешь, — новичок не знает никого. */}
+      {people.length > 0 && (
+        <Section
+          title="Все участники"
+          count={people.length}
+          storageKey="people-all"
+          defaultOpen={false}
+        >
+          {people.map((person) => (
+            <Person key={person.id} person={person} action />
+          ))}
+        </Section>
+      )}
 
       {circle && circle.friends.length > 0 && (
         <Section title="В друзьях" count={circle.friends.length} storageKey="circle-friends">

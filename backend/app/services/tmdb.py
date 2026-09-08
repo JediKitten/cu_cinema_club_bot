@@ -132,6 +132,10 @@ def film_fields(payload: dict) -> dict:
         "directors": _directors(payload),
         "ext_rating": payload.get("vote_average"),
         "ext_votes": payload.get("vote_count"),
+        # Отдельно от «внешнего»: каталог наполняется из двух источников, и
+        # подписывать оценку Кинопоиска именем TMDB нельзя.
+        "tmdb_rating": payload.get("vote_average"),
+        "tmdb_votes": payload.get("vote_count"),
     }
 
 

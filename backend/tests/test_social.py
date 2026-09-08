@@ -284,3 +284,27 @@ async def test_people_search_skips_yourself(client, session):
     ).json()
 
     assert [person["display_name"] for person in found] == ["Главный помощник"]
+
+
+async def test_people_without_a_query_lists_the_whole_club(client, session):
+    """Искать по имени можно, только если знаешь, кого: новичку нужен весь список."""
+    me = await login(client, SUPERADMIN_TG_ID, "Главный")
+    await login(client, 777403, "Аня")
+    await login(client, 777404, "Борис")
+    headers = {"Authorization": f"Bearer {me['token']}"}
+
+    everyone = (await client.get("/api/people", headers=headers)).json()
+
+    assert [person["display_name"] for person in everyone] == ["Аня", "Борис"]
+    assert all(person["following"] is False for person in everyone)
+
+
+async def test_people_listing_shows_who_is_already_added(client, session):
+    me = await login(client, SUPERADMIN_TG_ID, "Главный")
+    other = await login(client, 777405, "Аня")
+    headers = {"Authorization": f"Bearer {me['token']}"}
+    await client.post(f"/api/users/{other['user']['id']}/friend", headers=headers)
+
+    everyone = (await client.get("/api/people", headers=headers)).json()
+
+    assert [(p["display_name"], p["following"]) for p in everyone] == [("Аня", True)]
