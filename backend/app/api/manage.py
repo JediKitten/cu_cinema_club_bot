@@ -110,10 +110,13 @@ async def edit_event(
     от «очистить его», и без этого снять фильм с анонса было бы нельзя.
     """
     changes = body.model_dump(exclude_unset=True)
+    keep = bool(changes.pop("keep_confirmations", False))
     if not changes:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Нечего менять")
     try:
-        event = await events_service.update(session, event_id, admin.id, changes)
+        event = await events_service.update(
+            session, event_id, admin.id, changes, keep_confirmations=keep
+        )
     except EventError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return await _event_out(session, event)

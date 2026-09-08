@@ -656,6 +656,8 @@ class EventPatch(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     note: str | None = Field(default=None, max_length=1000)
     duration_min: int | None = Field(default=None, ge=30, le=600)
+    # Не поле события, а указание: оставить ли записи при переносе времени.
+    keep_confirmations: bool = False
 
 
 class EventOut(BaseModel):

@@ -98,6 +98,46 @@ async def test_reveal_replaces_the_teaser_with_a_film(session):
     assert revealed.film_id == film.id
 
 
+async def test_move_can_keep_the_signups_when_the_admin_says_so(session):
+    """Опечатку в дате правят сразу после анонса — терять из-за неё семь «приду»
+    жалко. Решает администратор: он один знает, тот же это вечер по сути."""
+    boss = await make_user(session, "Админ")
+    guest = await make_user(session, "Гость")
+    await session.commit()
+
+    event = await events.create(session, starts_at=SOON, actor_id=boss.id, title="Показ")
+    session.add(
+        Confirmation(screening_id=event.id, user_id=guest.id, state=ConfirmationState.CONFIRMED)
+    )
+    await session.commit()
+
+    await events.update(
+        session,
+        event.id,
+        boss.id,
+        {"starts_at": SOON - timedelta(days=1)},
+        keep_confirmations=True,
+    )
+
+    kept = await session.scalar(
+        sa.select(sa.func.count())
+        .select_from(Confirmation)
+        .where(
+            Confirmation.screening_id == event.id,
+            Confirmation.state == ConfirmationState.CONFIRMED,
+        )
+    )
+    assert kept == 1
+
+    notice = (
+        await session.execute(
+            sa.select(Notification).where(Notification.user_id == guest.id)
+        )
+    ).scalar_one()
+    text = notify.render(notice.kind, None, "пятница, 19:00", notice.payload)
+    assert "отмените в приложении" in text
+
+
 async def test_reveal_keeps_everyone_signed_up_and_calls_it_an_announcement(session):
     """Записавшиеся на «секретный показ» остаются записанными: вечер тот же,
     меняется только название. И сообщение им приходит как анонс, а не как

@@ -318,6 +318,15 @@ async def upsert_from_kinopoisk(session, doc: dict):
             await session.execute(sa.select(Film).where(Film.tmdb_id == tmdb_id))
         ).scalar_one_or_none()
 
+    # Тот же tmdb_id мог уже достаться двойнику, заведённому раньше. Занимать
+    # его силой нельзя: колонка уникальна, и запись упала бы целиком.
+    if tmdb_id is not None and film is not None and film.tmdb_id != tmdb_id:
+        taken = await session.scalar(
+            sa.select(sa.func.count()).select_from(Film).where(Film.tmdb_id == tmdb_id)
+        )
+        if taken:
+            tmdb_id = None
+
     if film is None:
         film = Film(**fields, tmdb_id=tmdb_id)
         session.add(film)

@@ -1232,6 +1232,24 @@ body.is-locked .app {
   }
 }
 
+/* Флажок с пояснением: у необратимого выбора должна быть подпись, что будет. */
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.check input {
+  margin: 2px 0 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--link);
+  flex: none;
+}
+
 /* Печать поверх карточки: решение видно до того, как палец отпущен. */
 .deck__stamp {
   position: absolute;

@@ -100,7 +100,11 @@ EDITABLE = ("starts_at", "duration_min", "film_id", "title", "note")
 
 
 async def update(
-    session: AsyncSession, event_id: int, actor_id: int, changes: dict
+    session: AsyncSession,
+    event_id: int,
+    actor_id: int,
+    changes: dict,
+    keep_confirmations: bool = False,
 ) -> Screening:
     """Правит уже назначенное событие.
 
@@ -108,6 +112,12 @@ async def update(
     различаются — иначе снять фильм с анонса было бы нельзя, не затерев заодно
     подпись. Смена времени сбрасывает подтверждения, как и перенос показа в
     цикле (§7): доступность привязана к конкретному вечеру.
+
+    `keep_confirmations` оставляет записи на месте — для случая, когда время
+    поправили сразу после анонса и терять семь «приду» из-за опечатки в дате
+    жалко. Решает администратор: он один знает, тот же это вечер по сути или
+    уже другой. Пришедшее сообщение тогда просит отменить запись тех, кому
+    новое время не подходит, вместо того чтобы просить отметиться заново.
     """
     event = await session.get(Screening, event_id)
     if event is None or not event.is_manual:
@@ -161,10 +171,11 @@ async def update(
             {
                 "time_changed": time_changed,
                 "revealed": revealed,
+                "kept": keep_confirmations,
                 "starts_at": slot.starts_at.isoformat(),
             },
         )
-    if time_changed:
+    if time_changed and not keep_confirmations:
         await schedule_service.reset_confirmations(session, event)
 
     session.add(
@@ -174,8 +185,11 @@ async def update(
             entity_id=event.id,
             action="edit_manual",
             payload={
-                key: (value.isoformat() if isinstance(value, datetime) else value)
-                for key, value in changes.items()
+                "keep_confirmations": keep_confirmations,
+                **{
+                    key: (value.isoformat() if isinstance(value, datetime) else value)
+                    for key, value in changes.items()
+                },
             },
         )
     )

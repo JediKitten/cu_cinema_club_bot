@@ -91,6 +91,13 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
             return f"❌ Показ отменён\n\n{film_line}\n{when}\n\nПричина: {reason}"
         case NotificationKind.SCREENING_CHANGED:
             if payload.get("time_changed"):
+                if payload.get("kept"):
+                    # Записи оставили: просить отметиться заново там, где человек
+                    # уже отметился, значит потерять половину зала на ровном месте.
+                    return (
+                        f"🔄 Показ перенесён\n\n{film_line}\nНовое время: {when}\n\n"
+                        "Вы записаны — если не сможете, отмените в приложении."
+                    )
                 return (
                     f"🔄 Показ перенесён\n\n{film_line}\nНовое время: {when}\n\n"
                     "Подтверждения сброшены — отметьтесь заново, если придёте."

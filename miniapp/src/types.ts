@@ -354,6 +354,8 @@ export type EventChanges = {
   film_id?: number | null;
   title?: string | null;
   note?: string | null;
+  /** Не поле события: оставить ли записи «приду» при переносе времени. */
+  keep_confirmations?: boolean;
 };
 
 /** Разрез по фильму для админа (§14). */

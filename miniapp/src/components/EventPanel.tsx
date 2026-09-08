@@ -150,6 +150,10 @@ function EventFields({
 function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
   const [draft, setDraft] = useState<Draft>(() => toDraft(event));
   const [reason, setReason] = useState("");
+  // Перенос по умолчанию сбрасывает записи (§7): вечер другой — и доступность
+  // другая. Но опечатку в дате правят сразу после анонса, и терять из-за неё
+  // всех записавшихся жалко, поэтому у переноса есть второй режим.
+  const [keepSignups, setKeepSignups] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [busy, setBusy] = useState(false);
   const initial = toDraft(event);
@@ -173,10 +177,12 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
     }
     setBusy(true);
     try {
-      await updateEvent(event.id, patch);
+      await updateEvent(event.id, { ...patch, keep_confirmations: keepSignups });
       showMessage(
         patch.starts_at
-          ? "Событие перенесено. Тем, кто собирался прийти, ушло уведомление."
+          ? keepSignups
+            ? "Событие перенесено. Записи сохранены, всем ушло уведомление."
+            : "Событие перенесено. Подтверждения сброшены, всем ушло уведомление."
           : "Событие обновлено",
       );
       onDone();
@@ -207,6 +213,23 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
   return (
     <>
       <EventFields draft={draft} onChange={setDraft} />
+      {(draft.date !== initial.date || draft.time !== initial.time) && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={keepSignups}
+            onChange={(e) => setKeepSignups(e.target.checked)}
+          />
+          <span>
+            Оставить записи
+            <span className="hint">
+              {keepSignups
+                ? " — тем, кто собирался прийти, придёт просьба отменить, если не смогут"
+                : " — иначе все подтверждения сбросятся и отмечаться придётся заново"}
+            </span>
+          </span>
+        </label>
+      )}
       <button className="primary" disabled={busy} onClick={save}>
         Сохранить
       </button>
