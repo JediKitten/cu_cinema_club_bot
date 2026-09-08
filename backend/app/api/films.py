@@ -181,8 +181,8 @@ async def browse_films(
 async def deck(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-    limit: Annotated[int, Query(ge=1, le=40)] = 20,
-    exclude: Annotated[str, Query(max_length=500)] = "",
+    limit: Annotated[int, Query(ge=1, le=50)] = deck_service.PAGE,
+    exclude: Annotated[str, Query(max_length=800)] = "",
 ) -> DeckOut:
     """Лента для быстрой разметки: только то, о чём человек ещё не высказался.
 
@@ -190,10 +190,11 @@ async def deck(
     не должна выдавать их второй раз.
     """
     holding = [int(part) for part in exclude.split(",") if part.strip().isdigit()]
-    films = await deck_service.next_films(session, user.id, limit, holding)
-    club = await ratings.summaries(session, [film.id for film in films])
+    picks = await deck_service.next_films(session, user.id, limit, holding)
+    club = await ratings.summaries(session, [pick.film.id for pick in picks])
 
-    def card(film: Film) -> DeckCard:
+    def card(pick: deck_service.Suggestion) -> DeckCard:
+        film = pick.film
         summary = club.get(film.id)
         return DeckCard(
             id=film.id,
@@ -209,10 +210,11 @@ async def deck(
             ext_rating=film.ext_rating,
             internal_rating=summary.average if summary else None,
             internal_votes=summary.votes if summary else 0,
+            reason=pick.reason,
         )
 
     return DeckOut(
-        cards=[card(film) for film in films],
+        cards=[card(pick) for pick in picks],
         left=await deck_service.left(session, user.id),
     )
 

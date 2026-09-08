@@ -4,7 +4,11 @@
 просто самое популярное). Сами данные берём из TMDB по `externalId.tmdb`,
 как требует §11: TMDB — основа каталога, Кинопоиск лишь подсказывает список.
 
+Ленте одного топ-250 мало: карточки в ней кончаются за пару вечеров, поэтому
+для наполнения каталога есть широкий список — `--source kinopoisk --list popular`.
+
 Запуск:  ./venv/bin/python -m app.import_top --limit 100
+         ./venv/bin/python -m app.import_top --source kinopoisk --list popular --limit 1500
 """
 
 import argparse
@@ -21,20 +25,29 @@ from app.services.tmdb import TmdbError, get_tmdb, upsert_from_tmdb
 logger = logging.getLogger("import_top")
 
 
-async def run_kinopoisk(limit: int) -> int:
+async def run_kinopoisk(limit: int, listing: str = "top250") -> int:
     """Каталог целиком из Кинопоиска — когда TMDB недоступен.
 
     Отличается от основного пути не только источником данных: постеры тоже
     поедут с CDN Кинопоиска, а он, в отличие от image.tmdb.org, доступен там же,
     где и сам API.
+
+    `listing` выбирает, что завозить: `top250` — курируемый рейтинг для первого
+    наполнения, `popular` — широкий список известного кино. Второй нужен ленте:
+    двести пятьдесят карточек человек пролистывает за пару вечеров, и дальше
+    рекомендовать становится нечего.
     """
     kinopoisk = get_kinopoisk()
     if not kinopoisk.configured:
         raise SystemExit("KINOPOISK_API_TOKEN не задан в .env")
 
-    logger.info("Забираем топ-%d Кинопоиска…", limit)
+    logger.info("Забираем %s Кинопоиска (%d)…", listing, limit)
     try:
-        docs = await kinopoisk.top250_full(limit)
+        docs = (
+            await kinopoisk.popular(limit)
+            if listing == "popular"
+            else await kinopoisk.top250_full(limit)
+        )
     except KinopoiskError as exc:
         raise SystemExit(f"Не удалось получить список: {exc}") from exc
 
@@ -43,7 +56,7 @@ async def run_kinopoisk(limit: int) -> int:
         for doc in docs:
             film = await upsert_from_kinopoisk(session, doc)
             imported += 1
-            logger.info("#%-3s %s (%s)", doc.get("top250", "?"), film.title_ru, film.year or "—")
+            logger.info("%-4d %s (%s)", imported, film.title_ru, film.year or "—")
 
     total = await _count_films()
     logger.info("Готово. Импортировано: %d. Всего в каталоге: %d", imported, total)
@@ -153,7 +166,7 @@ async def _count_films() -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Импорт стартового каталога фильмов")
-    parser.add_argument("--limit", type=int, default=100, help="сколько позиций топ-250 брать")
+    parser.add_argument("--limit", type=int, default=100, help="сколько фильмов брать из списка")
     parser.add_argument(
         "--delay", type=float, default=0.1, help="пауза между запросами к TMDB, секунд"
     )
@@ -163,11 +176,18 @@ def main() -> None:
         default="tmdb",
         help="откуда брать данные: tmdb (по §11) или kinopoisk (когда TMDB недоступен)",
     )
+    parser.add_argument(
+        "--list",
+        dest="listing",
+        choices=("top250", "popular"),
+        default="top250",
+        help="что завозить: top250 (курируемый рейтинг) или popular (широкий список для ленты)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if args.source == "kinopoisk":
-        asyncio.run(run_kinopoisk(args.limit))
+        asyncio.run(run_kinopoisk(args.limit, args.listing))
     else:
         asyncio.run(run(args.limit, args.delay))
 

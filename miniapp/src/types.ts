@@ -488,6 +488,8 @@ export type DeckCard = {
   ext_rating: number | null;
   internal_rating: number | null;
   internal_votes: number;
+  // Почему карточка здесь: «друг оценил на 5» решает быстрее любого рейтинга.
+  reason: string | null;
 };
 
 export type Deck = { cards: DeckCard[]; left: number };

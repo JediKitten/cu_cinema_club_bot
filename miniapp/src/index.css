@@ -1087,18 +1087,35 @@ h3 {
 
 /* --- Лента ----------------------------------------------------------------- */
 
+/* Экран ленты не прокручивается вовсе: под пальцем здесь карточка, и страница,
+   уезжающая вместе с ней, сбивает жест. Замок ставит сама «Лента» при входе
+   и снимает при уходе — остальные экраны прокручиваются как обычно. */
+body.is-locked {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.is-locked .app {
+  height: 100dvh;
+  /* Место под таб-бар отмеряет сам экран: снизу у него своя кнопка. */
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
 .deck {
   padding: var(--gap);
+  /* Таб-бар висит поверх: последняя строка не должна прятаться под ним. */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 8px;
   /* Карточка занимает экран целиком: решение принимается по одной, и соседние
      строки на нём только мешали бы. */
-  min-height: calc(100vh - 72px);
+  height: 100dvh;
   /* Уезжающая карточка не должна раздвигать страницу вбок: без этого при
      каждом свайпе появлялась горизонтальная прокрутка и лента «съезжала». */
   overflow: hidden;
-  overscroll-behavior-x: none;
+  overscroll-behavior: none;
 }
 
 .deck__card {
@@ -1107,6 +1124,9 @@ h3 {
   border-radius: 16px;
   overflow: hidden;
   flex: 1;
+  /* Без этого карточка не сжимается ниже своего содержимого и выдавливает
+     кнопку «Смотрел» за нижний край экрана. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   /* Жест по карточке — свайп, а не выделение текста и не прокрутка страницы. */
@@ -1117,7 +1137,10 @@ h3 {
 
 .deck__poster {
   width: 100%;
-  height: 46vh;
+  /* Постер забирает всё, что осталось от описания: экраны бывают разной
+     высоты, а фиксированная высота на низком отрезала бы кнопки. */
+  flex: 1 1 auto;
+  min-height: 0;
   object-fit: cover;
   object-position: top center;
   background: var(--border);
@@ -1135,7 +1158,17 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Длинное описание прокручивается внутри карточки, а не тянет её вниз. */
+  flex: 0 1 auto;
+  max-height: 45%;
   overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.deck__reason {
+  margin: 0;
+  font-size: 13px;
+  color: var(--link);
 }
 
 .deck__title {

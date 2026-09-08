@@ -145,6 +145,48 @@ class KinopoiskClient:
         docs.sort(key=lambda d: d.get("top250") or 10**6)
         return docs[:limit]
 
+    async def popular(
+        self, limit: int, min_rating: float = 6.5, min_votes: int = 5_000
+    ) -> list[dict]:
+        """Широкий список известного кино — топ-250 для ленты слишком короток.
+
+        Сортировка по числу голосов, а не по рейтингу: у ленты задача не выдать
+        лучшее, а показать то, о чём человек способен что-то решить за секунду.
+        Порог по рейтингу лишь отсекает откровенный мусор; выбирает дальше
+        рекомендация, а не этот список.
+
+        Одна страница — до 250 фильмов, поэтому даже полторы тысячи стоят
+        нескольких запросов: бесплатный лимит Кинопоиска небольшой.
+        """
+        docs: list[dict] = []
+        page, per_page = 1, 250
+
+        while len(docs) < limit:
+            data = await self._request(
+                "/movie",
+                {
+                    "type": "movie",
+                    "rating.kp": f"{min_rating}-10",
+                    "votes.kp": f"{min_votes}-100000000",
+                    # Без постера и описания карточка в ленте бесполезна.
+                    "notNullFields": ["poster.url", "description"],
+                    "sortField": "votes.kp",
+                    "sortType": "-1",
+                    "limit": min(per_page, limit - len(docs)),
+                    "page": page,
+                    "selectFields": FULL_FIELDS,
+                },
+            )
+            batch = data.get("docs", [])
+            if not batch:
+                break
+            docs.extend(batch)
+            if page >= data.get("pages", page):
+                break
+            page += 1
+
+        return docs[:limit]
+
     async def aclose(self) -> None:
         if self._client is not None:
             await self._client.aclose()

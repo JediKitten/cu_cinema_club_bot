@@ -139,6 +139,8 @@ class DeckCard(BaseModel):
     ext_rating: float | None = None
     internal_rating: float | None = None
     internal_votes: int = 0
+    # Почему карточка здесь: рекомендация без объяснения выглядит случайной.
+    reason: str | None = None
 
 
 class DeckOut(BaseModel):

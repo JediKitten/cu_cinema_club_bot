@@ -10,8 +10,9 @@ import type { DeckCard, FilmBrief } from "../types";
 const THRESHOLD = 90;
 
 /** Когда в очереди осталось столько карточек, просим следующую пачку —
- *  дозагрузка должна случиться до того, как экран опустеет. */
-const REFILL_AT = 5;
+ *  дозагрузка должна случиться до того, как экран опустеет. Быстрый свайп
+ *  съедает пять карточек за десяток секунд, так что запас нужен заметный. */
+const REFILL_AT = 8;
 
 const LOSES_RATING =
   "Оценка не сохранится: чтобы она осталась, нажмите «Смотрел». Продолжить?";
@@ -69,6 +70,14 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
   const loadingMore = useRef(false);
 
   const card = queue[0] ?? null;
+
+  // Лента — единственный экран без прокрутки: под пальцем здесь карточка, и
+  // страница, уезжающая вместе с ней, сбивает жест. Замок снимаем при уходе
+  // с вкладки, иначе остальные экраны остались бы без прокрутки.
+  useEffect(() => {
+    document.body.classList.add("is-locked");
+    return () => document.body.classList.remove("is-locked");
+  }, []);
 
   async function refill(holding: DeckCard[]) {
     if (loadingMore.current) return;
@@ -225,6 +234,9 @@ export function Deck({ onOpen }: { onOpen(film: FilmBrief): void }) {
         )}
 
         <div className="deck__body">
+          {/* Почему фильм здесь. Рекомендация без объяснения выглядит
+              случайной, а «друг оценил на 5» решает за секунду. */}
+          {card.reason && <p className="deck__reason">{card.reason}</p>}
           <h2 className="deck__title">{card.title_ru}</h2>
           <p className="meta">
             {[card.year, runtime(card.runtime_min), card.genres.slice(0, 2).join(", ")]
