@@ -9,6 +9,7 @@ import type {
   Invite,
   Analytics,
   Attendee,
+  BroadcastTarget,
   ConfirmResult,
   FeedbackState,
   Matrix,
@@ -348,6 +349,23 @@ export const setBeta = (enabled: boolean) =>
   });
 
 export const getPeople = () => request<PersonRow[]>("/api/admin/people");
+
+/** Показы, которым можно написать: и цикловые, и ручные события. */
+export const getBroadcastTargets = () =>
+  request<BroadcastTarget[]>("/api/admin/broadcast/screenings");
+
+/** Сколько человек получат сообщение — цифра нужна до отправки, а не после. */
+export const getAudienceSize = (audience: string, screeningId?: number) =>
+  request<{ recipients: number }>(
+    `/api/admin/broadcast/audience?audience=${audience}` +
+      (screeningId ? `&screening_id=${screeningId}` : ""),
+  );
+
+export const sendBroadcast = (text: string, audience: string, screeningId?: number) =>
+  request<{ recipients: number }>("/api/admin/broadcast", {
+    method: "POST",
+    body: JSON.stringify({ text, audience, screening_id: screeningId ?? null }),
+  });
 
 export const findUsers = (query: string) =>
   request<TeamMember[]>(`/api/admin/users?q=${encodeURIComponent(query)}`);

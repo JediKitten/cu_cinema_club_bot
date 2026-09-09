@@ -348,6 +348,14 @@ export type ClubEvent = {
   confirmed: number;
 };
 
+/** Показ, которому можно разослать сообщение. */
+export type BroadcastTarget = {
+  id: number;
+  starts_at: string;
+  title: string;
+  signed_up: number;
+};
+
 /** Правка события: присутствие ключа и значит «менять это поле». */
 export type EventChanges = {
   starts_at?: string;

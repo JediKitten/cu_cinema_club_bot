@@ -6,6 +6,7 @@ import { SettingsPanel } from "../components/SettingsPanel";
 import { TeamPanel } from "../components/TeamPanel";
 import { InvitePanel } from "../components/InvitePanel";
 import { PeoplePanel } from "../components/PeoplePanel";
+import { BroadcastPanel } from "../components/BroadcastPanel";
 import { Matrix } from "../components/Matrix";
 import { Section } from "../components/Section";
 import { ScheduleBuilder } from "../components/ScheduleBuilder";
@@ -71,7 +72,15 @@ function windowNotice(round: Round): string {
     : `Окно сборки закрылось ${clock(closes)}: список ушёл в голосование.`;
 }
 
-type Panel = "round" | "events" | "stats" | "team" | "invites" | "people" | "settings";
+type Panel =
+  | "round"
+  | "events"
+  | "stats"
+  | "team"
+  | "invites"
+  | "people"
+  | "broadcast"
+  | "settings";
 
 // Порядок ролей тот же, что на сервере: вкладка, которую нельзя открыть,
 // не должна и показываться — иначе она встречает ошибкой доступа.
@@ -83,6 +92,7 @@ const PANELS: { key: Panel; label: string; minRole: keyof typeof RANK }[] = [
   { key: "stats", label: "Аналитика", minRole: "admin" },
   { key: "team", label: "Команда", minRole: "admin" },
   { key: "invites", label: "Коды", minRole: "admin" },
+  { key: "broadcast", label: "Рассылка", minRole: "admin" },
   { key: "people", label: "Люди", minRole: "superadmin" },
   { key: "settings", label: "Параметры", minRole: "superadmin" },
 ];
@@ -174,6 +184,7 @@ export function Admin({ me }: { me: User }) {
       {panel === "team" && <TeamPanel me={me} />}
       {panel === "invites" && <InvitePanel isSuperadmin={role === "superadmin"} />}
       {panel === "people" && <PeoplePanel />}
+      {panel === "broadcast" && <BroadcastPanel />}
       {panel === "settings" && <SettingsPanel />}
       {panel === "events" && <EventPanel onCreated={() => setPanel("round")} />}
       {panel === "stats" && <Analytics />}

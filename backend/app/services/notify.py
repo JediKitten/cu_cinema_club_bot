@@ -10,6 +10,7 @@
 
 import logging
 from collections.abc import Callable
+from html import escape
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
@@ -139,6 +140,16 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                 "Откройте приложение — вкладка «Клуб» уже на месте.",
             ]
             return "\n\n".join(part for part in parts if part)
+        case NotificationKind.ADMIN_BROADCAST:
+            # Текст пишет человек, а сообщения уходят с parse_mode=HTML —
+            # без экранирования любая угловая скобка в письме роняла бы
+            # отправку всей рассылке.
+            message = escape(payload.get("text") or "")
+            if not message:
+                return None
+            # Подпись обязательна: сообщение приходит от бота, и человек должен
+            # понимать, что это клуб, а не система напоминаний ошиблась.
+            return f"📣 <b>Сообщение от клуба</b>\n\n{message}"
         case NotificationKind.BETA_OPENED:
             return (
                 "🎉 Киноклуб открыт для всех!\n\n"

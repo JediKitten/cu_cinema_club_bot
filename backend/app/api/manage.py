@@ -11,6 +11,10 @@ from app.db import get_session
 from app.models import Confirmation, Film, Screening, Slot
 from app.models.enums import ConfirmationState, UserRole
 from app.schemas import (
+    AudienceOut,
+    BroadcastIn,
+    BroadcastOut,
+    BroadcastTarget,
     CancelEventIn,
     EventIn,
     EventOut,
@@ -20,9 +24,11 @@ from app.schemas import (
     RoleIn,
     TeamMember,
 )
+from app.services import broadcast as broadcast_service
 from app.services import events as events_service
 from app.services import roles as roles_service
 from app.services import schedule as schedule_service
+from app.services.broadcast import BroadcastError
 from app.services.events import EventError
 from app.services.roles import RoleError
 from app.services.tmdb import poster_url
@@ -155,6 +161,66 @@ async def reveal_event(
     except EventError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return {"id": event.id, "film_id": event.film_id}
+
+
+@router.get("/broadcast/screenings", response_model=list[BroadcastTarget])
+async def broadcast_screenings(
+    admin: RequireAdmin,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[BroadcastTarget]:
+    """Ближайшие показы — чтобы было из чего выбрать адресата."""
+    return [
+        BroadcastTarget(
+            id=target.id,
+            starts_at=target.starts_at,
+            title=target.title,
+            signed_up=target.signed_up,
+        )
+        for target in await broadcast_service.screenings(session)
+    ]
+
+
+@router.get("/broadcast/audience", response_model=AudienceOut)
+async def broadcast_audience(
+    admin: RequireAdmin,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    audience: Annotated[str, Query(pattern="^(all|screening)$")] = "all",
+    screening_id: int | None = None,
+) -> AudienceOut:
+    """Число адресатов до отправки: рассылку нельзя отозвать, и «отправить
+    сорока трём» человек должен увидеть до нажатия, а не после."""
+    try:
+        return AudienceOut(
+            recipients=await broadcast_service.audience_size(session, audience, screening_id)
+        )
+    except BroadcastError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+
+@router.post("/broadcast", response_model=BroadcastOut)
+async def broadcast(
+    body: BroadcastIn,
+    admin: RequireAdmin,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BroadcastOut:
+    """Сообщение от лица бота — всем или записавшимся на конкретный показ.
+
+    Уходит через общую очередь уведомлений: те же повторные попытки и тот же
+    темп отправки, что у всего остального.
+    """
+    try:
+        sent = await broadcast_service.send(
+            session,
+            actor_id=admin.id,
+            text=body.text,
+            audience=body.audience,
+            screening_id=body.screening_id,
+        )
+    except BroadcastError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return BroadcastOut(
+        recipients=sent.recipients, audience=sent.audience, screening_id=sent.screening_id
+    )
 
 
 @router.get("/team", response_model=list[TeamMember])

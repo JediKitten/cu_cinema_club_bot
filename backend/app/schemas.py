@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -658,6 +658,35 @@ class EventPatch(BaseModel):
     duration_min: int | None = Field(default=None, ge=30, le=600)
     # Не поле события, а указание: оставить ли записи при переносе времени.
     keep_confirmations: bool = False
+
+
+class BroadcastIn(BaseModel):
+    """Рассылка от лица бота: текст и кому."""
+
+    text: str = Field(min_length=1, max_length=3500)
+    audience: Literal["all", "screening"] = "all"
+    screening_id: int | None = None
+
+
+class BroadcastOut(BaseModel):
+    recipients: int
+    audience: str
+    screening_id: int | None = None
+
+
+class BroadcastTarget(BaseModel):
+    """Показ, которому можно написать."""
+
+    id: int
+    starts_at: datetime
+    title: str
+    signed_up: int
+
+
+class AudienceOut(BaseModel):
+    """Сколько человек получат сообщение — до того, как его отправят."""
+
+    recipients: int
 
 
 class EventOut(BaseModel):
