@@ -140,7 +140,7 @@ Mini App отдаёт само приложение. Подробности и �
 в [deploy/README.md](deploy/README.md).
 
 ```bash
-deploy/sync.sh kir@87.120.84.226                                    # локально
+deploy/sync.sh user@сервер                                    # локально
 sudo docker compose -f docker-compose.prod.yml up -d --build         # на сервере
 ```
 

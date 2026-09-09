@@ -42,7 +42,7 @@ Postgres. Так и было выбрано — сервер общий, на н
 Локально:
 
 ```bash
-deploy/sync.sh kir@87.120.84.226
+deploy/sync.sh user@сервер
 ```
 
 На сервере:
