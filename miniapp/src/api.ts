@@ -36,11 +36,22 @@ import type {
   User,
 } from "./types";
 
+import { MOCK_FILMS, MOCK_FILM_DETAIL } from "./mockData";
+
 // Пусто по умолчанию: запросы идут на тот же origin, а dev-сервер Vite проксирует
 // их на бэкенд. Переопределяется через VITE_API_URL, если API вынесен отдельно.
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
 let token: string | null = null;
+let demoUser: User | null = null;
+
+export function setDemoUser(user: User | null) {
+  demoUser = user;
+}
+
+export function getDemoUser(): User | null {
+  return demoUser;
+}
 
 export class ApiError extends Error {
   // Поле объявлено отдельно от конструктора: параметры-свойства TypeScript
@@ -53,32 +64,202 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
-
-  if (!response.ok) {
-    // FastAPI кладёт человекочитаемое сообщение в detail — показываем его,
-    // а не «500 Internal Server Error».
-    let detail = response.statusText;
-    try {
-      const body = await response.json();
-      if (typeof body.detail === "string") detail = body.detail;
-    } catch {
-      /* тело не json — оставляем статус */
-    }
-    throw new ApiError(response.status, detail);
+function getMockResponse<T>(path: string): T | undefined {
+  if (path.startsWith("/api/films/search")) {
+    const qMatch = path.match(/[?&]q=([^&]+)/);
+    const q = qMatch ? decodeURIComponent(qMatch[1]).toLowerCase() : "";
+    return MOCK_FILMS.filter(
+      (f) =>
+        f.title_ru.toLowerCase().includes(q) ||
+        (f.title_orig && f.title_orig.toLowerCase().includes(q))
+    ) as unknown as T;
   }
-  return response.status === 204 ? (undefined as T) : response.json();
+  if (path.startsWith("/api/films/deck")) {
+    return {
+      cards: [
+        MOCK_FILM_DETAIL,
+        ...MOCK_FILMS.slice(1).map((f) => ({
+          ...f,
+          runtime_min: 135,
+          overview: "Шедевр кинематографа, выбранный участниками киноклуба.",
+          trailer_key: null,
+          kp_rating: 8.2,
+          kp_votes: 120000,
+          tmdb_rating: 8.0,
+          tmdb_votes: 15000,
+          internal_rating: 4.8,
+          internal_votes: 24,
+          interested_count: 32,
+          invited_by: null,
+          my_rating: null,
+          reviews: [],
+        })),
+      ],
+      remaining: 10,
+    } as unknown as T;
+  }
+  if (
+    path.startsWith("/api/films/") &&
+    !path.includes("/interest") &&
+    !path.includes("/rating") &&
+    !path.includes("/invite") &&
+    !path.includes("/skip")
+  ) {
+    return MOCK_FILM_DETAIL as unknown as T;
+  }
+  if (path.startsWith("/api/films")) {
+    return MOCK_FILMS as unknown as T;
+  }
+  if (path.startsWith("/api/me/interests")) {
+    return [
+      {
+        film: MOCK_FILMS[0],
+        kinds: ["wishlist" as const],
+        created_at: "2026-09-10T12:00:00Z",
+        expires_at: null,
+      },
+      {
+        film: MOCK_FILMS[1],
+        kinds: ["soon" as const],
+        created_at: "2026-09-08T12:00:00Z",
+        expires_at: null,
+      },
+    ] as unknown as T;
+  }
+  if (path.startsWith("/api/me/watched")) {
+    return [MOCK_FILMS[1], MOCK_FILMS[4]] as unknown as T;
+  }
+  if (path.startsWith("/api/rounds/current/matrix")) {
+    return {
+      films: [
+        { id: 1, title_ru: "Интерстеллар", year: 2014, poster_url: MOCK_FILMS[0].poster_url },
+        { id: 2, title_ru: "Начало", year: 2010, poster_url: MOCK_FILMS[1].poster_url },
+        { id: 3, title_ru: "Паразиты", year: 2019, poster_url: MOCK_FILMS[2].poster_url },
+      ],
+      slots: [
+        {
+          id: 1,
+          starts_at: "2026-09-13T19:00:00+03:00",
+          duration_min: 180,
+          blocked: false,
+          blocked_reason: null,
+          hall_name: "Ауд. 402",
+          hall_capacity: 45,
+        },
+        {
+          id: 2,
+          starts_at: "2026-09-14T18:00:00+03:00",
+          duration_min: 160,
+          blocked: false,
+          blocked_reason: null,
+          hall_name: "Ауд. 402",
+          hall_capacity: 45,
+        },
+      ],
+      my_ballot: { 1: 1 },
+      attendees_count: 38,
+      can_vote: true,
+      voting_ends_at: "2026-09-12T23:59:59+03:00",
+    } as unknown as T;
+  }
+  if (path.startsWith("/api/rounds/current")) {
+    return {
+      id: 12,
+      stage: "slot_voting",
+      number: 12,
+      voting_ends_at: "2026-09-12T23:59:59+03:00",
+      screening_starts_at: "2026-09-13T19:00:00+03:00",
+    } as unknown as T;
+  }
+  if (path.startsWith("/api/screenings/past")) {
+    return [
+      {
+        id: 41,
+        film_title: "Бегущий по лезвию 2049",
+        film_year: 2017,
+        poster_url: MOCK_FILMS[5].poster_url,
+        screened_at: "2026-09-06T19:00:00+03:00",
+        attendees_count: 42,
+        avg_rating: 4.8,
+      },
+      {
+        id: 40,
+        film_title: "Одержимость",
+        film_year: 2014,
+        poster_url: MOCK_FILMS[3].poster_url,
+        screened_at: "2026-08-30T19:00:00+03:00",
+        attendees_count: 44,
+        avg_rating: 4.9,
+      },
+    ] as unknown as T;
+  }
+  if (path.startsWith("/api/team")) {
+    return [
+      {
+        id: 1,
+        user_id: 1,
+        name: "Кир | Jeki",
+        role: "superadmin",
+        tg_username: "jeki_cu",
+        photo_url: null,
+      },
+      {
+        id: 2,
+        user_id: 103,
+        name: "Михаил Романов",
+        role: "admin",
+        tg_username: "mikhail_host",
+        photo_url: null,
+      },
+    ] as unknown as T;
+  }
+  if (path.startsWith("/api/me")) {
+    return demoUser as unknown as T;
+  }
+  return {} as unknown as T;
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (demoUser) {
+    const mock = getMockResponse<T>(path);
+    if (mock !== undefined) return mock;
+  }
+  try {
+    const response = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
+    });
+
+    if (!response.ok) {
+      if (demoUser) {
+        const mock = getMockResponse<T>(path);
+        if (mock !== undefined) return mock;
+      }
+      let detail = response.statusText;
+      try {
+        const body = await response.json();
+        if (typeof body.detail === "string") detail = body.detail;
+      } catch {
+        /* тело не json — оставляем статус */
+      }
+      throw new ApiError(response.status, detail);
+    }
+    return response.status === 204 ? (undefined as T) : response.json();
+  } catch (err) {
+    if (demoUser) {
+      const mock = getMockResponse<T>(path);
+      if (mock !== undefined) return mock;
+    }
+    throw err;
+  }
 }
 
 export async function login(): Promise<User> {
+  if (demoUser) return demoUser;
   const initData = getInitData();
   if (!initData) {
     throw new ApiError(401, "Откройте приложение через Telegram");

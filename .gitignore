@@ -10,3 +10,5 @@ dist/
 *.log
 .idea/
 .vscode/
+.agents/
+ORIGINAL_REQUEST.md
