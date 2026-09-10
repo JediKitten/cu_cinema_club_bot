@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { login } from "./api";
+import { login, setDemoUser } from "./api";
 import { Catalog } from "./screens/Catalog";
 import { Deck } from "./screens/Deck";
 import { FilmDetail } from "./screens/FilmDetail";
@@ -9,8 +9,11 @@ import { Profile } from "./screens/Profile";
 import { ProfileTab } from "./screens/ProfileTab";
 import { Week } from "./screens/Week";
 import { FilmOpenerProvider } from "./filmOpener";
-import { initTelegram } from "./telegram";
+import { initTelegram, getInitData } from "./telegram";
 import type { FilmBrief, User } from "./types";
+import { LandingPage } from "./landing/LandingPage";
+import { DevPersonaBar } from "./components/DevPersonaBar";
+import { MOCK_USERS } from "./mockData";
 
 type Tab = "catalog" | "deck" | "vote" | "profile" | "more";
 
@@ -30,6 +33,12 @@ const STATS_ROLES = new Set(["admin", "superadmin"]);
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [view, setView] = useState<"landing" | "app">(() => {
+    const queryView = new URLSearchParams(location.search).get("view");
+    if (queryView === "landing") return "landing";
+    return getInitData() ? "app" : "landing";
+  });
+  const [isDemo, setIsDemo] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("catalog");
   // Фильм из поиска ещё не в каталоге — у него есть только tmdb_id.
@@ -61,21 +70,52 @@ export default function App() {
 
   useEffect(() => {
     initTelegram();
-    login()
-      .then(setUser)
-      .catch((e) =>
-        setAuthError(e instanceof Error ? e.message : "Не удалось войти"),
-      );
+    if (getInitData()) {
+      login()
+        .then(setUser)
+        .catch((e) =>
+          setAuthError(e instanceof Error ? e.message : "Не удалось войти"),
+        );
+    }
   }, []);
+
+  function handleLaunchApp(roleName = "student") {
+    const selected = MOCK_USERS[roleName] || MOCK_USERS.student;
+    setDemoUser(selected);
+    setUser(selected);
+    setIsDemo(true);
+    setAuthError(null);
+    setView("app");
+  }
+
+  function handleSelectPersona(newUser: User) {
+    setDemoUser(newUser);
+    setUser(newUser);
+  }
+
+  function handleReturnToLanding() {
+    setView("landing");
+  }
+
+  if (view === "landing") {
+    return <LandingPage onLaunchApp={handleLaunchApp} />;
+  }
 
   if (authError) {
     return (
       <div className="center">
         <p>{authError}</p>
         <p className="hint">
-          Приложение работает только внутри Telegram: вход подтверждается
-          подписью, которую выдаёт сам мессенджер.
+          Приложение работает внутри Telegram или в режиме интерактивного демо.
         </p>
+        <div style={{ marginTop: 16, display: "flex", gap: 10, justifyContent: "center" }}>
+          <button className="btn btn-primary" onClick={() => handleLaunchApp("student")}>
+            Запустить интерактивное демо
+          </button>
+          <button className="btn btn-subtle" onClick={() => setView("landing")}>
+            На главную страницу
+          </button>
+        </div>
       </div>
     );
   }
@@ -94,6 +134,13 @@ export default function App() {
 
   return (
     <FilmOpenerProvider value={open}>
+      {isDemo && (
+        <DevPersonaBar
+          currentUser={user}
+          onSelectUser={handleSelectPersona}
+          onReturnToLanding={handleReturnToLanding}
+        />
+      )}
       <div className="app">
         {/* Вкладка остаётся смонтированной под карточкой: иначе возврат из фильма
           терял бы поисковый запрос, выдачу и место прокрутки. */}

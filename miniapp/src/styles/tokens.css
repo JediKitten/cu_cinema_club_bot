@@ -1,0 +1,32 @@
+/* Dark Minimalist Cinema Design Tokens */
+:root {
+  --bg-primary: #0d0e12;       /* Deep canvas background */
+  --bg-surface: #16181f;       /* Standard cards & sheets */
+  --bg-elevated: #1f222b;      /* Hovered, active, or modal surfaces */
+  --border-subtle: #272a36;    /* Hairline borders */
+  --border-highlight: #3a3f50; /* Subtle hover borders */
+  
+  --text-primary: #f0f2f5;     /* High-contrast headings & primary labels */
+  --text-secondary: #9da5b4;   /* Secondary descriptions & subtitles */
+  --text-muted: #656c7b;       /* Footnotes & hints */
+  
+  --accent-gold: #e5a93c;      /* Cinema marquee gold accent */
+  --accent-gold-hover: #f3b952;
+  --accent-gold-dim: rgba(229, 169, 60, 0.12);
+  --accent-gold-border: rgba(229, 169, 60, 0.3);
+  
+  --status-confirmed: #22c55e;
+  --status-waitlist: #eab308;
+  --status-running: #3b82f6;
+  --status-cancelled: #ef4444;
+  
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+  
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  
+  color-scheme: dark;
+}
