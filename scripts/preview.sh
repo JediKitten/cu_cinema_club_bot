@@ -17,6 +17,10 @@
 
 set -uo pipefail
 
+# Внутри строк переменные пишутся как ${ИМЯ}: bash в UTF-8-локали считает
+# байты многоточия или кавычки-ёлочки продолжением имени, и «$PORT…» падает
+# с «unbound variable». Скобки ставят границу явно.
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REF="${1:-HEAD}"
 [ "${REF#-}" != "$REF" ] && REF="HEAD"   # первым аргументом сразу флаг
@@ -38,7 +42,7 @@ if [ ! -x "$PYTHON" ]; then
   exit 1
 fi
 
-SHA="$(git rev-parse --short "$REF" 2>/dev/null)" || { echo "Не нашёл ревизию «$REF»"; exit 1; }
+SHA="$(git rev-parse --short "$REF" 2>/dev/null)" || { echo "Не нашёл ревизию «${REF}»"; exit 1; }
 WORK="$ROOT/.preview/$SHA"
 
 echo "Ревизия:  $REF ($SHA) — $(git log -1 --format=%s "$REF" | cut -c1-60)"
@@ -75,7 +79,7 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-echo "Миграции и бэкенд на :$API_PORT…"
+echo "Миграции и бэкенд на :${API_PORT}…"
 (cd "$WORK/backend" && "$PYTHON" -m alembic upgrade head >/dev/null 2>&1)
 (cd "$WORK/backend" && "$PYTHON" -m uvicorn app.main:app --port "$API_PORT" \
   >"$WORK/api.log" 2>&1) &
@@ -99,7 +103,7 @@ if [ "$SEED" = "1" ]; then
   (cd "$ROOT/backend" && "$PYTHON" -m app.preview_seed 2>&1 | sed 's/^/  /')
 fi
 
-echo "Фронтенд на :$WEB_PORT…"
+echo "Фронтенд на :${WEB_PORT}…"
 (cd "$WORK/miniapp" && VITE_API_URL="http://localhost:$API_PORT" \
   npx vite --port "$WEB_PORT" --strictPort >"$WORK/web.log" 2>&1) &
 WEB_PID=$!
@@ -120,7 +124,9 @@ link() {  # роль, tg_id, имя
   # разобрал бы её как несколько параметров.
   local encoded
   encoded="$("$PYTHON" -c "import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=''))" "$init")"
-  printf '  %-16s http://localhost:%s/?initData=%s\n' "$1" "$WEB_PORT" "$encoded"
+  # Две строки на роль, а не выравнивание в колонку: printf считает байты,
+  # и кириллические подписи разной длины разъезжаются.
+  printf '  %s\n    http://localhost:%s/?initData=%s\n' "$1" "${WEB_PORT}" "$encoded"
 }
 
 echo
@@ -130,7 +136,7 @@ link "Модератор" 900002 "Модератор Демо"
 link "Админ" 900003 "Админ Демо"
 link "Главный" 900004 "Главный Демо"
 echo
-printf '  %-16s http://localhost:%s/?view=landing\n' "Лендинг/демо" "$WEB_PORT"
+printf '  Лендинг и демо-режим\n    http://localhost:%s/?view=landing\n' "${WEB_PORT}"
 echo
 echo "Логи: $WORK/api.log, $WORK/web.log"
 echo "Ctrl+C — остановить."

@@ -144,7 +144,7 @@ async def run() -> None:
 
     logger.info("Демо-данные готовы. Фильмов в каталоге: %d, показ №%s.", len(films), event_id)
     for tg_id, name, _, role in PERSONAS:
-        logger.info("  %-16s tg_id=%d  роль=%s", name, tg_id, role.value)
+        logger.info("  %s — tg_id=%d, роль=%s", name, tg_id, role.value)
 
 
 def main() -> None:
