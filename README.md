@@ -189,8 +189,9 @@ Mini App отдаёт само приложение. Подробности и �
 в [deploy/README.md](deploy/README.md).
 
 ```bash
-deploy/sync.sh user@сервер                                    # локально
-sudo docker compose -f docker-compose.prod.yml up -d --build         # на сервере
+deploy/sync.sh user@сервер                                  # локально
+docker compose -f docker-compose.prod.yml build             # на сервере: сначала сборка,
+docker compose -f docker-compose.prod.yml up -d             # потом подъём
 ```
 
 ## Тесты

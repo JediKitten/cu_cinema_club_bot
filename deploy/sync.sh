@@ -31,4 +31,6 @@ rsync -az --delete \
   "$ROOT/" "$TARGET:$APP_DIR/"
 
 echo "Код залит в $TARGET:$APP_DIR"
-echo "Дальше на сервере:  cd ~/cinema-club && sudo docker compose -f docker-compose.prod.yml up -d --build"
+echo "Дальше на сервере (сборка отдельно от подъёма — простой в секунды):"
+echo "  cd ~/${APP_DIR} && docker compose -f docker-compose.prod.yml build"
+echo "  cd ~/${APP_DIR} && docker compose -f docker-compose.prod.yml up -d"

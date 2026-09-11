@@ -39,19 +39,41 @@ Postgres. Так и было выбрано — сервер общий, на н
 
 ## Обновление
 
+Перед обновлением со схемой — дамп базы. Автоматических бэкапов нет (см. ниже),
+а миграция на живых данных необратима:
+
+```bash
+ssh user@сервер 'cd ~/cinema-club && docker compose -f docker-compose.prod.yml exec -T db \
+  pg_dump -U cinema cinema | gzip > ~/backups/cinema-$(date +%Y%m%d-%H%M).sql.gz'
+```
+
 Локально:
 
 ```bash
 deploy/sync.sh user@сервер
 ```
 
-На сервере:
+На сервере — **сначала сборка, потом подъём**: пока собирается образ, старые
+контейнеры продолжают отвечать, и простой выходит в секунды вместо минуты.
 
 ```bash
-cd ~/cinema-club && sudo docker compose -f docker-compose.prod.yml up -d --build
+cd ~/cinema-club
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
 ```
 
+`sudo` не нужен и мешает: пользователь состоит в группе `docker`, а `sudo`
+по ssh без терминала просто падает на запросе пароля.
+
 Пересборка занимает около минуты: фронтенд собирается внутри образа.
+
+После обновления проверяйте **хеш бандла**, а не наличие файлов: бывало, что код
+на сервере свежий, а образ старый, и снаружи это выглядит как «фича не появилась».
+
+```bash
+curl -s https://cinema.cu3rd.ru/ | grep -oE '/assets/index-[^"]+\.js'   # должно совпасть
+ls miniapp/dist/assets/                                                  # с локальным
+```
 
 ## Первая установка на другой сервер
 
