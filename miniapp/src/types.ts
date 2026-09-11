@@ -350,6 +350,8 @@ export type ClubEvent = {
   film: FilmBrief | null;
   title: string | null;
   note: string | null;
+  /** Показ идёт на английском — от этого зависит своя ачивка. */
+  in_english: boolean;
   confirmed: number;
 };
 
@@ -367,6 +369,7 @@ export type EventChanges = {
   film_id?: number | null;
   title?: string | null;
   note?: string | null;
+  in_english?: boolean;
   /** Не поле события: оставить ли записи «приду» при переносе времени. */
   keep_confirmations?: boolean;
 };
@@ -470,10 +473,22 @@ export type AchievementTier = "bronze" | "silver" | "gold" | "platinum";
  *
  * Заработал серебро — бронза той же цели заменяется, а не копится рядом.
  */
+/** Ступень цели — строка во вкладке своей редкости. */
+export type AchievementStep = {
+  tier: AchievementTier;
+  title: string;
+  description: string;
+  target: number;
+  progress: number;
+  earned_at: string | null;
+};
+
 export type AchievementGroup = {
   group: string;
   label: string;
   secret: boolean;
+  /** Придумана админом под конкретного человека, а не взята из реестра. */
+  custom: boolean;
   /** Что уже получено. Пусто — ещё ничего. */
   tier: AchievementTier | null;
   emoji: string;
@@ -482,9 +497,12 @@ export type AchievementGroup = {
   earned_at: string | null;
   /** Куда расти. Пусто, если взята платина. */
   next_title: string | null;
+  next_description: string | null;
   next_tier: AchievementTier | null;
   progress: number;
   target: number;
+  /** Вся лестница: вкладка уровня показывает все его ступени. */
+  steps: AchievementStep[];
 };
 
 export type Achievements = {
@@ -492,8 +510,9 @@ export type Achievements = {
   silver: number;
   gold: number;
   platinum: number;
-  /** Сколько секретных не найдено. Названий и условий у них нет — в этом смысл. */
-  secrets_left: number;
+  /** Сколько секретных не найдено, по уровням: у каждой вкладки свой счётчик.
+   *  Названий и условий у них нет — в этом смысл. */
+  secrets_left: Partial<Record<AchievementTier, number>>;
   groups: AchievementGroup[];
 };
 
@@ -625,4 +644,15 @@ export type TournamentOptionDraft = {
   subtitle?: string | null;
   image_url?: string | null;
   film_id?: number | null;
+};
+
+/** Именная ачивка: админ придумывает её под конкретного человека. */
+export type CustomAchievement = {
+  id: number;
+  user_id: number;
+  user_name: string;
+  title: string;
+  description: string;
+  tier: AchievementTier;
+  earned_at: string;
 };

@@ -5,8 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import RequireAdmin, RequireModerator, RequireSuperadmin
 from app.db import get_session
-from app.models import AuditLog
+from app.models import AuditLog, User
 from app.schemas import (
+    CustomAchievementIn,
+    CustomAchievementOut,
     FilmStatsOut,
     RankingsOut,
     RankRow,
@@ -15,7 +17,7 @@ from app.schemas import (
     SettingOut,
     SettingsPatch,
 )
-from app.services import insights
+from app.services import achievements, insights
 from app.services.ranking import FilmRank, rank_by_coverage, rank_by_weight
 from app.services.settings import REGISTRY, SettingsError, SettingsService
 from app.services.tmdb import poster_url
@@ -215,3 +217,65 @@ async def screening_stats(
         org_rating=stats.org_rating,
         org_rating_votes=stats.org_rating_votes,
     )
+
+
+# --- Именные ачивки --------------------------------------------------------
+
+
+@router.get("/achievements", response_model=list[CustomAchievementOut])
+async def custom_achievements(
+    admin: RequireAdmin,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[CustomAchievementOut]:
+    """Что уже выдали руками — чтобы не выдать второй раз и было что снять."""
+    return [
+        CustomAchievementOut(
+            id=row.id,
+            user_id=row.user_id,
+            user_name=name,
+            title=row.title or "",
+            description=row.description or "",
+            tier=row.tier or "gold",
+            earned_at=row.earned_at,
+        )
+        for row, name in await achievements.granted_by_hand(session)
+    ]
+
+
+@router.post("/achievements", response_model=CustomAchievementOut, status_code=201)
+async def grant_achievement(
+    body: CustomAchievementIn,
+    admin: RequireAdmin,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CustomAchievementOut:
+    """Ачивка под конкретного человека — за то, чего нет и не будет в реестре."""
+    try:
+        row = await achievements.grant(
+            session, admin.id, body.user_id, body.title, body.description, body.tier
+        )
+    except achievements.AchievementError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    person = await session.get(User, body.user_id)
+    return CustomAchievementOut(
+        id=row.id,
+        user_id=row.user_id,
+        user_name=person.display_name if person else "",
+        title=row.title or "",
+        description=row.description or "",
+        tier=row.tier or "gold",
+        earned_at=row.earned_at,
+    )
+
+
+@router.delete("/achievements/{achievement_id}", status_code=204)
+async def revoke_achievement(
+    achievement_id: int,
+    admin: RequireAdmin,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """Снять можно только именную: заслуженные автоматом не отбирают."""
+    try:
+        await achievements.revoke(session, admin.id, achievement_id)
+    except achievements.AchievementError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc

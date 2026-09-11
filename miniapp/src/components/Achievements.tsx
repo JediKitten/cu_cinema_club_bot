@@ -1,28 +1,65 @@
 import { useState } from "react";
 import { Trophy } from "./Trophy";
-import type { Achievements as Data, AchievementTier } from "../types";
+import type { Achievements as Data, AchievementStep, AchievementTier } from "../types";
 
 const ORDER: AchievementTier[] = ["bronze", "silver", "gold", "platinum"];
 
-const plural = (count: number) =>
-  count % 10 === 1 && count % 100 !== 11
-    ? "секретная ачивка"
-    : [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)
-      ? "секретные ачивки"
-      : "секретных ачивок";
+const TIER_NAME: Record<AchievementTier, string> = {
+  bronze: "Бронзовые",
+  silver: "Серебряные",
+  gold: "Золотые",
+  platinum: "Платиновые",
+};
 
-/** Ачивки: четыре трофея с числами, за ними — разбор по целям.
+function secretsLine(count: number): string {
+  const one = count % 10 === 1 && count % 100 !== 11;
+  const few = [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100);
+  return `Осталось ${count} ${one ? "секретная" : few ? "секретные" : "секретных"} ${
+    one ? "ачивка" : few ? "ачивки" : "ачивок"
+  }`;
+}
+
+/** Ступень: полученная — ярко и с галочкой, будущая — бледно и с прогрессом. */
+function Row({ step }: { step: AchievementStep }) {
+  const earned = step.earned_at !== null;
+  return (
+    <div className={`achievement ${earned ? "is-earned" : ""}`}>
+      <span className="achievement__emoji">
+        <Trophy tier={step.tier} size={28} muted={!earned} />
+      </span>
+      <span className="achievement__text">
+        <b>{step.title}</b>
+        <span className="meta">{step.description}</span>
+        {!earned && (
+          <span className="meta">
+            {step.progress} из {step.target}
+          </span>
+        )}
+      </span>
+      {earned && <span className="achievement__check">✓</span>}
+    </div>
+  );
+}
+
+/** Ачивки: четыре трофея с числами, каждый — вкладка своей редкости.
  *
  * Человек держит одну ачивку на цель — высшую достигнутую, — поэтому числа
- * считают цели, а не награды: список из двадцати строк, где девятнадцать
- * перечёркнуты, никому не нужен.
+ * считают цели, а не награды. Во вкладке уровня стоит и то, что на нём уже
+ * взято, и то, что на нём же ещё можно взять: список одних наград не отвечает
+ * на единственный интересный вопрос — что дальше.
  *
- * Секретные до получения не показываются вовсе: ни названия, ни условия,
- * только счётчик. Найти их должно быть сюрпризом.
+ * Секретные до получения не показываются: ни названия, ни условия, только
+ * счётчик на своём уровне. Найти их должно быть сюрпризом.
  */
 export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
-  const [open, setOpen] = useState(false);
-  const total = data.bronze + data.silver + data.gold + data.platinum;
+  const [tab, setTab] = useState<AchievementTier | null>(null);
+  const total = ORDER.reduce((sum, tier) => sum + data[tier], 0);
+
+  // Все ступени этой редкости, в порядке целей из таблицы клуба. Показываем
+  // и недостижимые пока: вкладка «золото» у новичка иначе выглядит пустой,
+  // хотя посмотреть там есть на что.
+  const steps = (tier: AchievementTier) =>
+    data.groups.flatMap((item) => item.steps.filter((step) => step.tier === tier));
 
   return (
     <>
@@ -31,25 +68,27 @@ export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
         {total > 0 && <span className="hint">всего {total}</span>}
       </div>
 
-      {/* Сам блок и есть переключатель: отдельная кнопка «Подробнее» рядом
-          с четырьмя трофеями — вторая вещь, на которую надо нажать, чтобы
-          сделать одно и то же. */}
-      <button
-        className={`trophies ${open ? "is-open" : ""}`}
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-      >
+      {/* Трофеи и есть вкладки: нажатие открывает свою редкость, повторное —
+          закрывает. Отдельная кнопка «Подробнее» рядом с ними была бы второй
+          вещью, на которую надо нажать ради того же самого. */}
+      <div className="trophies" role="tablist">
         {ORDER.map((tier) => (
-          <span className={`trophy ${data[tier] > 0 ? "is-on" : ""}`} key={tier}>
+          <button
+            className={`trophy ${data[tier] > 0 ? "is-on" : ""} ${tab === tier ? "is-open" : ""}`}
+            key={tier}
+            role="tab"
+            aria-selected={tab === tier}
+            onClick={() => setTab((current) => (current === tier ? null : tier))}
+          >
             {/* Пустой уровень — тот же трофей, но приглушённый: видно, что он
                 есть и его можно взять. */}
             <Trophy tier={tier} size={26} muted={data[tier] === 0} />
             <b>{data[tier]}</b>
-          </span>
+          </button>
         ))}
-      </button>
+      </div>
 
-      {total === 0 && !open && (
+      {tab === null && total === 0 && (
         <p className="hint">
           {isMe
             ? "Пока ни одной. Отметьте фильм просмотренным, поставьте оценку или придите на показ."
@@ -57,44 +96,31 @@ export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
         </p>
       )}
 
-      {open && (
+      {tab !== null && (
         <>
-          {data.groups.map((item) => (
-            <div className={`achievement ${item.tier ? "is-earned" : ""}`} key={item.group}>
-              <span className="achievement__emoji">
-                {item.tier ? (
-                  <Trophy tier={item.tier} size={28} />
-                ) : (
-                  // Ещё не взято — показываем трофей той ступени, к которой идёт.
-                  <Trophy tier={item.next_tier ?? "bronze"} size={28} muted />
-                )}
-              </span>
-              <span className="achievement__text">
-                <b>{item.tier ? item.title : item.label}</b>
-                <span className="meta">{item.tier ? item.description : item.next_title}</span>
-                {/* Прогресс — к следующей ступени. У платины расти некуда. */}
-                {item.target > 0 && (
-                  <span className="meta">
-                    {item.tier ? "дальше: " : ""}
-                    {item.next_title && item.tier ? `${item.next_title} — ` : ""}
-                    {item.progress} из {item.target}
-                  </span>
-                )}
-              </span>
-              {item.tier && <span className="achievement__check">✓</span>}
-            </div>
+          <div className="profile__row">
+            <h4 className="achievements__title">{TIER_NAME[tab]}</h4>
+            <span className="hint">
+              {data[tab]} из {steps(tab).length + (data.secrets_left[tab] ?? 0)}
+            </span>
+          </div>
+
+          {steps(tab).map((step) => (
+            <Row key={step.title} step={step} />
           ))}
 
-          {data.secrets_left > 0 && (
+          {(data.secrets_left[tab] ?? 0) > 0 && (
             <div className="achievement achievement--secret">
               <span className="achievement__emoji">❓</span>
               <span className="achievement__text">
-                <b>
-                  Осталось {data.secrets_left} {plural(data.secrets_left)}
-                </b>
+                <b>{secretsLine(data.secrets_left[tab] ?? 0)}</b>
                 <span className="meta">Условия не подскажем — в этом и смысл.</span>
               </span>
             </div>
+          )}
+
+          {steps(tab).length === 0 && !(data.secrets_left[tab] ?? 0) && (
+            <p className="hint">На этом уровне ачивок нет.</p>
           )}
         </>
       )}

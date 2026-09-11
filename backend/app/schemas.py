@@ -340,6 +340,36 @@ class AttendanceStats(BaseModel):
     last_film: str | None = None
 
 
+class CustomAchievementIn(BaseModel):
+    """Именная ачивка: админ придумывает её под конкретного человека."""
+
+    user_id: int
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=200)
+    tier: Literal["bronze", "silver", "gold", "platinum"] = "gold"
+
+
+class CustomAchievementOut(BaseModel):
+    id: int
+    user_id: int
+    user_name: str
+    title: str
+    description: str
+    tier: str
+    earned_at: datetime
+
+
+class AchievementStepOut(BaseModel):
+    """Ступень цели — строка во вкладке своей редкости."""
+
+    tier: str
+    title: str
+    description: str
+    target: int
+    progress: int
+    earned_at: datetime | None = None
+
+
 class AchievementGroupOut(BaseModel):
     """Одна цель со ступенями: держится высшая достигнутая.
 
@@ -350,6 +380,8 @@ class AchievementGroupOut(BaseModel):
     group: str
     label: str
     secret: bool = False
+    # Придумана админом под конкретного человека, а не взята из реестра.
+    custom: bool = False
     # Что уже получено: bronze | silver | gold | platinum. Пусто — ещё ничего.
     tier: str | None = None
     emoji: str = ""
@@ -358,9 +390,13 @@ class AchievementGroupOut(BaseModel):
     earned_at: datetime | None = None
     # Куда расти. Пусто, если взята платина.
     next_title: str | None = None
+    next_description: str | None = None
     next_tier: str | None = None
     progress: int = 0
     target: int = 0
+    # Вся лестница: вкладка уровня показывает все его ступени, а не только
+    # достижимую следующую.
+    steps: list[AchievementStepOut] = Field(default_factory=list)
 
 
 class AchievementsOut(BaseModel):
@@ -370,9 +406,9 @@ class AchievementsOut(BaseModel):
     silver: int = 0
     gold: int = 0
     platinum: int = 0
-    # Сколько секретных ещё не найдено. Названия и условия не раскрываем —
-    # в этом весь их смысл.
-    secrets_left: int = 0
+    # Сколько секретных ещё не найдено, по уровням: у каждой вкладки свой
+    # счётчик. Названия и условия не раскрываем — в этом весь их смысл.
+    secrets_left: dict[str, int] = Field(default_factory=dict)
     groups: list[AchievementGroupOut] = Field(default_factory=list)
 
 
@@ -537,6 +573,8 @@ class ScreeningOut(BaseModel):
     cancel_reason: str | None = None
     # Назначено вручную, вне алгоритма.
     is_manual: bool = False
+    # Показ идёт на английском — это видно и в расписании, и в ачивках.
+    in_english: bool = False
     # Подпись к событию без фильма: «ждите анонса».
     note: str | None = None
     # Состояние текущего пользователя по этому показу.
@@ -779,6 +817,8 @@ class EventIn(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     note: str | None = Field(default=None, max_length=1000)
     duration_min: int = Field(default=180, ge=30, le=600)
+    # Показ в оригинале: свойство сеанса, а не фильма.
+    in_english: bool = False
 
 
 class EventPatch(BaseModel):
@@ -790,6 +830,7 @@ class EventPatch(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     note: str | None = Field(default=None, max_length=1000)
     duration_min: int | None = Field(default=None, ge=30, le=600)
+    in_english: bool | None = None
     # Не поле события, а указание: оставить ли записи при переносе времени.
     keep_confirmations: bool = False
 
@@ -831,6 +872,7 @@ class EventOut(BaseModel):
     film: FilmBrief | None = None
     title: str | None = None
     note: str | None = None
+    in_english: bool = False
     confirmed: int = 0
 
 

@@ -33,6 +33,8 @@ import type {
   PersonRow,
   ScreeningStats,
   TeamMember,
+  AchievementTier,
+  CustomAchievement,
   Tournament,
   TournamentBrief,
   TournamentOptionDraft,
@@ -424,6 +426,7 @@ export const createEvent = (payload: {
   film_id: number | null;
   title: string | null;
   note: string | null;
+  in_english: boolean;
 }) => request<{ id: number }>("/api/admin/events", { method: "POST", body: JSON.stringify(payload) });
 
 export const listEvents = () => request<ClubEvent[]>("/api/admin/events");
@@ -474,3 +477,22 @@ export const startTournament = (id: number) =>
 
 export const cancelTournament = (id: number) =>
   request<Tournament>(`/api/tournaments/${id}/cancel`, { method: "POST" });
+
+/* --- Именные ачивки (админ) ------------------------------------------------ */
+
+export const listCustomAchievements = () =>
+  request<CustomAchievement[]>("/api/admin/achievements");
+
+export const grantAchievement = (
+  userId: number,
+  title: string,
+  description: string,
+  tier: AchievementTier,
+) =>
+  request<CustomAchievement>("/api/admin/achievements", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, title, description, tier }),
+  });
+
+export const revokeAchievement = (id: number) =>
+  request<void>(`/api/admin/achievements/${id}`, { method: "DELETE" });

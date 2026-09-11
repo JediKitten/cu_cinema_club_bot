@@ -130,6 +130,10 @@ class Screening(Base, CreatedAtMixin):
     slot_id: Mapped[int] = mapped_column(sa.ForeignKey("slots.id"))
     # Назначено администратором вручную, в обход алгоритма.
     is_manual: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    # Показ идёт на английском (оригинал без дубляжа). Свойство сеанса, а не
+    # фильма: один и тот же фильм клуб может показать и так, и так. §19 называл
+    # «дубляж/субтитры» отложенным — это его первый кусок, тот, что понадобился.
+    in_english: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     # Заголовок и подпись — для события без фильма.
     title: Mapped[str | None] = mapped_column(sa.String(200))
     note: Mapped[str | None] = mapped_column(sa.Text)

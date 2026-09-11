@@ -118,11 +118,57 @@ async def test_schedule_autopilot_maximises_total_attendance(session):
         await voting.set_votes(session, round_, user.id, [films[1].id])
         await voting.set_availability(session, round_, user.id, [tuesday.id])
 
+    # Проверяем сам алгоритм назначений, поэтому недельный лимит поднимаем:
+    # по умолчанию клуб смотрит один фильм в неделю.
+    await SettingsService(session).set_many({"screenings_per_week": 2}, None)
+    await session.commit()
+
     proposal = await autopilot.propose_schedule(session, round_)
     placement = {a.film_id: a.slot_id for a in proposal}
 
     assert placement[films[0].id] == monday.id
     assert placement[films[1].id] == tuesday.id
+
+
+async def test_autopilot_places_only_as_many_screenings_as_the_club_watches(session):
+    """«Показов в неделю» — параметр клуба, а не следствие числа свободных вечеров.
+
+    Задача о назначениях сама по себе заполнила бы все семь: у каждого фильма
+    найдётся вечер, где его ждут. Сколько из них провести — решает клуб.
+    """
+    boss = await admin(session)
+    round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
+    films = [await make_film(session, f"Фильм {i}") for i in range(3)]
+    await session.commit()
+    await set_shortlist(session, round_, [f.id for f in films], boss.id)
+    await rounds_service.publish_shortlist(session, round_, boss.id)
+
+    slots = (
+        (
+            await session.execute(
+                sa.select(Slot).where(Slot.round_id == round_.id).order_by(Slot.starts_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Каждому фильму — свой вечер и своя группа выше кворума.
+    for index, film in enumerate(films):
+        for i in range(6):
+            user = await make_user(session, f"Зритель {index}-{i}")
+            await session.commit()
+            await voting.set_votes(session, round_, user.id, [film.id])
+            await voting.set_availability(session, round_, user.id, [slots[index + 1].id])
+
+    await SettingsService(session).set_many({"screenings_per_week": 2}, None)
+    await session.commit()
+
+    assert len(await autopilot.propose_schedule(session, round_)) == 2
+
+    await SettingsService(session).set_many({"screenings_per_week": 1}, None)
+    await session.commit()
+
+    assert len(await autopilot.propose_schedule(session, round_)) == 1
 
 
 async def test_slots_below_quorum_are_left_empty(session):

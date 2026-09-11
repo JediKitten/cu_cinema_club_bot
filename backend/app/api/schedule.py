@@ -203,6 +203,7 @@ async def _to_out(
                 expected_attendance=screening.expected_attendance,
                 cancel_reason=screening.cancel_reason,
                 is_manual=screening.is_manual,
+                in_english=screening.in_english,
                 note=screening.note,
                 my_state=confirmation.state if confirmation else None,
                 my_place_in_queue=place,

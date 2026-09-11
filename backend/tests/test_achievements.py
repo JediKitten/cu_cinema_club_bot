@@ -1,9 +1,12 @@
 """Ачивки: ступени, замена низшей на высшую, секретные (расширение по просьбе клуба)."""
 
+from datetime import UTC, datetime, timedelta
+
+import pytest
 import sqlalchemy as sa
 
 from app.models import Achievement, Favourite, Notification
-from app.models.enums import NotificationKind
+from app.models.enums import InterestKind, NotificationKind
 from app.services import achievements, ratings, social, tournaments
 from app.services.achievements import Tier
 from tests.test_analytics import held_screening
@@ -41,7 +44,7 @@ async def test_ladder_gives_the_badge_and_congratulates(session):
             )
         )
     ).scalar_one()
-    assert payload["title"] == "Появилось своё мнение..."
+    assert payload["title"] == "Появилось свое мнение..."
     assert payload["tier"] == "бронзовая"
 
 
@@ -105,7 +108,7 @@ async def test_progress_points_at_the_next_tier(session):
     goal = next(item for item in summary.groups if item.group == "ratings")
 
     assert goal.tier == Tier.BRONZE
-    assert goal.title == "Появилось своё мнение..."
+    assert goal.title == "Появилось свое мнение..."
     assert goal.next_title == "Готов высказаться"
     assert (goal.progress, goal.target) == (7, 25)
 
@@ -131,7 +134,9 @@ async def test_secret_stays_hidden_until_it_is_found(session):
     await session.commit()
 
     before = await achievements.of_user(session, user.id)
-    assert before.secrets_left == 3
+    assert sum(before.secrets_left.values()) == 3
+    # Счётчик стоит на уровне секретной: пустая вкладка иначе необъяснима.
+    assert before.secrets_left == {"silver": 1, "gold": 1, "platinum": 1}
     assert all(item.secret is False for item in before.groups)
 
     for position, film in enumerate(films):
@@ -140,7 +145,8 @@ async def test_secret_stays_hidden_until_it_is_found(session):
     await achievements.award(session)
 
     after = await achievements.of_user(session, user.id)
-    assert after.secrets_left == 2
+    assert sum(after.secrets_left.values()) == 2
+    assert "silver" not in after.secrets_left
     found = next(item for item in after.groups if item.group == "showcase")
     assert found.title == "Витрина собрана"
     assert found.tier == Tier.SILVER
@@ -198,7 +204,178 @@ async def test_champion_needs_every_pick_right(session):
 
     missed = await achievements.of_user(session, sloppy.id)
     assert all(item.group != "champion" for item in missed.groups)
-    assert missed.secrets_left == 3
+    assert sum(missed.secrets_left.values()) == 3
+
+
+async def test_english_screenings_are_counted_separately(session):
+    """«Сеансы на английском» — свойство сеанса, а не фильма.
+
+    Один и тот же фильм клуб может показать и с дубляжом, и в оригинале,
+    поэтому считается приход именно на помеченный показ.
+    """
+    from app.models import Screening
+    from app.services import attendance as att
+    from app.services import events
+
+    boss = await make_user(session, "Админ")
+    guest = await make_user(session, "Зритель")
+    film = await make_film(session, "Pulp Fiction")
+    await session.commit()
+
+    usual = await events.create(
+        session, starts_at=datetime.now(UTC) + timedelta(days=1), actor_id=boss.id, film_id=film.id
+    )
+    english = await events.create(
+        session,
+        starts_at=datetime.now(UTC) + timedelta(days=2),
+        actor_id=boss.id,
+        title="Кино в оригинале",
+        in_english=True,
+    )
+    await att.mark_manually(session, usual.id, guest.id, boss.id)
+    await att.mark_manually(session, english.id, guest.id, boss.id)
+
+    assert (await session.get(Screening, english.id)).in_english is True
+
+    counts = (await achievements.metrics(session, [guest.id])).get(guest.id, {})
+    assert counts["attended"] == 2  # сеансов было два
+    assert counts["english"] == 1  # а на английском — один
+
+
+async def test_referrals_count_only_those_who_agreed(session):
+    """Позвал — это не переход по ссылке, а согласие: отметка после перехода."""
+    from app.services import interests, referrals
+
+    host = await make_user(session, "Позвал")
+    came = await make_user(session, "Пришёл и отметил")
+    passed_by = await make_user(session, "Посмотрел и ушёл")
+    film = await make_film(session, "Крёстный отец")
+    await session.commit()
+
+    await referrals.record(session, host.id, came.id, film.id)
+    await referrals.record(session, host.id, passed_by.id, film.id)
+    await interests.set_mark(session, came.id, film.id, InterestKind.WISHLIST, 14, 10)
+
+    counts = (await achievements.metrics(session, [host.id])).get(host.id, {})
+    assert counts.get("referrals") == 1
+
+
+async def test_congratulation_names_the_next_step(session):
+    """Поздравление без «что дальше» сообщает только о конце."""
+    user = await make_user(session, "Зритель")
+    await session.commit()
+    await rate_films(session, user, 5)
+    await achievements.award(session)
+
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(
+                Notification.user_id == user.id,
+                Notification.kind == NotificationKind.ACHIEVEMENT_EARNED,
+            )
+        )
+    ).scalar_one()
+
+    assert payload["next_title"] == "Готов высказаться"
+    assert payload["next_hint"] == "Оценить 25 фильмов"
+
+
+async def test_top_tier_has_nothing_ahead(session):
+    """У платины следующей ступени нет — и сообщение не должно её выдумывать."""
+    ladder = achievements.LADDERS["ratings"]
+    assert ladder[-1].tier == Tier.PLATINUM
+    assert [rule.target for rule in ladder] == [5, 25, 100, 500]
+
+
+async def test_goals_follow_the_order_of_the_club_table(session):
+    """Порядок целей — как в таблице клуба, и он не пляшет от чужих отметок."""
+    user = await make_user(session, "Зритель")
+    await session.commit()
+
+    summary = await achievements.of_user(session, user.id)
+
+    assert [item.group for item in summary.groups] == [
+        "films",
+        "screenings",
+        "english",
+        "friends",
+        "ratings",
+        "referrals",
+    ]
+
+
+async def test_admin_grants_a_named_achievement(session):
+    """Именная придумывается под человека — её правила в реестре быть не может."""
+    boss = await make_user(session, "Админ")
+    hero = await make_user(session, "Принёс проектор")
+    await session.commit()
+
+    row = await achievements.grant(
+        session, boss.id, hero.id, "Спас показ", "Притащил проектор из дома", "gold"
+    )
+
+    summary = await achievements.of_user(session, hero.id)
+    named = next(item for item in summary.groups if item.custom)
+
+    assert named.title == "Спас показ"
+    assert named.tier == Tier.GOLD
+    assert summary.gold == 1  # считается в тех же четырёх числах
+    # И человек об этом узнаёт.
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(
+                Notification.user_id == hero.id,
+                Notification.kind == NotificationKind.ACHIEVEMENT_EARNED,
+            )
+        )
+    ).scalar_one()
+    assert payload["title"] == "Спас показ"
+    assert payload["custom"] is True
+
+    # Снять можно — в отличие от заслуженных автоматом.
+    await achievements.revoke(session, boss.id, row.id)
+    assert (await achievements.of_user(session, hero.id)).gold == 0
+
+
+async def test_one_person_can_hold_several_named_achievements(session):
+    """Код именной случайный: вторая не должна упираться в уникальность."""
+    boss = await make_user(session, "Админ")
+    hero = await make_user(session, "Двужильный")
+    await session.commit()
+
+    await achievements.grant(session, boss.id, hero.id, "Спас показ", "", "gold")
+    await achievements.grant(session, boss.id, hero.id, "Спас второй", "", "silver")
+
+    summary = await achievements.of_user(session, hero.id)
+    assert len([item for item in summary.groups if item.custom]) == 2
+    assert (summary.gold, summary.silver) == (1, 1)
+
+
+async def test_named_achievement_needs_a_real_tier_and_title(session):
+    boss = await make_user(session, "Админ")
+    hero = await make_user(session, "Зритель")
+    await session.commit()
+
+    with pytest.raises(achievements.AchievementError, match="уровень"):
+        await achievements.grant(session, boss.id, hero.id, "Что-то", "", "diamond")
+    with pytest.raises(achievements.AchievementError, match="название"):
+        await achievements.grant(session, boss.id, hero.id, "   ", "", "gold")
+
+
+async def test_auto_achievements_cannot_be_revoked_by_hand(session):
+    """Снимать заслуженное автоматом нельзя — иначе награда перестаёт быть наградой."""
+    boss = await make_user(session, "Админ")
+    user = await make_user(session, "Зритель")
+    await session.commit()
+    await rate_films(session, user, 5)
+    await achievements.award(session)
+
+    earned = (
+        await session.execute(sa.select(Achievement).where(Achievement.user_id == user.id))
+    ).scalar_one()
+
+    with pytest.raises(achievements.AchievementError, match="не найдена"):
+        await achievements.revoke(session, boss.id, earned.id)
 
 
 async def test_inactive_person_is_not_congratulated(session):
@@ -222,4 +399,4 @@ async def test_summary_rides_along_with_the_profile(session):
     profile = await social.profile(session, user.id, user.id)
 
     assert profile.achievements.bronze == 1
-    assert profile.achievements.secrets_left == 3
+    assert sum(profile.achievements.secrets_left.values()) == 3

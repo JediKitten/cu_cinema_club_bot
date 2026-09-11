@@ -1495,13 +1495,6 @@ body.is-locked .app {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
-  width: 100%;
-  padding: 0;
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
 }
 
 .trophy {
@@ -1511,20 +1504,29 @@ body.is-locked .app {
   gap: 6px;
   padding: 10px 4px;
   background: var(--surface);
+  border: 1px solid transparent;
   border-radius: var(--radius);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
   /* Пустой уровень бледнее: видно, что он есть, но нечем хвастаться. */
   opacity: 0.45;
+}
+
+/* Открытая вкладка обведена: иначе непонятно, какому трофею принадлежит
+   список под ним. */
+.trophy.is-open {
+  border-color: var(--hint);
+  opacity: 1;
 }
 
 .trophy.is-on {
   opacity: 1;
 }
 
-/* Раскрытый блок подсвечен рамкой: иначе непонятно, что список ниже принадлежит
-   ему и закрывается тем же нажатием. */
-.trophies.is-open .trophy {
-  outline: 1px solid var(--border);
-  outline-offset: -1px;
+.achievements__title {
+  margin: 0;
+  font-size: 15px;
 }
 
 .trophy-icon {

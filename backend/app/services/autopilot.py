@@ -76,6 +76,7 @@ async def propose_schedule(session: AsyncSession, round_: Round) -> list[Assignm
     """
     values = await SettingsService(session).all()
     minimum = int(values["min_attendance"])
+    per_week = int(values["screenings_per_week"])
 
     matrix = await voting.build_matrix(session, round_)
     films = matrix.film_ids
@@ -118,6 +119,12 @@ async def propose_schedule(session: AsyncSession, round_: Round) -> list[Assignm
             # Ниже кворума показ не назначается вовсе (§6).
             continue
         assignments.append(Assignment(film_id=film_id, slot_id=slot.id, expected=expected))
+
+    # Сколько фильмов клуб смотрит за неделю — параметр §13. Задача
+    # о назначениях заполнила бы все свободные вечера; оставляем столько
+    # показов с лучшей ожидаемой явкой, сколько клуб готов провести.
+    assignments.sort(key=lambda item: item.expected, reverse=True)
+    assignments = assignments[:per_week]
 
     assignments = _monday_last(assignments, slots)
     await _save_proposal(

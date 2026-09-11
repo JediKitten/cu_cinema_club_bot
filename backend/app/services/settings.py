@@ -106,6 +106,20 @@ REGISTRY: tuple[SettingSpec, ...] = (
     # --- Цикл ---
     SettingSpec("shortlist_size", "int", 5, "cycle", "Размер шорт-листа", 1, 50),
     SettingSpec(
+        "screenings_per_week",
+        "int",
+        1,
+        "cycle",
+        "Показов в неделю",
+        1,
+        7,
+        help=(
+            "Сколько фильмов клуб смотрит за неделю. Ограничивает автопилот: "
+            "он расставит столько показов с лучшей ожидаемой явкой. Руками "
+            "администратор может поставить и больше."
+        ),
+    ),
+    SettingSpec(
         "min_weight_threshold",
         "float",
         1.0,

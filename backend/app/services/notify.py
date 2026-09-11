@@ -104,11 +104,20 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
 
     match kind:
         case NotificationKind.ACHIEVEMENT_EARNED:
+            # Что дальше — обязательная часть: без неё поздравление сообщает
+            # только о конце, а у ачивки со ступенями всегда есть продолжение.
+            nxt = payload.get("next_title")
+            ahead = (
+                f"\n\nДальше — <b>{escape(str(nxt))}</b>: "
+                f"{escape(str(payload.get('next_hint', '')))}"
+                if nxt
+                else "\n\nЭто верхняя ступень — выше некуда."
+            )
             return (
-                f"{payload.get('emoji', '🏅')} <b>Ачивка: "
-                f"{escape(str(payload.get('title', 'новая ачивка')))}</b>\n\n"
-                f"{escape(str(payload.get('hint', '')))}\n"
-                "Все бейджи — в профиле."
+                f"{payload.get('emoji', '🏅')} <b>{escape(str(payload.get('title', 'Ачивка')))}</b>"
+                f"\n{escape(str(payload.get('tier', '')))} ачивка — "
+                f"{escape(str(payload.get('hint', '')))}"
+                f"{ahead}\n\nВсе трофеи — в профиле."
             )
         case NotificationKind.TOURNAMENT_STARTED:
             return (

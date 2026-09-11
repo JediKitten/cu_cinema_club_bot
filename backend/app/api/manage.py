@@ -52,6 +52,7 @@ async def create_event(
             title=body.title,
             note=body.note,
             duration_min=body.duration_min,
+            in_english=body.in_english,
         )
     except EventError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -90,6 +91,7 @@ async def _event_out(session: AsyncSession, event: Screening) -> EventOut:
         ),
         title=event.title,
         note=event.note,
+        in_english=event.in_english,
         confirmed=confirmed or 0,
     )
 

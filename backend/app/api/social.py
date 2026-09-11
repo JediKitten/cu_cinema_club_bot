@@ -11,6 +11,7 @@ from app.models import Film, User
 from app.schemas import (
     AchievementGroupOut,
     AchievementsOut,
+    AchievementStepOut,
     AttendanceStats,
     CircleOut,
     FavouritesIn,
@@ -221,15 +222,28 @@ async def profile(
                     group=item.group,
                     label=item.label,
                     secret=item.secret,
+                    custom=item.custom,
                     tier=item.tier,
                     emoji=item.emoji,
                     title=item.title,
                     description=item.description,
                     earned_at=item.earned_at,
                     next_title=item.next_title,
+                    next_description=item.next_description,
                     next_tier=item.next_tier,
                     progress=item.progress,
                     target=item.target,
+                    steps=[
+                        AchievementStepOut(
+                            tier=step.tier,
+                            title=step.title,
+                            description=step.description,
+                            target=step.target,
+                            progress=step.progress,
+                            earned_at=step.earned_at,
+                        )
+                        for step in item.steps
+                    ],
                 )
                 for item in (found.achievements.groups or [])
             ],

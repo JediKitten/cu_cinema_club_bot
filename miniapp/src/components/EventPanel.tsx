@@ -17,9 +17,17 @@ type Draft = {
   title: string;
   note: string;
   film: FilmBrief | null;
+  inEnglish: boolean;
 };
 
-const EMPTY: Draft = { date: "", time: "19:00", title: "", note: "", film: null };
+const EMPTY: Draft = {
+  date: "",
+  time: "19:00",
+  title: "",
+  note: "",
+  film: null,
+  inEnglish: false,
+};
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
@@ -34,6 +42,7 @@ function toDraft(event: ClubEvent): Draft {
     title: event.title ?? "",
     note: event.note ?? "",
     film: event.film,
+    inEnglish: event.in_english,
   };
 }
 
@@ -141,6 +150,16 @@ function EventFields({
         placeholder="Подпись, например «ждите анонса»"
         onChange={(e) => onChange({ ...draft, note: e.target.value })}
       />
+      {/* Свойство сеанса, а не фильма: один и тот же фильм клуб может показать
+          и с дубляжом, и в оригинале. На этом держится своя ачивка. */}
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={draft.inEnglish}
+          onChange={(e) => onChange({ ...draft, inEnglish: e.target.checked })}
+        />
+        Показ на английском
+      </label>
     </>
   );
 }
@@ -166,6 +185,7 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
     if ((draft.film?.id ?? null) !== event.film_id) patch.film_id = draft.film?.id ?? null;
     if (draft.title.trim() !== (event.title ?? "")) patch.title = draft.title.trim() || null;
     if (draft.note.trim() !== (event.note ?? "")) patch.note = draft.note.trim() || null;
+    if (draft.inEnglish !== event.in_english) patch.in_english = draft.inEnglish;
     return patch;
   }
 
@@ -300,6 +320,7 @@ export function EventPanel({ onCreated }: { onCreated(): void }) {
         film_id: draft.film?.id ?? null,
         title: draft.title.trim() || null,
         note: draft.note.trim() || null,
+        in_english: draft.inEnglish,
       });
       setDraft(EMPTY);
       showMessage("Событие создано");

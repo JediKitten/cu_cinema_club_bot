@@ -19,7 +19,8 @@
 """
 
 import logging
-from dataclasses import dataclass
+import secrets
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 
@@ -30,12 +31,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import (
     Achievement,
     Attendance,
+    AuditLog,
     Favourite,
     Film,
     FilmRating,
     FilmSkip,
     Friendship,
     Interest,
+    Referral,
+    Screening,
     Tournament,
     TournamentMatch,
     TournamentVote,
@@ -95,11 +99,15 @@ class Rule:
         return TIERS.index(self.tier)
 
 
+# Порядок — как в таблице клуба: она и есть источник правды, а в профиле цели
+# идут теми же строками, что там.
 GROUP_LABEL: dict[str, str] = {
     "films": "Просмотренные фильмы",
     "screenings": "Сеансы клуба",
-    "ratings": "Оценки",
+    "english": "Сеансы на английском",
     "friends": "Друзья",
+    "ratings": "Оценки",
+    "referrals": "Приглашённые на фильм",
 }
 
 RULES: tuple[Rule, ...] = (
@@ -133,22 +141,23 @@ RULES: tuple[Rule, ...] = (
         "screenings_platinum", "screenings", Tier.PLATINUM,
         "Я есть киноклуб", "Посетить 50 сеансов", "attended", 50,
     ),
-    # --- Кол-во оценок ---
+    # --- Кол-во сеансов на английском ---
     Rule(
-        "ratings_bronze", "ratings", Tier.BRONZE,
-        "Появилось своё мнение...", "Оценить 5 фильмов", "ratings", 5,
+        "english_bronze", "english", Tier.BRONZE,
+        "Hello world", "Посмотреть 1 фильм на английском", "english", 1,
     ),
     Rule(
-        "ratings_silver", "ratings", Tier.SILVER,
-        "Готов высказаться", "Оценить 25 фильмов", "ratings", 25,
+        "english_silver", "english", Tier.SILVER,
+        "Ландон из зе кэпитал оф Грейт бритен",
+        "Посмотреть 5 фильмов на английском", "english", 5,
     ),
     Rule(
-        "ratings_gold", "ratings", Tier.GOLD,
-        "Uhm, actually...", "Поставить 100 оценок", "ratings", 100,
+        "english_gold", "english", Tier.GOLD,
+        "C3 english level", "Посмотреть 10 фильмов на английском", "english", 10,
     ),
     Rule(
-        "ratings_platinum", "ratings", Tier.PLATINUM,
-        "Я есть киноакадемия", "Поставить 500 оценок", "ratings", 500,
+        "english_platinum", "english", Tier.PLATINUM,
+        "English mf, so you speak it?", "Посмотреть 25 фильмов на английском", "english", 25,
     ),
     # --- Кол-во друзей ---
     Rule(
@@ -166,6 +175,40 @@ RULES: tuple[Rule, ...] = (
     Rule(
         "friends_platinum", "friends", Tier.PLATINUM,
         "Я есть экстраверт", "Добавить в друзья 50 человек", "friends", 50,
+    ),
+    # --- Кол-во оценок ---
+    Rule(
+        "ratings_bronze", "ratings", Tier.BRONZE,
+        "Появилось свое мнение...", "Оценить 5 фильмов", "ratings", 5,
+    ),
+    Rule(
+        "ratings_silver", "ratings", Tier.SILVER,
+        "Готов высказаться", "Оценить 25 фильмов", "ratings", 25,
+    ),
+    Rule(
+        "ratings_gold", "ratings", Tier.GOLD,
+        "Uhm, actually...", "Поставить 100 оценок", "ratings", 100,
+    ),
+    Rule(
+        "ratings_platinum", "ratings", Tier.PLATINUM,
+        "Я есть киноакадемия", "Поставить 500 оценок", "ratings", 500,
+    ),
+    # --- Кол-во рефералов. Бронзы у этой цели в таблице нет: ступень начинается
+    #     сразу с серебра, и лесенка это допускает.
+    Rule(
+        "referrals_silver", "referrals", Tier.SILVER,
+        # Названия для этой ступени в таблице не было — оно наше и правится
+        # одной строкой, как и всё здесь.
+        "Первое правило киноклуба", "Позвать на фильм 10 человек", "referrals", 10,
+    ),
+    Rule(
+        "referrals_gold", "referrals", Tier.GOLD,
+        "Революционер", "Позвать на фильм в сумме 50 человек", "referrals", 50,
+    ),
+    Rule(
+        "referrals_platinum", "referrals", Tier.PLATINUM,
+        "Нас 25 тысяч, и мы идем смотреть кино",
+        "Позвать на фильм в сумме 200 человек", "referrals", 200,
     ),
     # --- Секретные ---
     Rule(
@@ -186,6 +229,10 @@ RULES: tuple[Rule, ...] = (
 
 BY_CODE = {rule.code: rule for rule in RULES}
 
+# Код именной ачивки. Префикс нужен, чтобы она никогда не столкнулась с кодом
+# из реестра и чтобы одного взгляда на строку хватало понять, откуда она.
+CUSTOM_PREFIX = "custom:"
+
 # Ступени одной цели, от низшей к высшей.
 LADDERS: dict[str, tuple[Rule, ...]] = {
     group: tuple(sorted((r for r in RULES if r.group == group), key=lambda r: r.rank))
@@ -194,12 +241,35 @@ LADDERS: dict[str, tuple[Rule, ...]] = {
 
 
 @dataclass(slots=True)
+class Step:
+    """Одна ступень цели — строка во вкладке своей редкости."""
+
+    tier: Tier
+    title: str
+    description: str
+    target: int
+    progress: int
+    earned_at: datetime | None = None
+
+    @property
+    def done(self) -> bool:
+        return self.earned_at is not None
+
+
+@dataclass(slots=True)
 class GroupState:
-    """Одна цель: что уже получено и сколько до следующей ступени."""
+    """Одна цель: что уже получено, сколько до следующей ступени и вся лестница.
+
+    Лестница нужна целиком: вкладка уровня показывает все ступени этого
+    уровня, а не только достижимую следующую — иначе «золото» у новичка
+    выглядит пустым, хотя там есть на что посмотреть.
+    """
 
     group: str
     label: str
     secret: bool
+    # Придумана админом под конкретного человека, а не взята из реестра.
+    custom: bool = False
     # Полученное — высшая достигнутая ступень. None, если ещё ничего.
     tier: Tier | None = None
     emoji: str = ""
@@ -208,9 +278,11 @@ class GroupState:
     earned_at: datetime | None = None
     # Куда расти. None, если взята платина.
     next_title: str | None = None
+    next_description: str | None = None
     next_tier: Tier | None = None
     progress: int = 0
     target: int = 0
+    steps: list[Step] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -221,8 +293,9 @@ class Summary:
     silver: int = 0
     gold: int = 0
     platinum: int = 0
-    # Сколько секретных ещё не найдено. Названия и условия не раскрываем.
-    secrets_left: int = 0
+    # Сколько секретных ещё не найдено, по уровням: у каждой вкладки свой
+    # счётчик. Названия и условия не раскрываем — только то, что она есть.
+    secrets_left: dict[str, int] = field(default_factory=dict)
     groups: list[GroupState] | None = None
 
 
@@ -304,6 +377,29 @@ async def metrics(
         # взаимность зависит от другого человека, а ачивка — про твои действия.
         "friends": _counts(Friendship),
         "favourites": _counts(Favourite),
+        # Показ на английском — свойство сеанса: один фильм клуб может показать
+        # и с дубляжом, и в оригинале, и считается именно приход в зал.
+        "english": (
+            sa.select(Attendance.user_id, sa.func.count())
+            .join(Screening, Screening.id == Attendance.screening_id)
+            .where(Screening.in_english)
+            .group_by(Attendance.user_id)
+        ),
+        # Позвал на фильм — это не переход по ссылке, а согласие: приглашённый
+        # отметил фильм уже после перехода. Тот же расчёт, что в referrals.stats.
+        "referrals": (
+            sa.select(Referral.referrer_id, sa.func.count())
+            .join(
+                Interest,
+                sa.and_(
+                    Interest.user_id == Referral.invitee_id,
+                    Interest.film_id == Referral.film_id,
+                    Interest.revoked_at.is_(None),
+                    Interest.created_at >= Referral.created_at,
+                ),
+            )
+            .group_by(Referral.referrer_id)
+        ),
     }
 
     result: dict[int, dict[str, int]] = {}
@@ -337,6 +433,42 @@ async def of_user(session: AsyncSession, user_id: int) -> Summary:
     }
 
     summary = Summary(groups=[])
+
+    # Именные — первыми: их получают штучно и за что-то настоящее, и теряться
+    # среди двух десятков ступеней им незачем.
+    for row in (
+        await session.execute(
+            sa.select(Achievement)
+            .where(Achievement.user_id == user_id, Achievement.title.is_not(None))
+            .order_by(Achievement.earned_at)
+        )
+    ).scalars():
+        tier = Tier(row.tier) if row.tier in set(Tier) else Tier.GOLD
+        summary.groups.append(
+            GroupState(
+                group=row.code,
+                label=row.title or "Именная ачивка",
+                secret=False,
+                custom=True,
+                tier=tier,
+                emoji=TIER_EMOJI[tier],
+                title=row.title or "Именная ачивка",
+                description=row.description or "",
+                earned_at=row.earned_at,
+                steps=[
+                    Step(
+                        tier=tier,
+                        title=row.title or "Именная ачивка",
+                        description=row.description or "",
+                        target=1,
+                        progress=1,
+                        earned_at=row.earned_at,
+                    )
+                ],
+            )
+        )
+        setattr(summary, tier.value, getattr(summary, tier.value) + 1)
+
     for group, ladder in LADDERS.items():
         secret = ladder[0].secret
         done = [rule for rule in ladder if rule.code in earned]
@@ -344,8 +476,11 @@ async def of_user(session: AsyncSession, user_id: int) -> Summary:
         nxt = next((rule for rule in ladder if rule.code not in earned), None)
 
         if top is None and secret:
-            # Не найденную секретную не показываем вовсе — только считаем.
-            summary.secrets_left += 1
+            # Не найденную секретную не показываем вовсе — только считаем,
+            # и считаем на её уровне: «в золоте есть что искать» ничего
+            # не выдаёт, но объясняет пустую вкладку.
+            hidden = nxt.tier.value if nxt else Tier.PLATINUM.value
+            summary.secrets_left[hidden] = summary.secrets_left.get(hidden, 0) + 1
             continue
 
         state = GroupState(
@@ -358,25 +493,133 @@ async def of_user(session: AsyncSession, user_id: int) -> Summary:
             description=top.description if top else "",
             earned_at=earned.get(top.code) if top else None,
             next_title=nxt.title if nxt else None,
+            next_description=nxt.description if nxt else None,
             next_tier=nxt.tier if nxt else None,
             # Прогресс к следующей ступени. Взята платина — расти некуда.
             progress=min(counts.get(nxt.metric, 0), nxt.target) if nxt else 0,
             target=nxt.target if nxt else 0,
+            steps=[
+                Step(
+                    tier=rule.tier,
+                    title=rule.title,
+                    description=rule.description,
+                    target=rule.target,
+                    # Прогресс по своей ступени: у взятой он полный, даже если
+                    # показатель потом просел — награду не отбирают.
+                    progress=(
+                        rule.target
+                        if rule.code in earned
+                        else min(counts.get(rule.metric, 0), rule.target)
+                    ),
+                    earned_at=earned.get(rule.code),
+                )
+                for rule in ladder
+            ],
         )
         summary.groups.append(state)
 
         if top is not None:
             setattr(summary, top.tier.value, getattr(summary, top.tier.value) + 1)
 
-    # Сначала полученное, потом то, до чего ближе всего.
-    summary.groups.sort(
-        key=lambda item: (
-            item.tier is None,
-            -(TIERS.index(item.tier) if item.tier else 0),
-            -(item.progress / item.target) if item.target else 0,
+    # Порядок не трогаем: цели идут теми же строками, что в таблице клуба.
+    # Сортировка по «ближе всего» путала бы — список менялся бы местами
+    # от каждой отметки.
+    return summary
+
+
+class AchievementError(ValueError):
+    """Причину показываем администратору как есть."""
+
+
+async def grant(
+    session: AsyncSession,
+    actor_id: int,
+    user_id: int,
+    title: str,
+    description: str,
+    tier: str,
+) -> Achievement:
+    """Именная ачивка от администратора.
+
+    Придумывается на месте под конкретного человека — «за то, что притащил
+    проектор», — поэтому её текст живёт в строке, а не в реестре. В остальном
+    она обычная: считается в тех же четырёх числах и лежит во вкладке своего
+    уровня.
+    """
+    if tier not in set(Tier):
+        raise AchievementError("Неизвестный уровень")
+    if not title.strip():
+        raise AchievementError("У ачивки должно быть название")
+
+    person = await session.get(User, user_id)
+    if person is None or not person.is_active:
+        raise AchievementError("Участник не найден")
+
+    row = Achievement(
+        user_id=user_id,
+        # Суффикс случайный: одному человеку можно выдать несколько именных,
+        # а уникальность пары (человек, код) держит индекс.
+        code=f"{CUSTOM_PREFIX}{secrets.token_hex(6)}",
+        title=title.strip(),
+        description=description.strip(),
+        tier=tier,
+        granted_by=actor_id,
+    )
+    session.add(row)
+    session.add(
+        AuditLog(
+            actor_id=actor_id,
+            entity="achievement",
+            entity_id=user_id,
+            action="grant",
+            payload={"title": row.title, "tier": tier},
         )
     )
-    return summary
+    await session.flush()
+    await notify.queue(
+        session,
+        user_id,
+        NotificationKind.ACHIEVEMENT_EARNED,
+        dedup_key=f"achievement:{user_id}:{row.code}",
+        payload={
+            "emoji": TIER_EMOJI[Tier(tier)],
+            "tier": TIER_LABEL[Tier(tier)],
+            "title": row.title,
+            "hint": row.description,
+            "custom": True,
+        },
+    )
+    await session.commit()
+    return row
+
+
+async def revoke(session: AsyncSession, actor_id: int, achievement_id: int) -> None:
+    """Снимает именную ачивку. Заслуженные автоматом не трогаем — их не отбирают."""
+    row = await session.get(Achievement, achievement_id)
+    if row is None or row.title is None:
+        raise AchievementError("Именная ачивка не найдена")
+    session.add(
+        AuditLog(
+            actor_id=actor_id,
+            entity="achievement",
+            entity_id=row.user_id,
+            action="revoke",
+            payload={"title": row.title},
+        )
+    )
+    await session.delete(row)
+    await session.commit()
+
+
+async def granted_by_hand(session: AsyncSession) -> list[tuple[Achievement, str]]:
+    """Все именные с именами получателей — список для админки."""
+    rows = await session.execute(
+        sa.select(Achievement, User.display_name)
+        .join(User, User.id == Achievement.user_id)
+        .where(Achievement.title.is_not(None))
+        .order_by(Achievement.earned_at.desc())
+    )
+    return [(row, name) for row, name in rows]
 
 
 async def award(session: AsyncSession) -> int:
@@ -440,6 +683,8 @@ async def award(session: AsyncSession) -> int:
                     )
                 )
 
+            # Следующая ступень той же цели — её называем прямо в сообщении.
+            ahead = next((rule for rule in ladder if rule.rank > top.rank), None)
             await notify.queue(
                 session,
                 user_id,
@@ -451,6 +696,8 @@ async def award(session: AsyncSession) -> int:
                     "title": top.title,
                     "hint": top.description,
                     "secret": top.secret,
+                    "next_title": ahead.title if ahead else None,
+                    "next_hint": ahead.description if ahead else None,
                 },
             )
             given += 1
