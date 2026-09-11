@@ -1,32 +1,72 @@
-# React + TypeScript + Vite
+# Mini App
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Telegram Mini App киноклуба: React 19 + TypeScript + Vite. Устройство системы —
+в [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md), запуск и грабли —
+в [../docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md).
 
-Currently, two official plugins are available:
+## Команды
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev      # :5173, /api проксируется на бэкенд (vite.config.ts)
+npm test         # vitest, 19 тестов
+npm run lint     # oxlint
+npm run build    # tsc -b && vite build — проверяйте им, а не только tsc --noEmit
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Приложение впускает только по подписи Telegram, поэтому в браузере оно само по
+себе не откроется. Два способа посмотреть:
+
+* `scripts/preview.sh` из корня — поднимает всё и печатает ссылки на каждую
+  роль с подписанной `initData` (проще всего);
+* `scripts/tunnel.sh` + запущенный бот — настоящий Mini App внутри Telegram.
+
+## Что где лежит
+
+```
+src/
+  App.tsx          пять вкладок, наложения карточки фильма и профиля
+  api.ts           единственное место с fetch; здесь же токен сессии
+  types.ts         типы ответов API — зеркало schemas.py
+  telegram.ts      обёртки над Telegram WebApp SDK
+  screens/         экраны вкладок и подэкраны
+  components/      переиспользуемые куски, включая панели админки
+  filmChanges.ts   шина «фильм изменился»
+  filmOpener.tsx   контекст «открыть карточку фильма»
+  index.css        все стили, один файл
+  *.test.ts        юнит-тесты чистых функций (даты, отметки, фильмы)
+```
+
+Вкладки: **Каталог**, **Лента** (свайпы), **Расписание**, **Профиль**
+(оттуда — «Мои» и «Друзья»), **Ещё** (история, заявка на фильм, кнопка «Клуб»
+для админов).
+
+## Соглашения
+
+**Экран не размонтируется под наложением.** Карточка фильма и профиль
+открываются поверх (`.overlay`), вкладка под ними остаётся живой — иначе
+возврат терял бы поисковый запрос, выдачу и место прокрутки. Если добавляете
+новое наложение, делайте так же и прячьте нижнее через `hidden`, а не
+размонтированием.
+
+**Списки обновляет шина, а не перезагрузка.** Отметили фильм в карточке —
+`filmChanges` сообщает каталогу, «Моим» и ленте, и они правят свою копию.
+Перезагрузка списка сбросила бы страницу и прокрутку.
+
+**Методы Telegram проверяются на версию.** `showAlert` и `showConfirm` требуют
+Bot API 6.2; в старом клиенте метод есть, но колбэк не вызывается — обещание
+не разрешается никогда, и интерфейс зависает. Берите `showMessage` и
+`askConfirm` из `telegram.ts`: там проверка версии и откат на браузерные
+диалоги.
+
+**Стили — один файл и переменные.** Тёмная тема фиксированная
+(`color-scheme: dark`), палитра в `:root`. Новые классы — рядом со своим
+блоком, с комментарием «почему», если решение неочевидно (например, почему
+у ленты `touch-action: none`).
+
+**Оценки — половинки звёзд.** На экране 0,5…5, в API и базе — целые полубаллы
+1…10. Конвертация только в `services/ratings.py` на бэкенде; на фронте всегда
+звёзды.
+
+**Ошибки показываем как пришли.** Бэкенд отдаёт человеческий текст в `detail`;
+`ApiError.message` — это он. Не подменяйте своим «что-то пошло не так».
