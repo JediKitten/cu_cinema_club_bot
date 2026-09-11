@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ApiError, getFilm, getTmdbFilm, rateFilm } from "../api";
+import { BackLink } from "../components/BackLink";
 import { Poster } from "../components/FilmRow";
 import { MarkButtons } from "../components/MarkButtons";
 import { InviteButton } from "../components/InviteButton";
@@ -7,7 +8,7 @@ import { WatchedButton } from "../components/WatchedButton";
 import { StarRating } from "../components/StarRating";
 import { FilmStatsPanel } from "../components/FilmStatsPanel";
 import { Section } from "../components/Section";
-import { haptic, showMessage, useTelegramBackButton } from "../telegram";
+import { haptic, showMessage, bindBackButton } from "../telegram";
 import { plural } from "../plural";
 import { publishFilmChange } from "../filmChanges";
 import type { FilmBrief, FilmCard, InterestKind } from "../types";
@@ -31,7 +32,7 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
   const [error, setError] = useState<string | null>(null);
   const [rating, setRating] = useState(false);
 
-  useEffect(() => useTelegramBackButton(true, onBack), [onBack]);
+  useEffect(() => bindBackButton(true, onBack), [onBack]);
 
   useEffect(() => {
     // Фильм из каталога открываем по его id, найденный в поиске — по tmdb_id:
@@ -42,8 +43,20 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
       .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
   }, [filmId, tmdbId]);
 
-  if (error) return <div className="screen"><div className="error">{error}</div></div>;
-  if (!film) return <div className="center">Загрузка…</div>;
+  if (error)
+    return (
+      <div className="screen">
+        <BackLink onBack={onBack} />
+        <div className="error">{error}</div>
+      </div>
+    );
+  if (!film)
+    return (
+      <div className="screen">
+        <BackLink onBack={onBack} />
+        <div className="center">Загрузка…</div>
+      </div>
+    );
 
   const facts = [film.year, runtime(film.runtime_min), film.genres.join(", ")]
     .filter(Boolean)
@@ -83,6 +96,7 @@ export function FilmDetail({ filmId, tmdbId, withStats = false, onBack }: Props)
 
   return (
     <div className="screen detail">
+      <BackLink onBack={onBack} />
       <div className="detail__head film-row--watchable">
         <WatchedButton film={film} onChange={updateMarks} />
         <Poster url={film.poster_url} />

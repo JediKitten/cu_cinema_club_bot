@@ -21,6 +21,9 @@ type HapticFeedback = {
 type WebApp = {
   initData: string;
   colorScheme: "light" | "dark";
+  /** «unknown» вне Telegram: сам SDK грузится с telegram.org и в обычном
+   *  браузере, поэтому наличие объекта ничего не доказывает. */
+  platform?: string;
   BackButton: BackButton;
   HapticFeedback: HapticFeedback;
   version?: string;
@@ -77,8 +80,25 @@ export function getInitData(): string {
   return "";
 }
 
-/** Кнопка «назад» рисуется самим Telegram, а не нами — поэтому подписка живёт здесь. */
-export function useTelegramBackButton(visible: boolean, onBack: () => void): () => void {
+/** Есть ли у клиента своя кнопка «назад».
+ *
+ * Проверять наличие объекта бесполезно: SDK грузится скриптом с telegram.org
+ * и в обычном браузере, где `BackButton` существует, но ничего не рисует —
+ * а окно карточки закрывает экран целиком вместе с панелью вкладок, и выйти
+ * из него было бы нечем. Отличает настоящий Telegram `platform`: вне его
+ * SDK честно отвечает «unknown».
+ */
+export function hasBackButton(): boolean {
+  const app = webApp();
+  return Boolean(app?.BackButton) && Boolean(app?.platform) && app?.platform !== "unknown";
+}
+
+/** Кнопка «назад» рисуется самим Telegram, а не нами — поэтому подписка живёт здесь.
+ *
+ * Не хук, хотя и зовётся из эффекта: возвращает отписку, которую эффект и
+ * отдаёт React. Имя с `use` линтер справедливо принимал за хук в колбэке.
+ */
+export function bindBackButton(visible: boolean, onBack: () => void): () => void {
   const button = webApp()?.BackButton;
   if (!button) return () => {};
   if (visible) {

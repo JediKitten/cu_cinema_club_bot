@@ -227,6 +227,27 @@ async def test_screening_history_visible_in_past(session):
     assert row["status"] == ScreeningStatus.COMPLETED
 
 
+async def test_came_counts_people_not_pairs_of_attendance_and_feedback(session):
+    """«Пришли» не должно расти от числа отзывов.
+
+    Отметки о приходе и отзывы висят на одном screening_id: соединённые
+    в одном запросе, они перемножаются, и показ с двумя зрителями и двумя
+    отзывами показывает четверых. Ошибка тихая — цифра просто красивее.
+    """
+    _, _, screening, boss, voters = await held_screening(session)
+    # Второй зритель тоже дошёл, и оба оставили отзыв.
+    await att.mark_manually(session, screening.id, voters[1].id, boss.id)
+    for voter in voters[:2]:
+        await att.save_feedback(session, screening.id, voter.id, 8, None, None)
+
+    row = next(
+        r for r in await analytics.past_screenings(session) if r["screening_id"] == screening.id
+    )
+
+    assert row["came"] == 2
+    assert row["rating"] == 8.0
+
+
 async def test_audience_by_week_counts_people_not_actions(session):
     """Один человек, четыре действия за неделю — это один активный человек."""
     _, _, _, _, voters = await held_screening(session)

@@ -50,8 +50,10 @@ input {
 }
 
 .app {
-  /* Место под таб-бар, чтобы последняя карточка не пряталась под ним. */
-  padding-bottom: 72px;
+  /* Место под таб-бар, чтобы последняя карточка не пряталась под ним.
+     Сама панель добавляет себе безопасную зону (см. .tabs), поэтому на
+     устройствах с индикатором дома она выше — учитываем и её. */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
   max-width: 640px;
   margin: 0 auto;
 }
@@ -458,12 +460,6 @@ h3 {
   font-weight: 600;
 }
 
-.mark--watched.is-on {
-  background: color-mix(in srgb, var(--hint) 30%, transparent);
-  border-color: transparent;
-  color: var(--text);
-}
-
 .mark--going.is-on {
   background: #16a34a;
   border-color: #16a34a;
@@ -477,61 +473,6 @@ h3 {
 
 .assign select {
   appearance: none;
-}
-
-/* --- Этап 4: код и оценка --------------------------------------------------- */
-
-.code-input {
-  font-size: 30px;
-  letter-spacing: 8px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.rating-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.rating-dot {
-  flex: 1 1 40px;
-  min-width: 40px;
-  padding: 10px 0;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  font-weight: 600;
-}
-
-.rating-dot.is-on {
-  background: var(--button);
-  border-color: var(--button);
-  color: var(--button-text);
-}
-
-/* Экран в зале: код должен читаться с последнего ряда. */
-.hall-code {
-  font-size: clamp(48px, 18vw, 96px);
-  font-weight: 700;
-  letter-spacing: 10px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  padding: 20px 0 8px;
-}
-
-.hall-countdown {
-  height: 4px;
-  background: var(--border);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.hall-countdown span {
-  display: block;
-  height: 100%;
-  background: var(--link);
-  transition: width 1s linear;
 }
 
 /* --- Этап 4: код и оценка --------------------------------------------------- */
@@ -648,12 +589,6 @@ h3 {
 
 .film-row--clickable {
   cursor: pointer;
-}
-
-/* Название больше не отдельная кнопка: по нему кликается вся строка. */
-.film-row__title {
-  font-weight: 600;
-  margin: 0 0 2px;
 }
 
 /* --- Карточка поверх списка ------------------------------------------------- */
@@ -810,6 +745,32 @@ h3 {
   letter-spacing: -0.2px;
 }
 
+.back-link {
+  align-self: flex-start;
+}
+
+/* Параметр §13: подпись над полем. */
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.setting label {
+  font-size: 14px;
+}
+
+/* Кнопка сохранения не уезжает из виду: список параметров длинный, и после
+   правки внизу пришлось бы прокручивать обратно наверх. */
+.sticky-actions {
+  position: sticky;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  padding: 8px 0;
+  z-index: 5;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
@@ -821,6 +782,111 @@ h3 {
   border-radius: var(--radius);
   padding: 10px;
   text-align: center;
+}
+
+/* Профиль сверху: слева три строки, справа распределение оценок. */
+.profile__top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  /* Обе колонки одной высоты: блок оценок, торчащий ниже трёх строк, читается
+     как съехавшая вёрстка. Столбики тянутся, подписи и средняя — нет. */
+  align-items: stretch;
+}
+
+/* Оценок нет — строки занимают всю ширину, а не половину с пустотой рядом. */
+.profile__top--alone {
+  grid-template-columns: 1fr;
+}
+
+.profile__ratings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px;
+  min-width: 0;
+}
+
+.stat-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.stat-row b {
+  font-size: 18px;
+}
+
+.stat-row span {
+  color: var(--hint);
+  font-size: 13px;
+}
+
+/* Строка, ведущая в свой список. Кнопка снаружи, но выглядит строкой:
+   иначе в своём профиле цифры стояли бы иначе, чем в чужом. */
+.stat-row--door {
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+
+.stat-row--door:active {
+  background: var(--border);
+}
+
+.stat-row__arrow {
+  margin-left: auto;
+  align-self: center;
+}
+
+/* Иконка меню в углу профиля: вкладка «Ещё» уехала сюда. */
+.icon-button {
+  align-self: flex-start;
+  margin-left: auto;
+  background: var(--surface);
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  font-size: 17px;
+  color: var(--text);
+  display: grid;
+  place-items: center;
+}
+
+.bars--compact {
+  /* Тянется на всю оставшуюся высоту колонки — так низ блока совпадает
+     с низом трёх строк рядом. */
+  flex: 1;
+  height: auto;
+  min-height: 46px;
+  gap: 1px;
+  overflow-x: visible;
+}
+
+.bars--compact .bars__item {
+  min-width: 0;
+  gap: 2px;
+}
+
+/* Десять подписей в половину ширины: мельче и плотнее, но у каждого столбика —
+   иначе половинки приходится отсчитывать глазами от ближайшей целой звезды. */
+.bars--compact .bars__label {
+  font-size: 8px;
+  letter-spacing: -0.4px;
 }
 
 .stat b {
@@ -900,6 +966,7 @@ h3 {
 .layout-switch {
   display: flex;
   gap: 4px;
+  flex: none;
 }
 
 .layout-switch .mark {
@@ -921,10 +988,6 @@ h3 {
 .sorts__select {
   flex: 1;
   min-width: 0;
-}
-
-.layout-switch {
-  flex: none;
 }
 
 /* --- Люди ------------------------------------------------------------------ */
@@ -1304,8 +1367,212 @@ body.is-locked .app {
   text-align: center;
 }
 
-.profile__doors {
+/* --- Турниры --------------------------------------------------------------- */
+
+/* Плашка вверху каталога и расписания. Турнир живёт этапами по суткам, и без
+   неё человек, открывший приложение не в тот день, просто о нём не узнает. */
+.tournament-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--soon);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--soon) 14%, transparent);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.tournament-banner__icon {
+  font-size: 22px;
+}
+
+.tournament-banner__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tournament-banner__text b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Пара: два варианта рядом, выбор — одно нажатие по карточке целиком. */
+.duel {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: stretch;
   gap: 8px;
+  margin-bottom: 10px;
+}
+
+.duel__vs {
+  align-self: center;
+  color: var(--hint);
+  font-size: 12px;
+}
+
+.duel__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--surface);
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+.duel__side--empty {
+  display: grid;
+  place-items: center;
+  color: var(--hint);
+}
+
+/* Свой голос виден всегда — он единственное, что подсвечено, пока этап идёт. */
+.duel__side.is-chosen {
+  border-color: var(--soon);
+}
+
+.duel__side.is-won {
+  border-color: #16a34a;
+}
+
+.duel__side:disabled {
+  opacity: 1; /* закрытый этап не «выключен», он просто уже сыгран */
+}
+
+.duel__poster {
+  width: 100%;
+  max-width: 110px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.duel__poster--empty {
+  background: var(--border);
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 2;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--hint);
+}
+
+.duel__title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.duel__votes {
+  color: var(--hint);
+  font-size: 12px;
+}
+
+.tournament__winner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, #16a34a 18%, transparent);
+}
+
+/* --- Ачивки ---------------------------------------------------------------- */
+
+/* Четыре трофея с числами: бронза, серебро, золото, платина. */
+.trophies {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.trophy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 4px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  /* Пустой уровень бледнее: видно, что он есть, но нечем хвастаться. */
+  opacity: 0.45;
+}
+
+.trophy.is-on {
+  opacity: 1;
+}
+
+/* Раскрытый блок подсвечен рамкой: иначе непонятно, что список ниже принадлежит
+   ему и закрывается тем же нажатием. */
+.trophies.is-open .trophy {
+  outline: 1px solid var(--border);
+  outline-offset: -1px;
+}
+
+.trophy-icon {
+  display: block;
+  flex: none;
+}
+
+.trophy b {
+  font-size: 17px;
+}
+
+/* Секретная в списке: без названия и условия, только счётчик. */
+.achievement--secret {
+  opacity: 0.75;
+}
+
+.achievement {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  /* Неполученная бледнее, но видна: список целей полезнее списка наград. */
+  opacity: 0.55;
+}
+
+.achievement.is-earned {
+  opacity: 1;
+}
+
+.achievement__emoji {
+  font-size: 24px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  flex: none;
+}
+
+.achievement__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.achievement__check {
+  color: #16a34a;
+  font-weight: 700;
 }

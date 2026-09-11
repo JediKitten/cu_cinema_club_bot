@@ -144,9 +144,14 @@ function Field({
       inputMode={setting.type === "str" || setting.type === "time" ? "text" : "decimal"}
       value={String(value)}
       onChange={(e) =>
+        // У числового параметра запятую приводим к точке: на русской раскладке
+        // её набирают не задумываясь, а сервер разбирает значение как float
+        // и на «1,5» отвечает ошибкой.
         onChange(
           setting.key,
-          setting.type === "str" || setting.type === "time" ? e.target.value : e.target.value,
+          setting.type === "str" || setting.type === "time"
+            ? e.target.value
+            : e.target.value.replace(",", "."),
         )
       }
     />

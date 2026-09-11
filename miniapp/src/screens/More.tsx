@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import { createFilmRequest, myFilmRequests } from "../api";
 import { haptic } from "../telegram";
 import type { FilmRequest, User } from "../types";
-import { ROLE_LABEL } from "../roles";
 import { Admin } from "./Admin";
-import { Avatar } from "./Profile";
 import { History } from "./History";
 
 const STATUS: Record<FilmRequest["status"], string> = {
@@ -86,21 +84,8 @@ export function More({ user }: { user: User }) {
 
   return (
     <div className="screen">
-      {/* Профиль настраивают во вкладке «Друзья» — здесь только напоминание,
-          кто вошёл, и роль, если она есть. */}
-      <div className="person-row" style={{ padding: "0 2px" }}>
-        <span className="person-row__main">
-          <Avatar url={user.photo_url} name={user.display_name} size={40} />
-          <span>
-            <p className="film-row__title">{user.display_name}</p>
-            <p className="meta">
-              {user.tg_username ? `@${user.tg_username} · ` : ""}
-              {ROLE_LABEL[user.role]}
-            </p>
-          </span>
-        </span>
-      </div>
-
+      {/* Кто вошёл, здесь не повторяем: на этот экран приходят из профиля,
+          где имя и роль только что были на виду. */}
       {ADMIN_ROLES.has(user.role) && (
         <button className="primary" onClick={() => setShowAdmin(true)}>
           ⚙ Клуб

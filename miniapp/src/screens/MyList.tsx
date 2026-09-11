@@ -25,32 +25,26 @@ function soonestHint(items: InterestState[]): string {
   return `Сгорают сами: ближайшая — через ${Math.min(...days)} дн. Продлить можно, когда придёт напоминание.`;
 }
 
-export function MyList({ onOpen }: Props) {
+/** Отмеченное: «Ближайшее» и «Желаемое».
+ *
+ * Отдельной страницей, а не разделом общего списка: в профиль ведут два числа,
+ * и каждое должно открывать ровно то, что обещало.
+ */
+export function MyMarks({ onOpen }: Props) {
   const [items, setItems] = useState<InterestState[]>([]);
-  const [watched, setWatchedFilms] = useState<FilmBrief[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([myInterests(), myWatched()])
-      .then(([marks, seen]) => {
-        setItems(marks);
-        setWatchedFilms(seen);
-      })
+    myInterests()
+      .then(setItems)
       .catch((e) => setError(e instanceof Error ? e.message : "Ошибка загрузки"))
       .finally(() => setLoading(false));
   }, []);
 
-  // Отметки меняют в карточке фильма, поэтому в плитке их нет. Обработчик
-  // остаётся: карточка возвращает обновлённый фильм, и списки надо поправить.
-  function handleMarks(kinds: InterestKind[], updated: FilmBrief) {
-    // Список просмотренного меняется той же кнопкой, что и отметки, поэтому
-    // обновляем его здесь же — иначе фильм исчезал бы только после перезахода.
-    setWatchedFilms((current) => {
-      const without = current.filter((film) => !isSameFilm(film, updated));
-      return updated.watched ? [updated, ...without] : without;
-    });
-
+  // Отметки меняют в карточке фильма, поэтому кнопок в плитке нет. Обработчик
+  // остаётся: карточка возвращает обновлённый фильм, и список надо поправить.
+  useFilmChanges((kinds, updated) => {
     setItems((current) =>
       replaceFilm(
         // Фильм без отметок в этом списке больше не место.
@@ -62,10 +56,7 @@ export function MyList({ onOpen }: Props) {
         (item) => ({ ...item, kinds, film: { ...item.film, ...updated, my_interests: kinds } }),
       ),
     );
-  }
-
-  // Отметки меняют в карточке фильма — она сообщает, что изменилось.
-  useFilmChanges(handleMarks);
+  });
 
   const soon = items.filter((item) => item.kinds.includes("soon"));
   const wishlist = items.filter((item) => !item.kinds.includes("soon"));
@@ -73,7 +64,7 @@ export function MyList({ onOpen }: Props) {
   if (loading) return <div className="center">Загрузка…</div>;
   if (error) return <div className="screen"><div className="error">{error}</div></div>;
 
-  if (items.length === 0 && watched.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="center">
         Пока ничего не отмечено.
@@ -101,17 +92,54 @@ export function MyList({ onOpen }: Props) {
           <PosterGrid films={wishlist.map((item) => item.film)} onOpen={onOpen} />
         </Section>
       )}
+    </div>
+  );
+}
 
-      {watched.length > 0 && (
-        <Section
-          title="Просмотренные"
-          count={watched.length}
-          storageKey="mine-watched"
-          hint="Отметка «Смотрел» ничему не мешает: фильм может быть и здесь, и в желаемом."
-        >
-          <PosterGrid films={watched} onOpen={onOpen} />
-        </Section>
-      )}
+/** Просмотренное — тем же устройством, но своей страницей. */
+export function MyWatched({ onOpen }: Props) {
+  const [films, setFilms] = useState<FilmBrief[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    myWatched()
+      .then(setFilms)
+      .catch((e) => setError(e instanceof Error ? e.message : "Ошибка загрузки"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // «Смотрел» жмут той же кнопкой, что и отметки, — в карточке фильма.
+  useFilmChanges((_kinds: InterestKind[], updated: FilmBrief) => {
+    setFilms((current) => {
+      const without = current.filter((film) => !isSameFilm(film, updated));
+      return updated.watched ? [updated, ...without] : without;
+    });
+  });
+
+  if (loading) return <div className="center">Загрузка…</div>;
+  if (error) return <div className="screen"><div className="error">{error}</div></div>;
+
+  if (films.length === 0) {
+    return (
+      <div className="center">
+        Пока ничего не отмечено просмотренным.
+        <br />
+        Кнопка «Смотрел» есть в карточке фильма и в ленте.
+      </div>
+    );
+  }
+
+  return (
+    <div className="screen">
+      <Section
+        title="Просмотренные"
+        count={films.length}
+        storageKey="mine-watched"
+        hint="Отметка «Смотрел» ничему не мешает: фильм может быть и здесь, и в желаемом."
+      >
+        <PosterGrid films={films} onOpen={onOpen} />
+      </Section>
     </div>
   );
 }

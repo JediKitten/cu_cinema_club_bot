@@ -1,15 +1,18 @@
 """Этап 3: расстановка показов, публикация, подтверждения (§7)."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import Confirmation, Hall, Notification, Screening, Slot
 from app.models.enums import ConfirmationState, NotificationKind, RoundStage, ScreeningStatus
 from app.services import schedule as sched
 from app.services import voting
 from app.services.schedule import ScheduleError
+from tests.conftest import TEST_DB, _url
 from tests.test_voting import prepared_round
 from tests.test_weights import make_user
 
@@ -282,6 +285,88 @@ async def test_cancelled_screening_frees_the_evening(session):
     await session.commit()
     again = await sched.assign(session, round_, films[1].id, slots[0].id, boss.id)
     assert again.id != screening.id
+
+
+async def test_last_seat_does_not_go_to_two_people_at_once(session):
+    """Два «Приду» на последнее место в один момент — пройти должен один.
+
+    Места считаются чтением, а занимаются записью, и между этими шагами
+    вклинивается чужой запрос: без блокировки строки показа оба видят
+    свободное место, и в зале оказывается на человека больше, чем стульев.
+    Поэтому тест идёт двумя настоящими соединениями, а не одной сессией.
+    """
+    round_, films, slots, boss, voters = await voted_round(session, capacity=1)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+    await session.commit()
+
+    engine = create_async_engine(_url(TEST_DB))
+    maker = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    try:
+        async with maker() as one, maker() as two:
+            results = await asyncio.wait_for(
+                asyncio.gather(
+                    sched.confirm(one, screening.id, voters[0].id),
+                    sched.confirm(two, screening.id, voters[1].id),
+                ),
+                timeout=15,
+            )
+    finally:
+        await engine.dispose()
+
+    assert sorted(result.state for result in results) == [
+        ConfirmationState.CONFIRMED,
+        ConfirmationState.WAITLIST,
+    ]
+
+
+async def test_queue_is_not_overtaken_by_pressing_again(session):
+    """Стоящий в очереди не обгоняет её повторным нажатием «Приду».
+
+    Место, освободившееся после отмены, принадлежит первому в очереди, а не
+    тому, кто чаще открывает приложение.
+    """
+    round_, films, slots, boss, voters = await voted_round(session, capacity=1)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+
+    await sched.confirm(session, screening.id, voters[0].id)
+    await sched.confirm(session, screening.id, voters[1].id)  # первый в очереди
+    await sched.confirm(session, screening.id, voters[2].id)  # второй в очереди
+
+    # Место освободилось, но очередь двигает только promote_from_waitlist.
+    confirmation = (
+        await session.execute(
+            sa.select(Confirmation).where(
+                Confirmation.screening_id == screening.id,
+                Confirmation.user_id == voters[0].id,
+            )
+        )
+    ).scalar_one()
+    confirmation.state = ConfirmationState.CANCELLED
+    await session.commit()
+
+    impatient = await sched.confirm(session, screening.id, voters[2].id)
+    assert impatient.state == ConfirmationState.WAITLIST
+    assert impatient.place_in_queue == 2
+
+
+async def test_returning_after_cancel_goes_to_the_end_of_the_queue(session):
+    """Отменился и вернулся — встаёт за теми, кто записался, пока его не было."""
+    round_, films, slots, boss, voters = await voted_round(session, capacity=1)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+
+    await sched.confirm(session, screening.id, voters[0].id)  # занял место
+    await sched.confirm(session, screening.id, voters[1].id)  # в очередь
+    # Уходит первый: очередь двигается, место занимает voters[1].
+    await sched.cancel(session, screening.id, voters[0].id, late_cancel_hours=24)
+    await sched.confirm(session, screening.id, voters[2].id)  # встал в очередь
+
+    returned = await sched.confirm(session, screening.id, voters[0].id)
+
+    assert returned.state == ConfirmationState.WAITLIST
+    assert returned.place_in_queue == 2
 
 
 async def test_repeat_confirm_is_idempotent(session):

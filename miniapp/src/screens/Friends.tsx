@@ -5,7 +5,7 @@ import { Section } from "../components/Section";
 import { useOpenFilmById } from "../filmOpener";
 import { haptic, showMessage } from "../telegram";
 import { Avatar } from "./Profile";
-import type { Circle, FeedItem, PersonBrief, User } from "../types";
+import type { Circle, FeedItem, PersonBrief } from "../types";
 
 const ACTION: Record<FeedItem["kind"], string> = {
   rating: "оценил",
@@ -27,13 +27,7 @@ function when(iso: string): string {
  * Лента собрана из событий, которые и так есть: отметок, просмотров и оценок.
  * Ничего нового ради неё не сохраняется.
  */
-export function Friends({
-  me,
-  onOpenProfile,
-}: {
-  me: User;
-  onOpenProfile(id: number): void;
-}) {
+export function Friends({ onOpenProfile }: { onOpenProfile(id: number): void }) {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [circle, setCircle] = useState<Circle | null>(null);
   const [query, setQuery] = useState("");
@@ -119,23 +113,8 @@ export function Friends({
 
   return (
     <div className="screen">
-      {/* Свой профиль живёт здесь же: настройка профиля и люди клуба — одно
-          и то же занятие, и разносить их по разным вкладкам незачем. */}
-      <button className="slot-row person-row" onClick={() => onOpenProfile(me.id)}>
-        <span className="person-row__main">
-          <Avatar url={me.photo_url} name={me.display_name} size={44} />
-          <span>
-            <p className="film-row__title">{me.display_name}</p>
-            <p className="meta">
-              {me.tg_username ? `@${me.tg_username} · ` : ""}
-              мой профиль и любимые фильмы
-            </p>
-          </span>
-        </span>
-        <span className="hint">→</span>
-      </button>
-
-      <h2 style={{ fontSize: 18, margin: 0 }}>Друзья</h2>
+      {/* Строки «мой профиль» здесь больше нет: на этот экран приходят из
+          профиля, и она вела бы ровно туда, откуда человек только что вышел. */}
       <input
         className="field"
         value={query}

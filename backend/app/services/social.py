@@ -15,16 +15,23 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
+    Attendance as AttendanceRecord,
+)
+from app.models import (
+    Confirmation,
     Favourite,
     Feedback,
     Film,
     FilmRating,
     Friendship,
     Interest,
+    Screening,
+    Slot,
     User,
     Watch,
 )
-from app.models.enums import FilmStatus, InterestKind
+from app.models.enums import ConfirmationState, FilmStatus, InterestKind, ScreeningStatus
+from app.services import achievements
 
 # Четыре фильма — ровно строка постеров в профиле. Больше превращает витрину
 # в ещё один список, которых в приложении и так хватает.
@@ -65,6 +72,25 @@ class FeedItem:
 
 
 @dataclass(slots=True)
+class Attendance_:
+    """Посещаемость показов клуба.
+
+    Три числа вместо одного: «был на пяти» без «собирался на семь» ничего
+    не говорит ни о человеке, ни о клубе.
+    """
+
+    came: int = 0
+    planned: int = 0
+    last_at: datetime | None = None
+    last_film: str | None = None
+
+    @property
+    def ratio(self) -> float | None:
+        """Доля дошедших. None, пока не на что делить."""
+        return round(self.came / self.planned, 2) if self.planned else None
+
+
+@dataclass(slots=True)
 class Profile:
     id: int
     display_name: str
@@ -82,6 +108,8 @@ class Profile:
     # ползвезды, индекс 9 — пять. Строгий вкус видно с одного взгляда.
     ratings_by_score: list[int] = field(default_factory=list)
     relation: Relation | None = None
+    attendance: "Attendance_ | None" = None
+    achievements: "achievements.Summary | None" = None
     recent: list[FeedItem] = field(default_factory=list)
 
 
@@ -222,7 +250,13 @@ async def feed(
     for feedback in (
         await session.execute(
             sa.select(Feedback)
-            .where(Feedback.user_id.in_(user_ids), Feedback.review_text.is_not(None))
+            .where(
+                Feedback.user_id.in_(user_ids),
+                Feedback.review_text.is_not(None),
+                # Отзыв о встрече без фильма ленте показать нечем: она вся
+                # построена вокруг карточек.
+                Feedback.film_id.is_not(None),
+            )
             .order_by(Feedback.created_at.desc())
             .limit(limit)
         )
@@ -405,7 +439,60 @@ async def profile(session: AsyncSession, viewer_id: int, user_id: int) -> Profil
         friends=mutual or 0,
         ratings_by_score=histogram,
         relation=await relation(session, viewer_id, user_id),
+        attendance=await attendance(session, user_id),
+        achievements=await achievements.of_user(session, user_id),
         recent=await feed(session, [user_id], limit=10),
+    )
+
+
+async def attendance(session: AsyncSession, user_id: int) -> Attendance_:
+    """Сколько показов человек посетил и сколько собирался.
+
+    «Собирался» — подтверждения на уже прошедшие сеансы: обещание на завтра
+    ещё не нарушено, и считать его несбывшимся нечестно.
+    """
+    came = (
+        await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(AttendanceRecord)
+            .where(AttendanceRecord.user_id == user_id)
+        )
+        or 0
+    )
+    planned = (
+        await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(Confirmation)
+            .join(Screening, Screening.id == Confirmation.screening_id)
+            .join(Slot, Slot.id == Screening.slot_id)
+            .where(
+                Confirmation.user_id == user_id,
+                Confirmation.state != ConfirmationState.CANCELLED,
+                Slot.starts_at < sa.func.now(),
+                Screening.status != ScreeningStatus.CANCELLED,
+            )
+        )
+        or 0
+    )
+
+    last = (
+        await session.execute(
+            sa.select(AttendanceRecord.marked_at, Film.title_ru, Screening.title)
+            .join(Screening, Screening.id == AttendanceRecord.screening_id)
+            .outerjoin(Film, Film.id == Screening.film_id)
+            .where(AttendanceRecord.user_id == user_id)
+            .order_by(AttendanceRecord.marked_at.desc())
+            .limit(1)
+        )
+    ).first()
+
+    return Attendance_(
+        came=came,
+        # Пришедший на показ, куда не записывался (модератор отметил в зале),
+        # иначе давал бы «дошёл 150%».
+        planned=max(planned, came),
+        last_at=last[0] if last else None,
+        last_film=(last[1] or last[2]) if last else None,
     )
 
 

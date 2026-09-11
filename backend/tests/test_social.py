@@ -308,3 +308,35 @@ async def test_people_listing_shows_who_is_already_added(client, session):
     everyone = (await client.get("/api/people", headers=headers)).json()
 
     assert [(p["display_name"], p["following"]) for p in everyone] == [("Аня", True)]
+
+
+async def test_profile_shows_attendance_of_club_screenings(session):
+    """В профиле видно, на скольких показах человек был и на сколько собирался.
+
+    Одно число «был на пяти» не говорит ничего: важно, сколько раз обещал
+    прийти. Обещания на будущие сеансы не в счёт — они ещё не нарушены.
+    """
+    _, _, screening, boss, voters = await held_screening(session)
+    came = voters[0]
+
+    profile = await social.profile(session, came.id, came.id)
+
+    assert profile.attendance.came == 1
+    assert profile.attendance.planned == 1
+    assert profile.attendance.ratio == 1.0
+    assert profile.attendance.last_at is not None
+    assert profile.attendance.last_film
+
+    # Тот, кто записался и не пришёл, виден именно так.
+    missed = await social.profile(session, voters[1].id, voters[1].id)
+    assert missed.attendance.came == 0
+    assert missed.attendance.planned == 1
+    assert missed.attendance.ratio == 0.0
+
+
+async def test_attendance_is_empty_for_someone_who_never_came(session):
+    anya, _ = await two_people(session)
+    profile = await social.profile(session, anya.id, anya.id)
+
+    assert profile.attendance.came == 0
+    assert profile.attendance.ratio is None

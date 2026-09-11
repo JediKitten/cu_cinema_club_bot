@@ -160,29 +160,31 @@ async def _record(
     session.add(attendance)
 
     # Пришёл — значит посмотрел. Отметку интереса при этом снимаем: фильм
-    # переходит в «Просмотренные» (§8).
-    await session.execute(
-        sa.update(Interest)
-        .where(
-            Interest.user_id == user_id,
-            Interest.film_id == screening.film_id,
-            Interest.revoked_at.is_(None),
-        )
-        .values(revoked_at=sa.func.now(), revoke_reason=RevokeReason.WATCHED)
-    )
-
-    already_watched = await session.scalar(
-        sa.select(Watch.id).where(Watch.user_id == user_id, Watch.film_id == screening.film_id)
-    )
-    if already_watched is None:
-        session.add(
-            Watch(
-                user_id=user_id,
-                film_id=screening.film_id,
-                source="attendance",
-                screening_id=screening.id,
+    # переходит в «Просмотренные» (§8). У события без фильма (встреча клуба,
+    # показ «ждите анонса») смотреть нечего — отмечаем только приход.
+    if screening.film_id is not None:
+        await session.execute(
+            sa.update(Interest)
+            .where(
+                Interest.user_id == user_id,
+                Interest.film_id == screening.film_id,
+                Interest.revoked_at.is_(None),
             )
+            .values(revoked_at=sa.func.now(), revoke_reason=RevokeReason.WATCHED)
         )
+
+        already_watched = await session.scalar(
+            sa.select(Watch.id).where(Watch.user_id == user_id, Watch.film_id == screening.film_id)
+        )
+        if already_watched is None:
+            session.add(
+                Watch(
+                    user_id=user_id,
+                    film_id=screening.film_id,
+                    source="attendance",
+                    screening_id=screening.id,
+                )
+            )
 
     await session.commit()
     return attendance

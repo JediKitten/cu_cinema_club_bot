@@ -1,28 +1,27 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { login } from "./api";
 import { Catalog } from "./screens/Catalog";
 import { Deck } from "./screens/Deck";
 import { FilmDetail } from "./screens/FilmDetail";
 import { Gate } from "./screens/Gate";
-import { More } from "./screens/More";
 import { Profile } from "./screens/Profile";
 import { ProfileTab } from "./screens/ProfileTab";
+import { Tournament } from "./screens/Tournament";
 import { Week } from "./screens/Week";
 import { FilmOpenerProvider } from "./filmOpener";
 import { initTelegram } from "./telegram";
 import type { FilmBrief, User } from "./types";
 
-type Tab = "catalog" | "deck" | "vote" | "profile" | "more";
+type Tab = "catalog" | "deck" | "vote" | "profile";
 
-// Пять вкладок у всех одинаковые. «Клуб» — кнопка в «Ещё», «Мои» и «Друзья» —
-// двери из профиля: вкладки, которые у разных людей разные, сбивают с толку,
-// а панель на пять кнопок и так полна.
+// Четыре вкладки у всех одинаковые. «Ещё» уехало под иконку в углу профиля,
+// «Клуб», «Мои» и «Друзья» — двери оттуда же: вкладки, которые у разных людей
+// разные, сбивают с толку, а пятая кнопка внизу делала панель тесной.
 const TABS: { key: Tab; icon: string; label: string }[] = [
   { key: "catalog", icon: "🎞", label: "Каталог" },
   { key: "deck", icon: "🔥", label: "Лента" },
   { key: "vote", icon: "📅", label: "Расписание" },
   { key: "profile", icon: "👤", label: "Профиль" },
-  { key: "more", icon: "☰", label: "Ещё" },
 ];
 
 // Статистика по фильму — админам и главному: модератор ведёт показы, а не отбор.
@@ -36,6 +35,16 @@ export default function App() {
   const [openFilm, setOpenFilm] = useState<FilmBrief | null>(null);
   // Профиль открывается поверх вкладок — как карточка фильма.
   const [openProfile, setOpenProfile] = useState<number | null>(null);
+  // Турнир — тоже наложение: в него заходят из плашки в каталоге или
+  // расписании и возвращаются туда же.
+  const [openTournament, setOpenTournament] = useState<number | null>(null);
+
+  // Постоянные обработчики: подписка на кнопку «назад» Telegram живёт в эффекте
+  // с ними в зависимостях, и новая функция на каждый рендер App заставляла её
+  // сниматься и вешаться заново — при каждом переключении вкладки.
+  const closeFilm = useCallback(() => setOpenFilm(null), []);
+  const closeProfile = useCallback(() => setOpenProfile(null), []);
+  const closeTournament = useCallback(() => setOpenTournament(null), []);
 
   // Бот открывает приложение адресом вида ?film=123 — сразу показываем карточку.
   useEffect(() => {
@@ -97,13 +106,12 @@ export default function App() {
       <div className="app">
         {/* Вкладка остаётся смонтированной под карточкой: иначе возврат из фильма
           терял бы поисковый запрос, выдачу и место прокрутки. */}
-        {tab === "catalog" && <Catalog onOpen={open} />}
+        {tab === "catalog" && <Catalog onOpen={open} onOpenTournament={setOpenTournament} />}
         {tab === "deck" && <Deck onOpen={open} />}
-        {tab === "vote" && <Week />}
+        {tab === "vote" && <Week onOpenTournament={setOpenTournament} />}
         {tab === "profile" && (
           <ProfileTab me={user} onOpenFilm={open} onOpenProfile={setOpenProfile} />
         )}
-        {tab === "more" && <More user={user} />}
 
         {/* Экраны не размонтируются под тем, что открылось поверх: вернувшись
             из карточки фильма, человек должен оказаться там же, где был. */}
@@ -112,8 +120,14 @@ export default function App() {
             <Profile
               userId={openProfile}
               active={openFilm === null}
-              onBack={() => setOpenProfile(null)}
+              onBack={closeProfile}
             />
+          </div>
+        )}
+
+        {openTournament !== null && openFilm === null && (
+          <div className="overlay">
+            <Tournament id={openTournament} onBack={closeTournament} />
           </div>
         )}
 
@@ -125,13 +139,13 @@ export default function App() {
               filmId={openFilm.id}
               tmdbId={openFilm.tmdb_id}
               withStats={STATS_ROLES.has(user.role)}
-              onBack={() => setOpenFilm(null)}
+              onBack={closeFilm}
             />
           </div>
         )}
 
         {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
-        {openFilm === null && openProfile === null && (
+        {openFilm === null && openProfile === null && openTournament === null && (
           <nav className="tabs">
             {TABS.map((item) => (
               <button

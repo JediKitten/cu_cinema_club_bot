@@ -97,6 +97,13 @@ class AttendanceMethod(StrEnum):
     MANUAL = "manual"
 
 
+class TournamentStatus(StrEnum):
+    DRAFT = "draft"
+    RUNNING = "running"
+    FINISHED = "finished"
+    CANCELLED = "cancelled"
+
+
 class NotificationKind(StrEnum):
     SOON_EXPIRED = "soon_expired"
     SHORTLIST_PUBLISHED = "shortlist_published"
@@ -123,3 +130,9 @@ class NotificationKind(StrEnum):
     # Произвольное сообщение от админа: клубу нужно говорить и то, чего нет
     # ни в одном шаблоне.
     ADMIN_BROADCAST = "admin_broadcast"
+    # Ачивка: поздравляем один раз, в момент выдачи.
+    ACHIEVEMENT_EARNED = "achievement_earned"
+    # Турниры: о старте, о каждом новом этапе и о победителе.
+    TOURNAMENT_STARTED = "tournament_started"
+    TOURNAMENT_ROUND_OPENED = "tournament_round_opened"
+    TOURNAMENT_FINISHED = "tournament_finished"

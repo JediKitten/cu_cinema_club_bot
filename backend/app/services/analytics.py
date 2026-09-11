@@ -429,15 +429,22 @@ async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
             Slot.starts_at,
             Screening.status,
             Screening.expected_attendance,
-            sa.func.count(Attendance.id).label("came"),
-            sa.func.avg(Feedback.film_rating).label("rating"),
+            # Подзапросами, а не двумя LEFT JOIN: соединённые по одному и тому же
+            # screening_id, отметки о приходе и отзывы перемножались бы, и показ
+            # с десятью зрителями и четырьмя отзывами показывал бы «пришли 40».
+            sa.select(sa.func.count())
+            .select_from(Attendance)
+            .where(Attendance.screening_id == Screening.id)
+            .scalar_subquery()
+            .label("came"),
+            sa.select(sa.func.avg(Feedback.film_rating))
+            .where(Feedback.screening_id == Screening.id, Feedback.film_rating.is_not(None))
+            .scalar_subquery()
+            .label("rating"),
         )
         .join(Film, Film.id == Screening.film_id)
         .join(Slot, Slot.id == Screening.slot_id)
-        .outerjoin(Attendance, Attendance.screening_id == Screening.id)
-        .outerjoin(Feedback, Feedback.screening_id == Screening.id)
         .where(Screening.status == ScreeningStatus.COMPLETED)
-        .group_by(Screening.id, Film.id, Film.title_ru, Film.year, Film.poster_path, Slot.starts_at)
         .order_by(Slot.starts_at.desc())
         .limit(limit)
     )

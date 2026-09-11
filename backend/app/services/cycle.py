@@ -21,6 +21,9 @@ from app.services.settings import SettingsService
 
 logger = logging.getLogger(__name__)
 
+# Сколько недель вперёд готовы пропустить, подбирая неделю для нового цикла.
+MAX_WEEKS_AHEAD = 4
+
 
 async def tick(session: AsyncSession) -> list[str]:
     """Один проход. Возвращает список выполненных переходов — для лога."""
@@ -31,9 +34,10 @@ async def tick(session: AsyncSession) -> list[str]:
     round_ = await rounds_service.active_round(session)
 
     if round_ is None:
-        # Цикла нет — заводим на следующую неделю, чтобы люди могли голосовать,
-        # когда придёт срок.
-        round_ = await rounds_service.open_round(session, actor_id=None)
+        # Цикла нет — заводим, чтобы люди могли голосовать, когда придёт срок.
+        round_ = await rounds_service.open_round(
+            session, _first_collectable_week(values, tz), actor_id=None
+        )
         done.append(f"открыт цикл на {round_.week_start}")
 
     def passed(setting: str) -> bool:
@@ -81,6 +85,27 @@ async def tick(session: AsyncSession) -> list[str]:
     if done:
         logger.info("Цикл %s: %s", round_.week_start, "; ".join(done))
     return done
+
+
+def _first_collectable_week(
+    values: dict, tz: str, now: datetime | None = None
+) -> date:
+    """Ближайшая неделя показов, по которой ещё можно успеть собрать интерес.
+
+    Дедлайны отсчитываются от недели, ПРЕДШЕСТВУЮЩЕЙ показам. В обычном ритме
+    цикл закрывается в понедельник, и у следующей недели все сроки впереди.
+    Но если цикла нет вовсе — бота запустили впервые или он долго лежал, —
+    ближайший понедельник может оказаться таким, что его дедлайны уже в
+    прошлом. Тогда один проход `tick` собрал бы шорт-лист, опубликовал его,
+    расставил показы и объявил расписание подряд, не дав людям ни минуты
+    ни на отметки, ни на голосование. Пропускаем такие недели.
+    """
+    week = rounds_service.next_week_start(now.date() if now else None)
+    for _ in range(MAX_WEEKS_AHEAD):
+        if not autopilot.deadline_passed(week, str(values["stage1_cut_at"]), tz, now):
+            return week
+        week += timedelta(days=rounds_service.DAYS_IN_WEEK)
+    return week
 
 
 def _week_started(week_start: date, now: datetime | None = None) -> bool:

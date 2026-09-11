@@ -16,6 +16,10 @@ from app.services import invites
 
 ALGORITHM = "HS256"
 
+# Насколько огрубляем «последний визит». Число используется только в аналитике
+# активности, и точность в минуты там ничего не меняет.
+LAST_SEEN_PRECISION = timedelta(minutes=10)
+
 
 def issue_token(user_id: int) -> str:
     config = get_config()
@@ -53,10 +57,15 @@ async def authenticated_user(
     if user.tg_id is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Требуется привязка Telegram")
 
-    await session.execute(
-        sa.update(User).where(User.id == user.id).values(last_seen_at=sa.func.now())
-    )
-    await session.commit()
+    # «Последний визит» с точностью до минут никому не нужен, а запись на
+    # каждый вызов API — это UPDATE и COMMIT строки пользователя на каждое
+    # движение в каталоге: блокировка его строки и напрасный WAL.
+    now = datetime.now(UTC)
+    if user.last_seen_at is None or now - user.last_seen_at >= LAST_SEEN_PRECISION:
+        await session.execute(
+            sa.update(User).where(User.id == user.id).values(last_seen_at=sa.func.now())
+        )
+        await session.commit()
     return user
 
 

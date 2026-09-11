@@ -1,14 +1,58 @@
 import { useEffect, useState } from "react";
 import { addFriend, getProfile, removeFriend, searchFilms, setFavourites } from "../api";
+import { Achievements } from "../components/Achievements";
+import { BackLink } from "../components/BackLink";
 import { Bars } from "../components/Bars";
+import { dayLabel } from "../dates";
 import { Poster } from "../components/FilmRow";
 import { useOpenFilm } from "../filmOpener";
-import { haptic, showMessage, useTelegramBackButton } from "../telegram";
+import { haptic, showMessage, bindBackButton } from "../telegram";
 import { plural } from "../plural";
 import { ROLE_LABEL } from "../roles";
 import type { FilmBrief, Profile as Data } from "../types";
+import type { ProfileDoor } from "./ProfileTab";
 
 const MAX_FAVOURITES = 4;
+
+/** Плитка с числом: три в ряд, без перехода куда-либо. */
+function Tile({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="stat">
+      <b>{value}</b>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/** Строка статистики. С обработчиком — кнопка, ведущая в свой список.
+ *
+ * Одна и та же строка в обеих ролях: иначе в чужом профиле числа стояли бы
+ * на пиксель иначе, чем в своём, и это было бы заметно.
+ */
+function Stat({
+  value,
+  label,
+  onOpen,
+}: {
+  value: number;
+  label: string;
+  onOpen?: (() => void) | undefined;
+}) {
+  const content = (
+    <>
+      <b>{value}</b>
+      <span>{label}</span>
+      {onOpen && <span className="stat-row__arrow">›</span>}
+    </>
+  );
+  return onOpen ? (
+    <button className="stat-row stat-row--door" onClick={onOpen}>
+      {content}
+    </button>
+  ) : (
+    <div className="stat-row">{content}</div>
+  );
+}
 
 const ACTION: Record<string, string> = {
   rating: "оценил",
@@ -38,6 +82,8 @@ export function Profile({
   userId,
   active = true,
   onBack,
+  onOpenDoor,
+  onOpenMenu,
 }: {
   userId: number;
   /** Экран остаётся смонтированным под карточкой фильма — но кнопка «назад»
@@ -45,6 +91,11 @@ export function Profile({
   active?: boolean;
   /** Нет, когда профиль открыт вкладкой: возвращаться оттуда некуда. */
   onBack?(): void;
+  /** Только в своём профиле: строки статистики открывают свои списки. */
+  onOpenDoor?(door: ProfileDoor): void;
+  /** Иконка меню в углу. Вкладка «Ещё» уехала сюда, чтобы внизу осталось
+   *  четыре вкладки, а не пять. */
+  onOpenMenu?(): void;
 }) {
   const [profile, setProfile] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +107,7 @@ export function Profile({
 
   useEffect(
     // Кнопку «назад» показываем, только когда есть куда возвращаться.
-    () => useTelegramBackButton(active && onBack !== undefined, onBack ?? (() => {})),
+    () => bindBackButton(active && onBack !== undefined, onBack ?? (() => {})),
     [active, onBack],
   );
 
@@ -122,8 +173,17 @@ export function Profile({
     }
   }
 
-  if (error) return <div className="screen"><div className="error">{error}</div></div>;
+  if (error)
+    return (
+      <div className="screen">
+        {onBack && <BackLink onBack={onBack} />}
+        <div className="error">{error}</div>
+      </div>
+    );
   if (!profile) return <div className="center">Загрузка…</div>;
+
+  // Двери открываются только в своём профиле — и только если есть куда вести.
+  const door = profile.is_me ? onOpenDoor : undefined;
 
   const relation = profile.relation_friends
     ? "в друзьях"
@@ -135,9 +195,12 @@ export function Profile({
 
   return (
     <div className="screen">
+      {/* В браузере и старых клиентах родной кнопки «назад» нет, а профиль
+          открыт окном поверх вкладки — выйти было бы нечем. */}
+      {onBack && <BackLink onBack={onBack} />}
       <div className="profile__head">
         <Avatar url={profile.photo_url} name={profile.display_name} size={64} />
-        <div>
+        <div className="profile__who">
           <h1 style={{ fontSize: 20, margin: 0 }}>{profile.display_name}</h1>
           {profile.tg_username && <p className="meta">@{profile.tg_username}</p>}
           <p className="meta">
@@ -145,6 +208,11 @@ export function Profile({
             {relation && ` · ${relation}`}
           </p>
         </div>
+        {onOpenMenu && (
+          <button className="icon-button" onClick={onOpenMenu} aria-label="Меню">
+            ☰
+          </button>
+        )}
       </div>
 
       {!profile.is_me && (
@@ -165,46 +233,53 @@ export function Profile({
         </div>
       )}
 
-      {/* Три числа: сколько хочет посмотреть, сколько посмотрел, сколько друзей.
-          Оценки живут ниже — там их не одно число, а целое распределение. */}
-      <div className="stats-grid stats-grid--three">
-        <div className="stat">
-          <b>{profile.marks}</b>
-          <span>{plural(profile.marks, ["отметка", "отметки", "отметок"])}</span>
-        </div>
-        <div className="stat">
-          <b>{profile.watched}</b>
-          <span>просмотрено</span>
-        </div>
-        <div className="stat">
-          <b>{profile.friends}</b>
-          <span>{plural(profile.friends, ["друг", "друга", "друзей"])}</span>
-        </div>
-      </div>
-
-      {profile.ratings > 0 && (
-        <>
-          <div className="profile__row">
-            <h3 style={{ margin: 0 }}>Как оценивает</h3>
-            <span className="hint">
-              {profile.ratings} {plural(profile.ratings, ["оценка", "оценки", "оценок"])}
-            </span>
-          </div>
-          <Bars
-            data={profile.ratings_by_score.map((count, index) => ({
-              // Подпись у каждого столбика: без неё половинки приходилось
-              // отсчитывать глазами от ближайшей целой звезды.
-              label: String((index + 1) / 2).replace(".", ","),
-              value: count,
-            }))}
-            color="var(--soon)"
-            // Десятая доли достаточно, и запятая — как в остальных числах.
-            hint={`Сколько фильмов получили каждую оценку. Средняя — ${
-              profile.average_rating?.toFixed(1).replace(".", ",") ?? "—"
-            } из 5.`}
+      {/* Слева три числа — сколько хочет посмотреть, сколько посмотрел, сколько
+          друзей; справа распределение оценок. Рядом, а не друг под другом:
+          оба блока про одно и то же — что это за зритель, — и вместе читаются
+          одним взглядом.
+          В своём профиле каждая строка — вход в свой список. В чужом это просто
+          числа: поимённый список желаемого публичным быть не должен (§11). */}
+      <div className={`profile__top ${profile.ratings > 0 ? "" : "profile__top--alone"}`}>
+        <div className="stat-rows">
+          <Stat
+            value={profile.marks}
+            label={plural(profile.marks, ["отметка", "отметки", "отметок"])}
+            onOpen={door && (() => door("marks"))}
           />
-        </>
-      )}
+          <Stat
+            value={profile.watched}
+            label="просмотрено"
+            onOpen={door && (() => door("watched"))}
+          />
+          <Stat
+            value={profile.friends}
+            label={plural(profile.friends, ["друг", "друга", "друзей"])}
+            onOpen={door && (() => door("friends"))}
+          />
+        </div>
+
+        {profile.ratings > 0 && (
+          <div className="profile__ratings">
+            <div className="profile__row">
+              <h3 style={{ margin: 0, fontSize: 15 }}>Как оценивает</h3>
+              <span className="hint">{profile.ratings}</span>
+            </div>
+            <Bars
+              compact
+              data={profile.ratings_by_score.map((count, index) => ({
+                // Подпись только у краёв: в половину ширины десять не влезают,
+                // а «от половины звезды до пяти» понятно и по двум.
+                label: String((index + 1) / 2).replace(".", ","),
+                value: count,
+              }))}
+              color="var(--soon)"
+            />
+            <p className="hint">
+              Средняя — {profile.average_rating?.toFixed(1).replace(".", ",") ?? "—"} из 5
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="profile__row">
         <h3 style={{ margin: 0 }}>Любимое</h3>
@@ -301,6 +376,39 @@ export function Profile({
                 </button>
               ))}
             </>
+          )}
+        </>
+      )}
+
+      <Achievements data={profile.achievements} isMe={profile.is_me} />
+
+      {/* Посещаемость — под витриной любимого: это тоже про человека, но уже
+          не про вкус, а про то, доходит ли он до зала. */}
+      {profile.attendance.came + profile.attendance.planned > 0 && (
+        <>
+          <div className="profile__row">
+            <h3 style={{ margin: 0 }}>Ходит в клуб</h3>
+            {profile.attendance.ratio !== null && (
+              <span className="hint">
+                дошёл {Math.round(profile.attendance.ratio * 100)}%
+              </span>
+            )}
+          </div>
+          {/* Здесь плитки, а не строки: числа равнозначны и читаются в ряд,
+              а кликать в них некуда. */}
+          <div className="stats-grid stats-grid--three">
+            <Tile value={profile.attendance.came} label="был на показах" />
+            <Tile value={profile.attendance.planned} label="собирался" />
+            <Tile
+              value={Math.max(profile.attendance.planned - profile.attendance.came, 0)}
+              label="не дошёл"
+            />
+          </div>
+          {profile.attendance.last_film && (
+            <p className="hint">
+              Последний раз: {profile.attendance.last_film}
+              {profile.attendance.last_at && ` · ${dayLabel(profile.attendance.last_at)}`}
+            </p>
           )}
         </>
       )}

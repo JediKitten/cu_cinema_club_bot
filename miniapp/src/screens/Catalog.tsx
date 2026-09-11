@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { browseFilms, CATALOG_PAGE, searchFilms } from "../api";
 import { FilmRow } from "../components/FilmRow";
+import { TournamentBanner } from "../components/TournamentBanner";
 import { PosterGrid } from "../components/PosterGrid";
 import {
   LayoutSwitch,
@@ -12,7 +13,7 @@ import type { FilmBrief, InterestKind } from "../types";
 import { replaceFilm } from "../films";
 import { useFilmChanges } from "../filmChanges";
 
-type Props = { onOpen(film: FilmBrief): void };
+type Props = { onOpen(film: FilmBrief): void; onOpenTournament(id: number): void };
 
 type Sort = "kp" | "tmdb" | "club" | "wanted" | "year";
 
@@ -27,7 +28,7 @@ const SORTS: { key: Sort; label: string }[] = [
   { key: "year", label: "По году" },
 ];
 
-export function Catalog({ onOpen }: Props) {
+export function Catalog({ onOpen, onOpenTournament }: Props) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>("kp");
   const [layout, setLayout] = useState<Layout>(rememberedLayout);
@@ -102,6 +103,8 @@ export function Catalog({ onOpen }: Props) {
 
   return (
     <div className="screen">
+      <TournamentBanner onOpen={onOpenTournament} />
+
       <div className="search">
         <span>🔍</span>
         <input

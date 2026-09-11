@@ -7,6 +7,7 @@ import { TeamPanel } from "../components/TeamPanel";
 import { InvitePanel } from "../components/InvitePanel";
 import { PeoplePanel } from "../components/PeoplePanel";
 import { BroadcastPanel } from "../components/BroadcastPanel";
+import { TournamentPanel } from "../components/TournamentPanel";
 import { Matrix } from "../components/Matrix";
 import { Section } from "../components/Section";
 import { ScheduleBuilder } from "../components/ScheduleBuilder";
@@ -75,6 +76,7 @@ function windowNotice(round: Round): string {
 type Panel =
   | "round"
   | "events"
+  | "tournament"
   | "stats"
   | "team"
   | "invites"
@@ -89,6 +91,7 @@ const RANK: Record<string, number> = { user: 0, moderator: 1, admin: 2, superadm
 const PANELS: { key: Panel; label: string; minRole: keyof typeof RANK }[] = [
   { key: "round", label: "Цикл", minRole: "moderator" },
   { key: "events", label: "События", minRole: "admin" },
+  { key: "tournament", label: "Турнир", minRole: "admin" },
   { key: "stats", label: "Аналитика", minRole: "admin" },
   { key: "team", label: "Команда", minRole: "admin" },
   { key: "invites", label: "Коды", minRole: "admin" },
@@ -187,6 +190,7 @@ export function Admin({ me }: { me: User }) {
       {panel === "broadcast" && <BroadcastPanel />}
       {panel === "settings" && <SettingsPanel />}
       {panel === "events" && <EventPanel onCreated={() => setPanel("round")} />}
+      {panel === "tournament" && <TournamentPanel />}
       {panel === "stats" && <Analytics />}
       {error && <div className="error">{error}</div>}
 

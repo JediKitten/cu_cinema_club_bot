@@ -559,6 +559,40 @@ async def test_confirm_works_for_manual_event(session):
     assert cancelled.confirmed == 0
 
 
+async def test_feedback_works_for_an_event_without_a_film(session):
+    """Встреча клуба без фильма: оценивать нечего, рассказать — есть что.
+
+    Форма обратной связи жёстко требовала фильм и на таком событии падала
+    пятисоткой: модератор отмечал пришедших, человек открывал форму и упирался
+    в ошибку. Отзыв и оценка организации к фильму не привязаны.
+    """
+    from app.services import attendance as att
+    from app.services import schedule as sched
+
+    boss = await make_user(session, "Админ")
+    guest = await make_user(session, "Гость")
+    await session.commit()
+
+    event = await events.create(
+        session, starts_at=SOON, actor_id=boss.id, title="Встреча клуба"
+    )
+    await sched.confirm(session, event.id, guest.id)
+    await att.mark_manually(session, event.id, guest.id, boss.id)
+
+    saved = await att.save_feedback(
+        session,
+        event.id,
+        guest.id,
+        film_rating=None,
+        review_text="Было здорово",
+        org={"sound": 5, "hall": 4},
+    )
+
+    assert saved.film_id is None
+    assert saved.review_text == "Было здорово"
+    assert saved.org_sound == 5
+
+
 async def test_waitlist_works_for_manual_event(session):
     """Вместимость зала действует и на события вне цикла."""
     from app.models import Hall

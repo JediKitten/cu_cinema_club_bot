@@ -195,6 +195,10 @@ export type Screening = {
   status: "scheduled" | "cancelled" | "completed";
   expected_attendance: number | null;
   cancel_reason: string | null;
+  /** Назначено вручную, в обход цикла. */
+  is_manual: boolean;
+  /** Подпись к событию без фильма: «ждите анонса». */
+  note: string | null;
   my_state: ConfirmState | null;
   my_place_in_queue: number | null;
   confirmed: number;
@@ -236,7 +240,8 @@ export type OrgRating = {
 
 export type FeedbackState = {
   screening_id: number;
-  film: FilmBrief;
+  /** Пусто у события без фильма: оценивать нечего, рассказать — есть что. */
+  film: FilmBrief | null;
   attended: boolean;
   film_rating: number | null;
   review_text: string | null;
@@ -459,6 +464,49 @@ export type FeedItem = {
   text: string | null;
 };
 
+export type AchievementTier = "bronze" | "silver" | "gold" | "platinum";
+
+/** Одна цель со ступенями: держится высшая достигнутая.
+ *
+ * Заработал серебро — бронза той же цели заменяется, а не копится рядом.
+ */
+export type AchievementGroup = {
+  group: string;
+  label: string;
+  secret: boolean;
+  /** Что уже получено. Пусто — ещё ничего. */
+  tier: AchievementTier | null;
+  emoji: string;
+  title: string;
+  description: string;
+  earned_at: string | null;
+  /** Куда расти. Пусто, если взята платина. */
+  next_title: string | null;
+  next_tier: AchievementTier | null;
+  progress: number;
+  target: number;
+};
+
+export type Achievements = {
+  bronze: number;
+  silver: number;
+  gold: number;
+  platinum: number;
+  /** Сколько секретных не найдено. Названий и условий у них нет — в этом смысл. */
+  secrets_left: number;
+  groups: AchievementGroup[];
+};
+
+/** Посещаемость показов клуба — блок в профиле. */
+export type AttendanceStats = {
+  came: number;
+  planned: number;
+  /** Доля дошедших от собиравшихся. Пусто, пока ходить было не на что. */
+  ratio: number | null;
+  last_at: string | null;
+  last_film: string | null;
+};
+
 export type Profile = {
   id: number;
   display_name: string;
@@ -478,6 +526,8 @@ export type Profile = {
   relation_friends: boolean;
   relation_following: boolean;
   relation_follower: boolean;
+  attendance: AttendanceStats;
+  achievements: Achievements;
   recent: FeedItem[];
 };
 
@@ -507,3 +557,72 @@ export type DeckCard = {
 };
 
 export type Deck = { cards: DeckCard[]; left: number };
+
+/* --- Турниры (расширение по просьбе клуба) -------------------------------- */
+
+export type TournamentStatus = "draft" | "running" | "finished" | "cancelled";
+
+export type TournamentOption = {
+  id: number;
+  seed: number;
+  title: string;
+  subtitle: string | null;
+  image_url: string | null;
+  film_id: number | null;
+};
+
+export type TournamentMatch = {
+  id: number;
+  round_no: number;
+  position: number;
+  option_a: TournamentOption | null;
+  option_b: TournamentOption | null;
+  opens_at: string;
+  closes_at: string;
+  /** Свой голос виден всегда. */
+  my_option_id: number | null;
+  /** Чужие — только после закрытия этапа: счёт на глазах подталкивает
+   *  к большинству (§11). До закрытия здесь null. */
+  votes_a: number | null;
+  votes_b: number | null;
+  winner_option_id: number | null;
+};
+
+export type TournamentRound = {
+  round_no: number;
+  name: string;
+  closed: boolean;
+  matches: TournamentMatch[];
+};
+
+export type Tournament = {
+  id: number;
+  title: string;
+  description: string | null;
+  status: TournamentStatus;
+  current_round: number;
+  stage_hours: number;
+  options_count: number;
+  started_at: string | null;
+  finished_at: string | null;
+  winner: TournamentOption | null;
+  rounds: TournamentRound[];
+  /** Сколько пар текущего этапа ещё не отголосовано. */
+  left_to_vote: number;
+  closes_at: string | null;
+};
+
+export type TournamentBrief = {
+  id: number;
+  title: string;
+  status: TournamentStatus;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export type TournamentOptionDraft = {
+  title: string;
+  subtitle?: string | null;
+  image_url?: string | null;
+  film_id?: number | null;
+};

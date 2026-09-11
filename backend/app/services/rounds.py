@@ -12,8 +12,9 @@ from zoneinfo import ZoneInfo
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AuditLog, Hall, Round, ShortlistItem, Slot
-from app.models.enums import RoundStage, ShortlistSource
+from app.models import AuditLog, Film, Hall, Round, ShortlistItem, Slot, User
+from app.models.enums import NotificationKind, RoundStage, ShortlistSource
+from app.services import notify
 from app.services.settings import SettingsService
 
 DAYS_IN_WEEK = 7
@@ -262,6 +263,40 @@ async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int)
 
     round_.stage = RoundStage.SLOT_VOTING
     round_.shortlist_locked_at = datetime.now(ZoneInfo("UTC"))
+
+    # Об открытии голосования надо сказать вслух. Без этого весь этап 2 —
+    # а при включённом автопилоте он и начинается сам — проходил молча: человек
+    # узнавал о нём, только если случайно открывал приложение в эти три дня.
+    titles = (
+        (
+            await session.execute(
+                sa.select(Film.title_ru)
+                .join(ShortlistItem, ShortlistItem.film_id == Film.id)
+                .where(ShortlistItem.round_id == round_.id)
+                .order_by(ShortlistItem.position)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    audience = (
+        (
+            await session.execute(
+                sa.select(User.id).where(User.is_active, User.tg_id.is_not(None))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for user_id in audience:
+        await notify.queue(
+            session,
+            user_id,
+            NotificationKind.SHORTLIST_PUBLISHED,
+            dedup_key=f"shortlist:{round_.id}:{user_id}",
+            payload={"films": list(titles)},
+        )
+
     session.add(
         AuditLog(actor_id=actor_id, entity="round", entity_id=round_.id, action="publish_shortlist")
     )

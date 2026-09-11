@@ -1,14 +1,17 @@
 """Закрытая бета: вход по кодам-приглашениям (расширение по просьбе клуба)."""
 
+import asyncio
+
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import InviteCode, Notification, User
 from app.models.enums import UserRole
 from app.services import invites
 from app.services.invites import InviteError
 from app.services.settings import SettingsService
-from tests.conftest import SUPERADMIN_TG_ID, login
+from tests.conftest import SUPERADMIN_TG_ID, TEST_DB, _url, login
 from tests.test_weights import make_user
 
 
@@ -73,6 +76,46 @@ async def test_code_runs_out_after_its_activations(session):
     await invites.redeem(session, first, code.code)
     with pytest.raises(InviteError, match="разобрали"):
         await invites.redeem(session, late, code.code)
+
+
+async def test_one_activation_is_not_shared_by_two_people_at_once(session):
+    """Код на одну активацию, нажатый двумя людьми разом, впускает одного.
+
+    «Сколько занято» считается чтением, а занимается записью в users —
+    и между этими шагами вклинивается второй желающий. Код, присланный
+    в общий чат, — ровно тот случай, когда двое нажимают одновременно.
+    """
+    await beta_on(session)
+    boss = await admin(session)
+    code = await invites.create(session, boss.id, max_activations=1)
+
+    first = await make_user(session, "Первый")
+    second = await make_user(session, "Второй")
+    await session.commit()
+
+    engine = create_async_engine(_url(TEST_DB))
+    maker = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    try:
+        async with maker() as one, maker() as two:
+            outcomes = await asyncio.wait_for(
+                asyncio.gather(
+                    invites.redeem(one, await one.get(User, first.id), code.code),
+                    invites.redeem(two, await two.get(User, second.id), code.code),
+                    return_exceptions=True,
+                ),
+                timeout=15,
+            )
+    finally:
+        await engine.dispose()
+
+    passed = [item for item in outcomes if not isinstance(item, Exception)]
+    refused = [item for item in outcomes if isinstance(item, InviteError)]
+    assert len(passed) == 1
+    assert len(refused) == 1
+    assert "разобрали" in str(refused[0])
+
+    view = next(v for v in await invites.listing(session) if v.id == code.id)
+    assert view.used == 1
 
 
 async def test_unknown_code_is_rejected(session):

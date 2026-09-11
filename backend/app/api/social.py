@@ -9,6 +9,9 @@ from app.core.auth import CurrentUser
 from app.db import get_session
 from app.models import Film, User
 from app.schemas import (
+    AchievementGroupOut,
+    AchievementsOut,
+    AttendanceStats,
     CircleOut,
     FavouritesIn,
     FeedItemOut,
@@ -200,5 +203,36 @@ async def profile(
         relation_friends=bool(found.relation and found.relation.friends),
         relation_following=bool(found.relation and found.relation.following),
         relation_follower=bool(found.relation and found.relation.follower),
+        attendance=AttendanceStats(
+            came=found.attendance.came if found.attendance else 0,
+            planned=found.attendance.planned if found.attendance else 0,
+            ratio=found.attendance.ratio if found.attendance else None,
+            last_at=found.attendance.last_at if found.attendance else None,
+            last_film=found.attendance.last_film if found.attendance else None,
+        ),
+        achievements=AchievementsOut(
+            bronze=found.achievements.bronze,
+            silver=found.achievements.silver,
+            gold=found.achievements.gold,
+            platinum=found.achievements.platinum,
+            secrets_left=found.achievements.secrets_left,
+            groups=[
+                AchievementGroupOut(
+                    group=item.group,
+                    label=item.label,
+                    secret=item.secret,
+                    tier=item.tier,
+                    emoji=item.emoji,
+                    title=item.title,
+                    description=item.description,
+                    earned_at=item.earned_at,
+                    next_title=item.next_title,
+                    next_tier=item.next_tier,
+                    progress=item.progress,
+                    target=item.target,
+                )
+                for item in (found.achievements.groups or [])
+            ],
+        ),
         recent=[_item(item) for item in found.recent],
     )

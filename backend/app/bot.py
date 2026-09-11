@@ -29,7 +29,15 @@ from app.config import get_config
 from app.db import SessionLocal
 from app.models import Film, User
 from app.models.enums import NotificationKind
-from app.services import cycle, invites, notify, referrals, reminders
+from app.services import (
+    achievements,
+    cycle,
+    invites,
+    notify,
+    referrals,
+    reminders,
+    tournaments,
+)
 from app.services.settings import SettingsService
 
 logger = logging.getLogger(__name__)
@@ -453,6 +461,8 @@ async def jobs_loop() -> None:
                 # Порядок важен: сначала двигаем цикл, потом рассылаем — иначе
                 # приглашения после автопубликации ждали бы лишние пять минут.
                 await cycle.tick(session)
+                await tournaments.tick(session)
+                await achievements.award(session)
                 await reminders.run_all(session)
         except Exception:
             logger.exception("Сбой в фоновых задачах")

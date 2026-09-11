@@ -83,6 +83,9 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
                 {dayLabel(screening.slot.starts_at)} · {timeLabel(screening.slot.starts_at)} ·{" "}
                 {screening.slot.hall_name}
               </p>
+              {/* Подпись события без фильма — «ждите анонса»: без неё такой
+                  вечер выглядит как пустая строка в расписании. */}
+              {screening.note && <p className="meta">{screening.note}</p>}
               <p className="meta">
                 Придут: {screening.confirmed} из {screening.capacity}
                 {queued && screening.my_place_in_queue !== null && (

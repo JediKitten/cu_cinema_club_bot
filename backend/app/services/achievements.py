@@ -1,0 +1,461 @@
+"""Ачивки: бейджи за участие в клубе (расширение по просьбе клуба).
+
+Устроены ступенями. У каждой цели — «сколько фильмов посмотрел», «сколько
+сеансов посетил» — четыре уровня: бронза, серебро, золото, платина. Человек
+держит только **высшую достигнутую**: заработал серебро — бронза той же цели
+заменяется, а не копится рядом. Поэтому в профиле четыре числа, а не список
+из двадцати строк.
+
+Правила живут реестром в коде, а не в базе — как и параметры §13. Добавить
+ступень значит дописать строку: ни миграции, ни правки схемы. В базе лежит
+только факт выдачи, чтобы поздравить ровно один раз.
+
+Секретные ачивки до получения не показываются вовсе — ни названия, ни условия,
+только счётчик «осталось столько-то». В этом и смысл: найти их должно быть
+сюрпризом.
+
+Считаем не по одному человеку, а всех сразу: показателей семь, и семь
+группировок раз в пять минут дешевле, чем семь запросов на каждого участника.
+"""
+
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
+
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import (
+    Achievement,
+    Attendance,
+    Favourite,
+    Film,
+    FilmRating,
+    FilmSkip,
+    Friendship,
+    Interest,
+    Tournament,
+    TournamentMatch,
+    TournamentVote,
+    User,
+    Watch,
+)
+from app.models.enums import FilmStatus, NotificationKind, TournamentStatus
+from app.services import notify
+
+logger = logging.getLogger(__name__)
+
+
+class Tier(StrEnum):
+    BRONZE = "bronze"
+    SILVER = "silver"
+    GOLD = "gold"
+    PLATINUM = "platinum"
+
+
+# Порядок важен: по нему решается, какая ступень выше и что кого заменяет.
+TIERS: tuple[Tier, ...] = (Tier.BRONZE, Tier.SILVER, Tier.GOLD, Tier.PLATINUM)
+
+TIER_EMOJI: dict[Tier, str] = {
+    Tier.BRONZE: "🥉",
+    Tier.SILVER: "🥈",
+    Tier.GOLD: "🥇",
+    Tier.PLATINUM: "🏆",
+}
+
+# Ниже этого размера каталога «конец ленты» ничего не значит: свежая установка
+# и демо-данные пролистываются за минуту.
+DECK_MIN_CATALOGUE = 100
+
+TIER_LABEL: dict[Tier, str] = {
+    Tier.BRONZE: "бронзовая",
+    Tier.SILVER: "серебряная",
+    Tier.GOLD: "золотая",
+    Tier.PLATINUM: "платиновая",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class Rule:
+    code: str
+    # Цель. Ачивки одной цели вытесняют друг друга: остаётся высшая.
+    group: str
+    tier: Tier
+    title: str
+    description: str
+    metric: str
+    target: int
+    # Секретную не видно, пока не получена: ни названия, ни условия.
+    secret: bool = False
+
+    @property
+    def rank(self) -> int:
+        return TIERS.index(self.tier)
+
+
+GROUP_LABEL: dict[str, str] = {
+    "films": "Просмотренные фильмы",
+    "screenings": "Сеансы клуба",
+    "ratings": "Оценки",
+    "friends": "Друзья",
+}
+
+RULES: tuple[Rule, ...] = (
+    # --- Кол-во фильмов ---
+    Rule(
+        "films_bronze", "films", Tier.BRONZE,
+        "Да, я что-то там смотрел...", "Посмотреть 5 фильмов", "watched", 5,
+    ),
+    Rule(
+        "films_silver", "films", Tier.SILVER, "Люблю кино", "Посмотреть 50 фильмов", "watched", 50
+    ),
+    Rule("films_gold", "films", Tier.GOLD, "Киноман", "Посмотреть 200 фильмов", "watched", 200),
+    Rule(
+        "films_platinum", "films", Tier.PLATINUM,
+        "Я есть Тарантино", "Посмотреть 1000 фильмов", "watched", 1000,
+    ),
+    # --- Кол-во сеансов ---
+    Rule(
+        "screenings_bronze", "screenings", Tier.BRONZE,
+        "Узнал о киноклубе", "Посетить 1 сеанс", "attended", 1,
+    ),
+    Rule(
+        "screenings_silver", "screenings", Tier.SILVER,
+        "Хожу в киноклуб", "Посетить 5 сеансов", "attended", 5,
+    ),
+    Rule(
+        "screenings_gold", "screenings", Tier.GOLD,
+        "Люблю киноклуб", "Посетить 15 сеансов", "attended", 15,
+    ),
+    Rule(
+        "screenings_platinum", "screenings", Tier.PLATINUM,
+        "Я есть киноклуб", "Посетить 50 сеансов", "attended", 50,
+    ),
+    # --- Кол-во оценок ---
+    Rule(
+        "ratings_bronze", "ratings", Tier.BRONZE,
+        "Появилось своё мнение...", "Оценить 5 фильмов", "ratings", 5,
+    ),
+    Rule(
+        "ratings_silver", "ratings", Tier.SILVER,
+        "Готов высказаться", "Оценить 25 фильмов", "ratings", 25,
+    ),
+    Rule(
+        "ratings_gold", "ratings", Tier.GOLD,
+        "Uhm, actually...", "Поставить 100 оценок", "ratings", 100,
+    ),
+    Rule(
+        "ratings_platinum", "ratings", Tier.PLATINUM,
+        "Я есть киноакадемия", "Поставить 500 оценок", "ratings", 500,
+    ),
+    # --- Кол-во друзей ---
+    Rule(
+        "friends_bronze", "friends", Tier.BRONZE,
+        "Are you lonely? I can fix that", "Добавить в друзья 1 человека", "friends", 1,
+    ),
+    Rule(
+        "friends_silver", "friends", Tier.SILVER,
+        "Бешенные псы", "Добавить в друзья 5 человек", "friends", 5,
+    ),
+    Rule(
+        "friends_gold", "friends", Tier.GOLD,
+        "Друзья Оушена", "Добавить в друзья 10 человек", "friends", 10,
+    ),
+    Rule(
+        "friends_platinum", "friends", Tier.PLATINUM,
+        "Я есть экстраверт", "Добавить в друзья 50 человек", "friends", 50,
+    ),
+    # --- Секретные ---
+    Rule(
+        "showcase_silver", "showcase", Tier.SILVER,
+        "Витрина собрана", "Выбрать 4 любимых фильма в профиле", "favourites", 4, secret=True,
+    ),
+    Rule(
+        "champion_gold", "champion", Tier.GOLD,
+        "Абсолютный чемпион",
+        "Сделать все выборы в турнире в пользу победителя",
+        "champion", 1, secret=True,
+    ),
+    Rule(
+        "deck_platinum", "deck", Tier.PLATINUM,
+        "Пойди, пожалуйста, потрогай траву", "Долистать до конца ленты", "deck", 1, secret=True,
+    ),
+)
+
+BY_CODE = {rule.code: rule for rule in RULES}
+
+# Ступени одной цели, от низшей к высшей.
+LADDERS: dict[str, tuple[Rule, ...]] = {
+    group: tuple(sorted((r for r in RULES if r.group == group), key=lambda r: r.rank))
+    for group in dict.fromkeys(rule.group for rule in RULES)
+}
+
+
+@dataclass(slots=True)
+class GroupState:
+    """Одна цель: что уже получено и сколько до следующей ступени."""
+
+    group: str
+    label: str
+    secret: bool
+    # Полученное — высшая достигнутая ступень. None, если ещё ничего.
+    tier: Tier | None = None
+    emoji: str = ""
+    title: str = ""
+    description: str = ""
+    earned_at: datetime | None = None
+    # Куда расти. None, если взята платина.
+    next_title: str | None = None
+    next_tier: Tier | None = None
+    progress: int = 0
+    target: int = 0
+
+
+@dataclass(slots=True)
+class Summary:
+    """Четыре числа для профиля — по одному на уровень."""
+
+    bronze: int = 0
+    silver: int = 0
+    gold: int = 0
+    platinum: int = 0
+    # Сколько секретных ещё не найдено. Названия и условия не раскрываем.
+    secrets_left: int = 0
+    groups: list[GroupState] | None = None
+
+
+def _counts(model, column: str = "user_id"):
+    return sa.select(getattr(model, column), sa.func.count()).group_by(getattr(model, column))
+
+
+async def _champions(session: AsyncSession) -> set[int]:
+    """Кто прошёл турнир, ни разу не ошибившись.
+
+    «Все выборы в пользу победителя» — это и полное участие тоже: проголосовать
+    в одной паре и угадать не считается подвигом.
+    """
+    # Отдельный псевдоним и явная корреляция: во внешнем запросе TournamentMatch
+    # уже участвует, и без этого SQLAlchemy склеит их в один и останется без FROM.
+    every_match = sa.orm.aliased(TournamentMatch)
+    total = (
+        sa.select(sa.func.count())
+        .select_from(every_match)
+        .where(every_match.tournament_id == Tournament.id)
+        .correlate(Tournament)
+        .scalar_subquery()
+    )
+    rows = await session.execute(
+        sa.select(TournamentVote.user_id)
+        .join(TournamentMatch, TournamentMatch.id == TournamentVote.match_id)
+        .join(Tournament, Tournament.id == TournamentMatch.tournament_id)
+        .where(Tournament.status == TournamentStatus.FINISHED)
+        .group_by(TournamentVote.user_id, Tournament.id)
+        .having(sa.func.count() == total)
+        .having(
+            sa.func.count()
+            == sa.func.count().filter(TournamentVote.option_id == TournamentMatch.winner_option_id)
+        )
+    )
+    return set(rows.scalars())
+
+
+async def _finished_the_deck(session: AsyncSession) -> set[int]:
+    """Кто не оставил в ленте ни одной неразмеченной карточки.
+
+    «Высказался» считается так же, как в самой ленте (`deck._spoken_for`):
+    отметил, оценил, посмотрел или пролистнул.
+    """
+    total = await session.scalar(
+        sa.select(sa.func.count()).select_from(Film).where(Film.status == FilmStatus.ACTIVE)
+    )
+    if not total or total < DECK_MIN_CATALOGUE:
+        # Долистать пустой каталог или два десятка демо-фильмов — не подвиг,
+        # а свойство базы. Платина за это обесценила бы её у всех остальных.
+        return set()
+
+    spoken = sa.union(
+        sa.select(Interest.user_id, Interest.film_id).where(Interest.revoked_at.is_(None)),
+        sa.select(FilmRating.user_id, FilmRating.film_id),
+        sa.select(Watch.user_id, Watch.film_id),
+        sa.select(FilmSkip.user_id, FilmSkip.film_id),
+    ).subquery("spoken")
+
+    rows = await session.execute(
+        sa.select(spoken.c.user_id)
+        .join(Film, Film.id == spoken.c.film_id)
+        .where(Film.status == FilmStatus.ACTIVE)
+        .group_by(spoken.c.user_id)
+        .having(sa.func.count(sa.distinct(spoken.c.film_id)) >= total)
+    )
+    return set(rows.scalars())
+
+
+async def metrics(
+    session: AsyncSession, user_ids: list[int] | None = None
+) -> dict[int, dict[str, int]]:
+    """Показатели по всем участникам разом: {user_id: {метрика: число}}."""
+    queries = {
+        "watched": _counts(Watch),
+        "attended": _counts(Attendance),
+        "ratings": _counts(FilmRating),
+        # «Добавить в друзья» — это подписка, и считается она по исходящим:
+        # взаимность зависит от другого человека, а ачивка — про твои действия.
+        "friends": _counts(Friendship),
+        "favourites": _counts(Favourite),
+    }
+
+    result: dict[int, dict[str, int]] = {}
+    for metric, query in queries.items():
+        if user_ids is not None:
+            column = list(query.selected_columns)[0]
+            query = query.where(column.in_(user_ids))
+        for user_id, count in await session.execute(query):
+            result.setdefault(user_id, {})[metric] = count
+
+    for user_id in await _champions(session):
+        if user_ids is None or user_id in user_ids:
+            result.setdefault(user_id, {})["champion"] = 1
+    for user_id in await _finished_the_deck(session):
+        if user_ids is None or user_id in user_ids:
+            result.setdefault(user_id, {})["deck"] = 1
+
+    return result
+
+
+async def of_user(session: AsyncSession, user_id: int) -> Summary:
+    """Что человек собрал и куда ему расти."""
+    counts = (await metrics(session, [user_id])).get(user_id, {})
+    earned = {
+        code: at
+        for code, at in await session.execute(
+            sa.select(Achievement.code, Achievement.earned_at).where(
+                Achievement.user_id == user_id
+            )
+        )
+    }
+
+    summary = Summary(groups=[])
+    for group, ladder in LADDERS.items():
+        secret = ladder[0].secret
+        done = [rule for rule in ladder if rule.code in earned]
+        top = done[-1] if done else None
+        nxt = next((rule for rule in ladder if rule.code not in earned), None)
+
+        if top is None and secret:
+            # Не найденную секретную не показываем вовсе — только считаем.
+            summary.secrets_left += 1
+            continue
+
+        state = GroupState(
+            group=group,
+            label=GROUP_LABEL.get(group, ladder[-1].description),
+            secret=secret,
+            tier=top.tier if top else None,
+            emoji=TIER_EMOJI[top.tier] if top else "",
+            title=top.title if top else "",
+            description=top.description if top else "",
+            earned_at=earned.get(top.code) if top else None,
+            next_title=nxt.title if nxt else None,
+            next_tier=nxt.tier if nxt else None,
+            # Прогресс к следующей ступени. Взята платина — расти некуда.
+            progress=min(counts.get(nxt.metric, 0), nxt.target) if nxt else 0,
+            target=nxt.target if nxt else 0,
+        )
+        summary.groups.append(state)
+
+        if top is not None:
+            setattr(summary, top.tier.value, getattr(summary, top.tier.value) + 1)
+
+    # Сначала полученное, потом то, до чего ближе всего.
+    summary.groups.sort(
+        key=lambda item: (
+            item.tier is None,
+            -(TIERS.index(item.tier) if item.tier else 0),
+            -(item.progress / item.target) if item.target else 0,
+        )
+    )
+    return summary
+
+
+async def award(session: AsyncSession) -> int:
+    """Выдаёт всё заслуженное и поздравляет. Идемпотентна.
+
+    Ачивка низшей ступени той же цели при этом снимается: человек держит одну,
+    высшую. Возвращает число новых.
+    """
+    counts = await metrics(session)
+    if not counts:
+        return 0
+
+    known: dict[int, set[str]] = {}
+    for user_id, code in await session.execute(
+        sa.select(Achievement.user_id, Achievement.code).where(
+            Achievement.user_id.in_(list(counts))
+        )
+    ):
+        known.setdefault(user_id, set()).add(code)
+
+    active = set(
+        (await session.execute(sa.select(User.id).where(User.is_active, User.id.in_(list(counts)))))
+        .scalars()
+        .all()
+    )
+
+    given = 0
+    for user_id, values in counts.items():
+        if user_id not in active:
+            continue
+        mine = known.get(user_id, set())
+        for ladder in LADDERS.values():
+            # Из достигнутых ступеней берём высшую: перепрыгнув через бронзу,
+            # человек получает сразу серебро, а не две ачивки подряд.
+            reached = [
+                rule for rule in ladder if values.get(rule.metric, 0) >= rule.target
+            ]
+            if not reached:
+                continue
+            top = reached[-1]
+            if top.code in mine:
+                continue
+
+            # ON CONFLICT, а не проверка выше: два прохода разом не должны
+            # ронять всю пачку на уникальном ключе.
+            created = await session.execute(
+                insert(Achievement)
+                .values(user_id=user_id, code=top.code)
+                .on_conflict_do_nothing(index_elements=[Achievement.user_id, Achievement.code])
+                .returning(Achievement.id)
+            )
+            if created.scalar_one_or_none() is None:
+                continue
+
+            # Ступени пониже той же цели уступают место.
+            lower = [rule.code for rule in ladder if rule.rank < top.rank]
+            if lower:
+                await session.execute(
+                    sa.delete(Achievement).where(
+                        Achievement.user_id == user_id, Achievement.code.in_(lower)
+                    )
+                )
+
+            await notify.queue(
+                session,
+                user_id,
+                NotificationKind.ACHIEVEMENT_EARNED,
+                dedup_key=f"achievement:{user_id}:{top.code}",
+                payload={
+                    "emoji": TIER_EMOJI[top.tier],
+                    "tier": TIER_LABEL[top.tier],
+                    "title": top.title,
+                    "hint": top.description,
+                    "secret": top.secret,
+                },
+            )
+            given += 1
+
+    await session.commit()
+    if given:
+        logger.info("Выдано ачивок: %d", given)
+    return given

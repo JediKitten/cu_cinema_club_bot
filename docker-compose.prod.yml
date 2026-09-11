@@ -31,6 +31,10 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://cinema:${POSTGRES_PASSWORD}@db:5432/cinema
+      # Включает проверки, которых в разработке нет: без своего SECRET_KEY
+      # приложение не поднимется, а не подпишет сессии ключом из репозитория.
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?нужен SECRET_KEY в .env, сгенерировать openssl rand -hex 32}
     depends_on:
       db:
         condition: service_healthy
@@ -59,6 +63,8 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://cinema:${POSTGRES_PASSWORD}@db:5432/cinema
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?нужен SECRET_KEY в .env, сгенерировать openssl rand -hex 32}
     depends_on:
       db:
         condition: service_healthy

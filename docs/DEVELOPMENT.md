@@ -104,7 +104,7 @@ scripts/tunnel.sh
 Если Telegram не нужен — быстрее и надёжнее локальный просмотр:
 
 ```bash
-scripts/preview.sh          # рабочая копия
+scripts/preview.sh          # последний коммит
 scripts/preview.sh pr-1     # любая ветка или ревизия
 ```
 
@@ -112,14 +112,28 @@ scripts/preview.sh pr-1     # любая ветка или ревизия
 и печатает по ссылке на каждую роль. Подробности — в
 [README](../README.md#просмотр-интерфейса-локально).
 
+**Смотрится ревизия, а не рабочая копия:** `git archive` не видит
+незакоммиченного. Чтобы посмотреть правки до коммита, поднимите то же самое
+руками из рабочего дерева:
+
+```bash
+cd backend && ./venv/bin/python -m uvicorn app.main:app --port 8011 &
+cd backend && ./venv/bin/python -m app.preview_seed
+cd miniapp && VITE_API_URL=http://localhost:8011 npx vite --port 5175 --strictPort &
+cd backend && ./venv/bin/python -m app.dev_login --tg-id 900001 --name "Зритель Демо"
+```
+
+Последняя команда печатает подписанную `initData` — её надо
+URL-закодировать и открыть как `http://localhost:5175/?initData=<строка>`.
+
 ## Ежедневная работа
 
 ### Тесты
 
 ```bash
-cd backend && ./venv/bin/python -m pytest -q          # 319 тестов
+cd backend && ./venv/bin/python -m pytest -q          # 369 тестов
 cd backend && ./venv/bin/python -m pytest tests/test_weights.py -q -k затухание
-cd miniapp && npm test                                 # 19 тестов
+cd miniapp && npm test                                 # 24 теста
 ```
 
 Тесты бэкенда работают на **отдельной базе `cinema_test`**: она создаётся сама,
@@ -240,5 +254,5 @@ TMDB работает, и импорт `--source tmdb` проходит.
 | Пустой каталог | импорт не запускали: `app.import_top` |
 | Бот молчит на `/start` | процесс `app.bot` не запущен — API на сообщения не отвечает |
 | Кнопка Mini App ведёт не туда | `MINIAPP_URL` в `.env`; бот переставляет кнопку сам в течение секунд |
-| Уведомления не приходят | таблица `notifications`: `sent_at` и `failed_reason` скажут, что случилось |
+| Уведомления не приходят | таблица `notifications`: `sent_at`, `attempts`, `next_attempt_at` и `failed_reason` скажут, что случилось |
 | Изменения в `.env` не видны | uvicorn без `--reload-include ../.env` |

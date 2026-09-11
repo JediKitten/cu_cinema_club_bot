@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, getSchedule } from "../api";
 import { shiftWeek, weekLabel } from "../dates";
+import { TournamentBanner } from "../components/TournamentBanner";
 import { haptic } from "../telegram";
 import type { Schedule } from "../types";
 import { Screenings } from "./Screenings";
@@ -12,7 +13,7 @@ import { Vote } from "./Vote";
  * иначе показы недели. По неделям можно листать: расписание — это не только
  * ближайшие дни, но и то, что уже было и что будет.
  */
-export function Week() {
+export function Week({ onOpenTournament }: { onOpenTournament(id: number): void }) {
   const [week, setWeek] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,6 +53,8 @@ export function Week() {
 
   return (
     <div className="screen">
+      <TournamentBanner onOpen={onOpenTournament} />
+
       <div className="week-nav">
         <button
           className="week-nav__arrow"

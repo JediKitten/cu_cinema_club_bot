@@ -9,17 +9,21 @@ export function Bars({
   data,
   hint,
   color = "var(--link)",
+  compact = false,
 }: {
   data: Bar[];
   hint?: string;
   /** Цвет основного ряда: у динамики интереса он совпадает с цветом отметки. */
   color?: string;
+  /** В половину ширины экрана: столбики и подписи мельче, но подписи остаются
+   *  у каждого — без них половинки приходится отсчитывать глазами. */
+  compact?: boolean;
 }) {
   const peak = Math.max(1, ...data.map((point) => point.value + (point.extra ?? 0)));
 
   return (
     <>
-      <div className="bars">
+      <div className={`bars ${compact ? "bars--compact" : ""}`}>
         {data.map((point) => (
           <div className="bars__item" key={point.label} title={`${point.label}: ${point.value}`}>
             <div className="bars__stack">

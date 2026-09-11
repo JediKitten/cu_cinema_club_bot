@@ -6,7 +6,7 @@ import sqlalchemy as sa
 
 from app.models import Round, Screening, Slot
 from app.models.enums import InterestKind, RoundStage, ScreeningStatus
-from app.services import cycle, voting
+from app.services import autopilot, cycle, voting
 from app.services import rounds as rounds_service
 from app.services.settings import SettingsService
 from tests.test_rounds import admin
@@ -32,6 +32,27 @@ async def test_tick_opens_a_round_when_there_is_none(session):
 
     assert any("открыт цикл" in line for line in done)
     assert await session.scalar(sa.select(sa.func.count()).select_from(Round)) == 1
+
+
+async def test_fresh_round_does_not_race_through_all_stages(session):
+    """Первый запуск не должен провести всю неделю за один проход.
+
+    Дедлайны отсчитываются от недели перед показами: заведи цикл на ближайший
+    понедельник в воскресенье вечером — и срез, автопилот, публикация
+    шорт-листа и публикация расписания все окажутся в прошлом. Раньше один
+    `tick` проходил их подряд, и люди получали готовое расписание, ни разу
+    не проголосовав.
+    """
+    done = await cycle.tick(session)
+    round_ = await rounds_service.active_round(session)
+
+    assert round_ is not None
+    assert round_.stage == RoundStage.COLLECTING, done
+    # Срез этапа 1 у выбранной недели ещё впереди — время на отметки есть.
+    values = await SettingsService(session).all()
+    assert not autopilot.deadline_passed(
+        round_.week_start, str(values["stage1_cut_at"]), str(values["display_timezone"])
+    )
 
 
 async def test_tick_does_not_open_a_second_round(session):

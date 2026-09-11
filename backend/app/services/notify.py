@@ -8,8 +8,10 @@
 не создаёт вторую запись, а значит и второго сообщения.
 """
 
+import asyncio
 import logging
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from html import escape
 
 import sqlalchemy as sa
@@ -24,6 +26,30 @@ logger = logging.getLogger(__name__)
 # Сколько сообщений отправляем за один проход. Telegram допускает ~30 сообщений
 # в секунду; проход раз в несколько секунд с таким размером в лимит укладывается.
 BATCH = 25
+
+# Пауза между сообщениями. Лимит общий на бота, и пачка приглашений, отправленная
+# залпом, упирается в него целиком — а каждое отбитое сообщение стоит нам ещё
+# одного круга ожидания.
+SEND_INTERVAL_SECONDS = 0.04
+
+# Сколько раз пробуем, прежде чем признать уведомление недоставленным, и через
+# сколько секунд после каждой неудачи. Минута — почти всегда достаточно (сеть
+# моргнула), час — последний шанс на случай долгой недоступности Telegram.
+RETRY_DELAYS_SECONDS = (60, 300, 900, 3600)
+MAX_ATTEMPTS = len(RETRY_DELAYS_SECONDS) + 1
+
+# Ошибки, после которых повторять бессмысленно: человек заблокировал бота,
+# удалил аккаунт или чата просто нет. Опознаём по имени класса и тексту, а не
+# по типу: aiogram — деталь бота, и сервис о нём знать не должен.
+PERMANENT_ERROR_NAMES = frozenset(
+    {"TelegramForbiddenError", "TelegramUnauthorizedError", "TelegramNotFound"}
+)
+PERMANENT_ERROR_MARKERS = (
+    "blocked",
+    "chat not found",
+    "user is deactivated",
+    "bot was kicked",
+)
 
 
 async def queue(
@@ -77,6 +103,41 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
     film_line = _film_line(film)
 
     match kind:
+        case NotificationKind.ACHIEVEMENT_EARNED:
+            return (
+                f"{payload.get('emoji', '🏅')} <b>Ачивка: "
+                f"{escape(str(payload.get('title', 'новая ачивка')))}</b>\n\n"
+                f"{escape(str(payload.get('hint', '')))}\n"
+                "Все бейджи — в профиле."
+            )
+        case NotificationKind.TOURNAMENT_STARTED:
+            return (
+                f"🏆 <b>{escape(str(payload.get('title', 'Турнир')))}</b>\n\n"
+                f"Начался турнир — идёт {payload.get('round', 'первый этап')}. "
+                "Выберите в каждой паре того, кто должен пройти дальше.\n"
+                "Новый этап каждый день, голосовать можно до его конца."
+            )
+        case NotificationKind.TOURNAMENT_ROUND_OPENED:
+            return (
+                f"🏆 <b>{escape(str(payload.get('title', 'Турнир')))}</b>\n\n"
+                f"Новый этап: {payload.get('round', 'следующий круг')}. "
+                "Пары обновились — загляните и проголосуйте."
+            )
+        case NotificationKind.TOURNAMENT_FINISHED:
+            return (
+                f"🏆 <b>{escape(str(payload.get('title', 'Турнир')))}</b> — победитель!\n\n"
+                f"🥇 {escape(str(payload.get('winner', '—')))}\n\n"
+                "Спасибо всем, кто голосовал."
+            )
+        case NotificationKind.SHORTLIST_PUBLISHED:
+            films = payload.get("films") or []
+            listed = "\n".join(f"• {escape(str(title))}" for title in films)
+            return (
+                "🗳 <b>Голосование открыто!</b>\n\n"
+                "Фильмы недели:\n"
+                f"{listed}\n\n"
+                "Отметьте в приложении, на какие пошли бы и в какие вечера свободны."
+            )
         case NotificationKind.SCHEDULE_PUBLISHED:
             return (
                 f"🎬 Расписание готово!\n\n{film_line}\n{when}\n\n"
@@ -166,13 +227,64 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
 
 
 async def pending(session: AsyncSession, limit: int = BATCH) -> list[Notification]:
+    """Что готово к отправке прямо сейчас.
+
+    `failed_reason` означает «больше не пробуем», а отложенная попытка ждёт
+    своего времени в `next_attempt_at` — иначе очередь крутила бы одно и то же
+    сообщение каждые пять секунд.
+    """
     rows = await session.execute(
         sa.select(Notification)
-        .where(Notification.sent_at.is_(None), Notification.failed_reason.is_(None))
+        .where(
+            Notification.sent_at.is_(None),
+            Notification.failed_reason.is_(None),
+            sa.or_(
+                Notification.next_attempt_at.is_(None),
+                Notification.next_attempt_at <= sa.func.now(),
+            ),
+        )
         .order_by(Notification.created_at)
         .limit(limit)
     )
     return list(rows.scalars())
+
+
+def _is_permanent(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return type(exc).__name__ in PERMANENT_ERROR_NAMES or any(
+        marker in text for marker in PERMANENT_ERROR_MARKERS
+    )
+
+
+def _retry_delay(exc: Exception, attempts: int) -> float:
+    """Через сколько секунд пробовать снова.
+
+    Telegram на 429 сам говорит, сколько ждать (`retry_after` у исключения
+    aiogram) — его слово точнее нашей лесенки.
+    """
+    asked = getattr(exc, "retry_after", None)
+    if isinstance(asked, int | float) and asked > 0:
+        return float(asked)
+    return float(RETRY_DELAYS_SECONDS[min(attempts, len(RETRY_DELAYS_SECONDS)) - 1])
+
+
+def _postpone(notification: Notification, exc: Exception) -> None:
+    """Временная ошибка: считаем попытку и откладываем следующую."""
+    notification.attempts += 1
+    reason = f"{type(exc).__name__}: {exc}"[:500]
+    if notification.attempts >= MAX_ATTEMPTS:
+        notification.failed_reason = reason
+        logger.warning("Уведомление %s недоставлено: %s", notification.id, exc)
+        return
+    delay = _retry_delay(exc, notification.attempts)
+    notification.next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay)
+    logger.info(
+        "Уведомление %s отложено на %.0f с (попытка %s): %s",
+        notification.id,
+        delay,
+        notification.attempts,
+        exc,
+    )
 
 
 async def deliver(
@@ -187,10 +299,11 @@ async def deliver(
     живут в aiogram, а этот модуль о мессенджере знать не обязан.
     """
     sent = 0
-    for notification in await pending(session):
+    for index, notification in enumerate(await pending(session)):
         user = await session.get(User, notification.user_id)
         if user is None or user.tg_id is None:
             notification.failed_reason = "нет привязки Telegram"
+            await session.commit()
             continue
 
         film, slot = await _context(session, notification)
@@ -201,7 +314,11 @@ async def deliver(
             # Вид уведомления есть, а текста для него ещё нет. Помечаем, чтобы
             # запись не крутилась в очереди вечно.
             notification.failed_reason = "нет шаблона"
+            await session.commit()
             continue
+
+        if index:
+            await asyncio.sleep(SEND_INTERVAL_SECONDS)
 
         try:
             await bot.send_message(
@@ -214,10 +331,17 @@ async def deliver(
             notification.sent_at = sa.func.now()
             sent += 1
         except Exception as exc:  # noqa: BLE001 — причина уходит в поле и в лог
-            # Заблокировал бота, удалил аккаунт, сеть моргнула — записываем
-            # причину, чтобы очередь не встала намертво из-за одного адресата.
-            notification.failed_reason = f"{type(exc).__name__}: {exc}"[:500]
-            logger.warning("Не доставлено пользователю %s: %s", user.id, exc)
+            if _is_permanent(exc):
+                # Заблокировал бота, удалил аккаунт — повторять нечего.
+                notification.failed_reason = f"{type(exc).__name__}: {exc}"[:500]
+                logger.warning("Не доставлено пользователю %s: %s", user.id, exc)
+            else:
+                # Сеть моргнула, Telegram ответил 429 или 500 — это про момент,
+                # а не про адресата: пробуем снова позже.
+                _postpone(notification, exc)
 
-    await session.commit()
+        # Коммит после каждого сообщения, а не раз на пачку: падение процесса
+        # между отправкой и коммитом иначе разослало бы всю пачку повторно.
+        await session.commit()
+
     return sent

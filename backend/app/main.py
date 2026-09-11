@@ -19,6 +19,7 @@ from app.api import (
     rounds,
     schedule,
     social,
+    tournaments,
     voting,
 )
 from app.config import get_config
@@ -63,6 +64,7 @@ app.include_router(analytics.router)
 app.include_router(manage.router)
 app.include_router(invites.router)
 app.include_router(social.router)
+app.include_router(tournaments.router)
 
 
 @app.get("/health", tags=["ops"])

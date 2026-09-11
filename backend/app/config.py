@@ -1,8 +1,13 @@
 from functools import lru_cache
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Ключ по умолчанию лежит в публичном репозитории, и подпись сессий им равносильна
+# её отсутствию: зная строку, любой выпишет себе токен суперадмина. Поэтому в бою
+# такой ключ — не «небезопасно», а «не запускаться».
+INSECURE_SECRET_KEYS = frozenset({"", "dev-insecure-key", "change-me-openssl-rand-hex-32"})
 
 
 class Config(BaseSettings):
@@ -26,6 +31,9 @@ class Config(BaseSettings):
     kinopoisk_api_token: str = ""
 
     secret_key: str = "dev-insecure-key"
+    # dev | production. В бою проставляется в docker-compose.prod.yml и включает
+    # проверки, которые в разработке только мешали бы.
+    app_env: str = "dev"
     display_timezone: str = "Europe/Moscow"
     bootstrap_superadmin_tg_id: int | None = None
 
@@ -33,6 +41,19 @@ class Config(BaseSettings):
     # Каталог собранного Mini App. В проде статику отдаёт само приложение,
     # в разработке её отдаёт dev-сервер Vite и каталога здесь нет.
     frontend_dir: str = "../miniapp/dist"
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.strip().lower() in {"production", "prod"}
+
+    @model_validator(mode="after")
+    def _refuse_insecure_secret_in_production(self) -> "Config":
+        if self.is_production and self.secret_key.strip() in INSECURE_SECRET_KEYS:
+            raise ValueError(
+                "SECRET_KEY не задан или оставлен из примера. Сгенерируйте свой "
+                "(openssl rand -hex 32) и положите в .env рядом с docker-compose.prod.yml."
+            )
+        return self
 
     @field_validator("bootstrap_superadmin_tg_id", mode="before")
     @classmethod

@@ -233,7 +233,9 @@ class Feedback(Base, CreatedAtMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     screening_id: Mapped[int] = mapped_column(sa.ForeignKey("screenings.id"), index=True)
     user_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id"))
-    film_id: Mapped[int] = mapped_column(sa.ForeignKey("films.id"), index=True)
+    # Пусто у ручного события без фильма (встреча клуба, «ждите анонса»):
+    # оценивать там нечего, а рассказать, как прошло, — есть что.
+    film_id: Mapped[int | None] = mapped_column(sa.ForeignKey("films.id"), index=True)
     film_rating: Mapped[int | None]
     review_text: Mapped[str | None] = mapped_column(sa.Text)
     # Оценка организации НЕ входит в рейтинг фильма (§8) — отдельные поля.

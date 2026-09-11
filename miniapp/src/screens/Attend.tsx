@@ -69,13 +69,18 @@ export function Attend({ screening, onBack }: { screening: Screening; onBack(): 
         ← Назад
       </button>
 
-      <div className="film-row">
-        <Poster url={state.film.poster_url} />
-        <div>
-          <p className="film-row__title">{state.film.title_ru}</p>
-          <p className="meta">{state.film.year}</p>
+      {/* У события без фильма (встреча клуба) карточки нет — только название. */}
+      {state.film ? (
+        <div className="film-row">
+          <Poster url={state.film.poster_url} />
+          <div>
+            <p className="film-row__title">{state.film.title_ru}</p>
+            <p className="meta">{state.film.year}</p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <h3 style={{ marginBottom: 0 }}>{screening.film.title_ru}</h3>
+      )}
 
       {error && <div className="error">{error}</div>}
 
@@ -101,25 +106,32 @@ export function Attend({ screening, onBack }: { screening: Screening; onBack(): 
         <>
           <p className="badge">✓ Присутствие отмечено</p>
 
-          <h3>Как вам фильм?</h3>
-          <p className="hint">Необязательно, но помогает собирать рейтинг клуба.</p>
+          {/* Оценка — фильму. Без фильма спрашиваем только впечатление. */}
+          {state.film && (
+            <>
+              <h3>Как вам фильм?</h3>
+              <p className="hint">Необязательно, но помогает собирать рейтинг клуба.</p>
 
-          <div className="rating-row">
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((value) => (
-              <button
-                key={value}
-                className={`rating-dot ${rating === value ? "is-on" : ""}`}
-                onClick={() => {
-                  haptic();
-                  // Повторное нажатие снимает оценку: передумать можно.
-                  setRating(rating === value ? null : value);
-                  setSaved(false);
-                }}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
+              <div className="rating-row">
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((value) => (
+                  <button
+                    key={value}
+                    className={`rating-dot ${rating === value ? "is-on" : ""}`}
+                    onClick={() => {
+                      haptic();
+                      // Повторное нажатие снимает оценку: передумать можно.
+                      setRating(rating === value ? null : value);
+                      setSaved(false);
+                    }}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {!state.film && <h3>Как прошло?</h3>}
 
           <textarea
             className="field"

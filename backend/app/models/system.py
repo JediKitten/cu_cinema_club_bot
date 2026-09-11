@@ -52,7 +52,13 @@ class Notification(Base, CreatedAtMixin):
     dedup_key: Mapped[str | None] = mapped_column(sa.String(255))
     sent_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     read_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    # Заполнено — попытки кончились и запись больше не берут в работу. Сетевая
+    # ошибка сюда не попадает: она откладывает следующую попытку, а не хоронит
+    # уведомление.
     failed_reason: Mapped[str | None] = mapped_column(sa.Text)
+    attempts: Mapped[int] = mapped_column(default=0, server_default="0")
+    # Когда пробовать снова. NULL — можно прямо сейчас.
+    next_attempt_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
 class InviteCode(Base, CreatedAtMixin):

@@ -33,6 +33,9 @@ import type {
   PersonRow,
   ScreeningStats,
   TeamMember,
+  Tournament,
+  TournamentBrief,
+  TournamentOptionDraft,
   User,
 } from "./types";
 
@@ -53,15 +56,51 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
+// Сколько ждём ответа. В вебвью Telegram на плохой сети запрос не отваливается
+// сам: без ограничения экран остаётся в «Загрузка…» навсегда, и человеку
+// непонятно, ждать ему или перезапускать приложение.
+const TIMEOUT_MS = 20_000;
+
+// fetch отклоняется TypeError'ом при обрыве связи — и «Failed to fetch»
+// попадало прямо в русский интерфейс. Сеть — не ошибка приложения, и говорить
+// о ней надо человеческими словами.
+export const OFFLINE_MESSAGE = "Нет связи. Проверьте интернет и попробуйте снова.";
+
+async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      ...init,
+      signal: init.signal ?? AbortSignal.timeout(TIMEOUT_MS),
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
+    });
+  } catch (error) {
+    // Свою отмену (уход с экрана) пробрасываем как есть: вызывающий на неё
+    // рассчитывает и ошибку показывать не должен.
+    if (error instanceof DOMException && error.name === "AbortError" && init.signal) {
+      throw error;
+    }
+    // 0 — «ответа не было вовсе»: отличимо от любого настоящего статуса.
+    throw new ApiError(0, OFFLINE_MESSAGE);
+  }
+
+  // Сессия живёт тридцать дней, а вебвью Telegram переживает и больше: рано
+  // или поздно токен перестаёт работать прямо посреди работы. Вход по initData
+  // бесплатный и не требует человека — переспрашиваем и повторяем запрос, а не
+  // показываем «Аккаунт недоступен» на каждом экране.
+  if (response.status === 401 && retry && path !== AUTH_PATH && getInitData()) {
+    try {
+      await login();
+    } catch {
+      // Войти заново не вышло — пусть вызывающий увидит исходную 401.
+      throw new ApiError(401, "Сессия недействительна");
+    }
+    return request<T>(path, init, false);
+  }
 
   if (!response.ok) {
     // FastAPI кладёт человекочитаемое сообщение в detail — показываем его,
@@ -78,12 +117,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.status === 204 ? (undefined as T) : response.json();
 }
 
+const AUTH_PATH = "/api/auth/telegram";
+
 export async function login(): Promise<User> {
   const initData = getInitData();
   if (!initData) {
     throw new ApiError(401, "Откройте приложение через Telegram");
   }
-  const auth = await request<{ token: string; user: User }>("/api/auth/telegram", {
+  const auth = await request<{ token: string; user: User }>(AUTH_PATH, {
     method: "POST",
     body: JSON.stringify({ init_data: initData }),
   });
@@ -400,3 +441,36 @@ export const cancelEvent = (eventId: number, reason: string) =>
     method: "POST",
     body: JSON.stringify({ reason }),
   });
+
+/* --- Турниры --------------------------------------------------------------- */
+
+export const currentTournament = () =>
+  request<Tournament | null>("/api/tournaments/current");
+
+export const listTournaments = () => request<TournamentBrief[]>("/api/tournaments");
+
+export const getTournament = (id: number) => request<Tournament>(`/api/tournaments/${id}`);
+
+export const voteInTournament = (id: number, matchId: number, optionId: number) =>
+  request<Tournament>(`/api/tournaments/${id}/vote`, {
+    method: "POST",
+    body: JSON.stringify({ match_id: matchId, option_id: optionId }),
+  });
+
+export const createTournament = (title: string, description: string | null) =>
+  request<Tournament>("/api/tournaments", {
+    method: "POST",
+    body: JSON.stringify({ title, description }),
+  });
+
+export const setTournamentOptions = (id: number, options: TournamentOptionDraft[]) =>
+  request<Tournament>(`/api/tournaments/${id}/options`, {
+    method: "PUT",
+    body: JSON.stringify({ options }),
+  });
+
+export const startTournament = (id: number) =>
+  request<Tournament>(`/api/tournaments/${id}/start`, { method: "POST" });
+
+export const cancelTournament = (id: number) =>
+  request<Tournament>(`/api/tournaments/${id}/cancel`, { method: "POST" });

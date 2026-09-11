@@ -196,6 +196,21 @@ async def _capacity(session: AsyncSession, screening: Screening) -> int:
     return hall.capacity
 
 
+async def _lock_screening(session: AsyncSession, screening_id: int) -> Screening | None:
+    """Берёт показ под блокировку строки до конца транзакции.
+
+    Места в зале считаются чтением, а занимаются записью, и между этими двумя
+    шагами успевает вклиниться чужой запрос: два одновременных «Приду» на
+    последнее место оба видели свободное. Блокировка строки показа сериализует
+    только его — на соседние сеансы и на остальное приложение она не влияет.
+    """
+    return (
+        await session.execute(
+            sa.select(Screening).where(Screening.id == screening_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+
+
 async def _confirmed_count(session: AsyncSession, screening_id: int) -> int:
     return (
         await session.scalar(
@@ -214,7 +229,7 @@ async def confirm(
     session: AsyncSession, screening_id: int, user_id: int
 ) -> ConfirmResult:
     """«Приду». Ограничений на число сеансов у одного человека нет (§7)."""
-    screening = await session.get(Screening, screening_id)
+    screening = await _lock_screening(session, screening_id)
     if screening is None:
         raise ScheduleError("Показ не найден")
     if screening.status != ScreeningStatus.SCHEDULED:
@@ -239,6 +254,12 @@ async def confirm(
     if existing is not None and existing.state == ConfirmationState.CONFIRMED:
         return await _result(session, screening_id, existing, capacity)
 
+    # Стоящего в очереди повторное нажатие никуда не двигает: место освобождает
+    # только promote_from_waitlist, и по порядку. Иначе очередь доставалась бы
+    # тому, кто чаще открывает приложение, а не тому, кто встал раньше.
+    if existing is not None and existing.state == ConfirmationState.WAITLIST:
+        return await _result(session, screening_id, existing, capacity)
+
     # Место есть — подтверждаем, иначе в лист ожидания в порядке подтверждения.
     taken = await _confirmed_count(session, screening_id)
     state = (
@@ -252,6 +273,9 @@ async def confirm(
         existing.state = state
         existing.cancelled_at = None
         existing.was_late_cancel = False
+        # Порядок очереди считается по created_at. Вернувшийся после отмены
+        # встаёт в её конец: место, которое он сам освободил, уже чужое.
+        existing.created_at = datetime.now(UTC)
 
     await session.commit()
     return await _result(session, screening_id, existing, capacity)
@@ -287,7 +311,7 @@ async def cancel(
     session: AsyncSession, screening_id: int, user_id: int, late_cancel_hours: int
 ) -> ConfirmResult:
     """«Не смогу». Санкций нет, но поздняя отмена попадает в статистику (§7)."""
-    screening = await session.get(Screening, screening_id)
+    screening = await _lock_screening(session, screening_id)
     if screening is None:
         raise ScheduleError("Показ не найден")
 
@@ -328,7 +352,9 @@ async def promote_from_waitlist(session: AsyncSession, screening_id: int) -> int
     Возвращает число переведённых: обычно один, но если вместимость подняли
     настройкой, то сколько поместится.
     """
-    screening = await session.get(Screening, screening_id)
+    screening = await _lock_screening(session, screening_id)
+    if screening is None:
+        return 0
     capacity = await _capacity(session, screening)
     free = capacity - await _confirmed_count(session, screening_id)
     if free <= 0:

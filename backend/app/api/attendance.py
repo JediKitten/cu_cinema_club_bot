@@ -161,7 +161,7 @@ async def _feedback_out(
     session: AsyncSession, screening_id: int, user_id: int
 ) -> FeedbackOut:
     screening = await _screening_or_404(session, screening_id)
-    film = await session.get(Film, screening.film_id)
+    film = await session.get(Film, screening.film_id) if screening.film_id else None
 
     came = await session.scalar(
         sa.select(Attendance.id).where(
@@ -180,15 +180,20 @@ async def _feedback_out(
 
     return FeedbackOut(
         screening_id=screening_id,
-        film=FilmBrief(
-            id=film.id,
-            tmdb_id=film.tmdb_id,
-            title_ru=film.title_ru,
-            title_orig=film.title_orig,
-            year=film.year,
-            poster_url=poster_url(film.poster_path),
-            genres=list(film.genres or []),
-            directors=list(film.directors or []),
+        # Ручное событие может быть без фильма — тогда и карточки нет.
+        film=(
+            FilmBrief(
+                id=film.id,
+                tmdb_id=film.tmdb_id,
+                title_ru=film.title_ru,
+                title_orig=film.title_orig,
+                year=film.year,
+                poster_url=poster_url(film.poster_path),
+                genres=list(film.genres or []),
+                directors=list(film.directors or []),
+            )
+            if film is not None
+            else None
         ),
         attended=came is not None,
         film_rating=saved.film_rating if saved else None,

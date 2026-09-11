@@ -203,8 +203,15 @@ async def redeem(session: AsyncSession, user: User, raw: str) -> InviteCode:
     if not value:
         raise InviteError("Введите код")
 
+    # Блокировка строки кода до конца транзакции: «сколько занято» считается
+    # чтением, а занимается записью в users. Без неё код на одну активацию,
+    # присланный в чат и нажатый двумя людьми разом, впустит обоих. Отдельного
+    # счётчика мы заводить не хотим (см. docstring модуля) — значит очередь
+    # за кодом выстраивает база.
     code = (
-        await session.execute(sa.select(InviteCode).where(InviteCode.code == value))
+        await session.execute(
+            sa.select(InviteCode).where(InviteCode.code == value).with_for_update()
+        )
     ).scalar_one_or_none()
     if code is None or code.revoked_at is not None:
         raise InviteError("Такого кода нет")

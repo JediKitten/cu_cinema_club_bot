@@ -329,6 +329,53 @@ class FeedItemOut(BaseModel):
     text: str | None = None
 
 
+class AttendanceStats(BaseModel):
+    """Посещаемость показов клуба (блок в профиле)."""
+
+    came: int = 0
+    planned: int = 0
+    # Доля дошедших от собиравшихся. Пусто, пока ходить было не на что.
+    ratio: float | None = None
+    last_at: datetime | None = None
+    last_film: str | None = None
+
+
+class AchievementGroupOut(BaseModel):
+    """Одна цель со ступенями: держится высшая достигнутая.
+
+    Без «осталось три до серебра» бейдж выглядит случайной наградой, а не целью,
+    поэтому прогресс к следующей ступени едет вместе с полученной.
+    """
+
+    group: str
+    label: str
+    secret: bool = False
+    # Что уже получено: bronze | silver | gold | platinum. Пусто — ещё ничего.
+    tier: str | None = None
+    emoji: str = ""
+    title: str = ""
+    description: str = ""
+    earned_at: datetime | None = None
+    # Куда расти. Пусто, если взята платина.
+    next_title: str | None = None
+    next_tier: str | None = None
+    progress: int = 0
+    target: int = 0
+
+
+class AchievementsOut(BaseModel):
+    """Четыре числа для профиля и разбор по целям."""
+
+    bronze: int = 0
+    silver: int = 0
+    gold: int = 0
+    platinum: int = 0
+    # Сколько секретных ещё не найдено. Названия и условия не раскрываем —
+    # в этом весь их смысл.
+    secrets_left: int = 0
+    groups: list[AchievementGroupOut] = Field(default_factory=list)
+
+
 class ProfileOut(BaseModel):
     id: int
     display_name: str
@@ -348,6 +395,8 @@ class ProfileOut(BaseModel):
     relation_friends: bool = False
     relation_following: bool = False
     relation_follower: bool = False
+    attendance: AttendanceStats = Field(default_factory=AttendanceStats)
+    achievements: AchievementsOut = Field(default_factory=AchievementsOut)
     recent: list[FeedItemOut] = Field(default_factory=list)
 
 
@@ -576,11 +625,96 @@ class FeedbackIn(BaseModel):
 
 class FeedbackOut(BaseModel):
     screening_id: int
-    film: FilmBrief
+    # Пусто у события без фильма: форма тогда спрашивает только про организацию.
+    film: FilmBrief | None = None
     attended: bool
     film_rating: int | None = None
     review_text: str | None = None
     org: OrgRating | None = None
+
+
+# --- Турниры (расширение по просьбе клуба) ----------------------------------
+
+
+class TournamentOptionOut(BaseModel):
+    id: int
+    seed: int
+    title: str
+    subtitle: str | None = None
+    image_url: str | None = None
+    film_id: int | None = None
+
+
+class TournamentMatchOut(BaseModel):
+    id: int
+    round_no: int
+    position: int
+    option_a: TournamentOptionOut | None = None
+    option_b: TournamentOptionOut | None = None
+    opens_at: datetime
+    closes_at: datetime
+    # Мой голос виден всегда, чужие — только после закрытия этапа: счёт
+    # на глазах у голосующих подталкивает к большинству (§11).
+    my_option_id: int | None = None
+    votes_a: int | None = None
+    votes_b: int | None = None
+    winner_option_id: int | None = None
+
+
+class TournamentRoundOut(BaseModel):
+    round_no: int
+    name: str
+    closed: bool
+    matches: list[TournamentMatchOut] = Field(default_factory=list)
+
+
+class TournamentOut(BaseModel):
+    id: int
+    title: str
+    description: str | None = None
+    status: str
+    current_round: int
+    stage_hours: int
+    options_count: int
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    winner: TournamentOptionOut | None = None
+    rounds: list[TournamentRoundOut] = Field(default_factory=list)
+    left_to_vote: int = 0
+    closes_at: datetime | None = None
+
+
+class TournamentBrief(BaseModel):
+    """Строка архива и содержимое плашки: без сетки целиком."""
+
+    id: int
+    title: str
+    status: str
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class TournamentIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class TournamentOptionIn(BaseModel):
+    """Либо фильм из каталога, либо своя карточка."""
+
+    title: str = Field(default="", max_length=120)
+    subtitle: str | None = Field(default=None, max_length=200)
+    image_url: str | None = Field(default=None, max_length=1000)
+    film_id: int | None = None
+
+
+class TournamentOptionsIn(BaseModel):
+    options: list[TournamentOptionIn] = Field(default_factory=list, max_length=32)
+
+
+class TournamentVoteIn(BaseModel):
+    match_id: int
+    option_id: int
 
 
 # --- Аналитика (§14) --------------------------------------------------------

@@ -190,6 +190,17 @@ REGISTRY: tuple[SettingSpec, ...] = (
         1,
         336,
     ),
+    # --- Турниры ---
+    SettingSpec(
+        "tournament_stage_hours",
+        "int",
+        24,
+        "misc",
+        "Длительность этапа турнира, часов",
+        1,
+        168,
+        help="Сутки по умолчанию: новый этап каждый день. У идущего турнира не меняется.",
+    ),
     # --- Прочее ---
     SettingSpec(
         "beta_invite_required",
