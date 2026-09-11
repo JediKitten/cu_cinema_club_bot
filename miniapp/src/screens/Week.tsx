@@ -50,6 +50,7 @@ export function Week({ onOpenTournament }: { onOpenTournament(id: number): void 
   // Голосование привязано к активному циклу, а не к листаемой неделе: показывать
   // бюллетень на чужой неделе значило бы предлагать выбрать вечера не той недели.
   const voting = schedule?.stage === "slot_voting";
+  const empty = schedule?.screenings.every((item) => item.status === "cancelled") ?? false;
 
   return (
     <div className="screen">
@@ -75,9 +76,11 @@ export function Week({ onOpenTournament }: { onOpenTournament(id: number): void 
         </button>
       </div>
 
-      {schedule?.voting_week && (
+      {schedule?.voting_week && !empty && (
         // Голосование — единственное, что требует действия. Оно идёт на другой
         // неделе, поэтому ведём туда явно, а не надеемся, что долистают.
+        // На пустой неделе плашки нет: там то же самое говорит сам экран,
+        // подробнее и без повтора в двух строчках подряд.
         <button className="notice" onClick={() => setWeek(schedule.voting_week)}>
           Идёт выбор фильмов на неделю {weekLabel(schedule.voting_week)} →
         </button>
@@ -87,7 +90,15 @@ export function Week({ onOpenTournament }: { onOpenTournament(id: number): void 
       {loading && !schedule && <div className="center">Загрузка…</div>}
 
       {schedule && voting && <Vote />}
-      {schedule && !voting && <Screenings schedule={schedule} onChange={setSchedule} />}
+      {schedule && !voting && (
+        <Screenings
+          schedule={schedule}
+          onChange={setSchedule}
+          onGoToVoting={
+            schedule.voting_week ? () => setWeek(schedule.voting_week) : undefined
+          }
+        />
+      )}
     </div>
   );
 }

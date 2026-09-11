@@ -627,6 +627,8 @@ async def test_schedule_opens_on_the_current_week(client, session):
     boss = await login(client, 777001, "Главный")
     headers = {"Authorization": f"Bearer {boss['token']}"}
 
+    from app.api.schedule import default_week
+
     today = date.today()
     this_week = today - timedelta(days=today.weekday())
     next_week = this_week + timedelta(days=7)
@@ -635,7 +637,9 @@ async def test_schedule_opens_on_the_current_week(client, session):
     await rounds_service.open_round(session, next_week, boss["user"]["id"])
 
     opened = (await client.get("/api/schedule", headers=headers)).json()
-    assert opened["week_start"] == this_week.isoformat()
+    # Не неделя цикла, а та, которую велит правило: до пятницы текущая,
+    # в выходные следующая. Само правило проверяется отдельно.
+    assert opened["week_start"] == default_week(today).isoformat()
 
 
 async def test_voting_week_is_pointed_at_from_another_week(client, session):
@@ -660,7 +664,8 @@ async def test_voting_week_is_pointed_at_from_another_week(client, session):
     await rounds_service.publish_shortlist(session, round_, boss["user"]["id"])
     assert round_.stage == RoundStage.SLOT_VOTING
 
-    here = (await client.get("/api/schedule", headers=headers)).json()
+    # Смотрим с недели, которая точно не та, где голосуют.
+    here = (await client.get(f"/api/schedule?week={this_week}", headers=headers)).json()
     assert here["week_start"] == this_week.isoformat()
     assert here["voting_week"] == next_week.isoformat()
 
@@ -669,42 +674,64 @@ async def test_voting_week_is_pointed_at_from_another_week(client, session):
     assert there["voting_week"] is None
 
 
-async def test_dead_current_week_is_skipped(client, session):
-    """В субботу вечером показывать доживающую пустую неделю бессмысленно —
-    открываем ближайшую, где что-то есть."""
-    from datetime import UTC, datetime, timedelta
+def test_week_rule_looks_forward_only_on_the_weekend():
+    """До пятницы — текущая неделя, в субботу и воскресенье — следующая.
+
+    Проверяем на конкретных днях, а не на сегодняшнем: иначе тест говорил бы
+    разное в зависимости от дня прогона — и молчал бы пять дней из семи.
+    """
+    from datetime import date
+
+    from app.api.schedule import default_week
+
+    monday = date(2026, 9, 7)
+    for offset, expected in enumerate([monday] * 5 + [monday + timedelta(days=7)] * 2):
+        assert default_week(monday + timedelta(days=offset)) == expected, offset
+
+
+async def test_empty_week_is_shown_as_is_on_the_weekend(client, session):
+    """В выходные открываем следующую неделю, даже если она пустая.
+
+    Раньше расписание прыгало к ближайшему показу, где бы он ни был. Но именно
+    в эти дни идёт голосование, и пустая неделя со словами «выберите фильм»
+    полезнее чужой недели с показами.
+    """
+    from datetime import UTC, date, datetime, timedelta
+
+    from app.api.schedule import default_week
 
     boss = await login(client, 777001, "Главный")
     headers = {"Authorization": f"Bearer {boss['token']}"}
 
-    # Единственное событие — на следующей неделе.
-    when = datetime.now(UTC) + timedelta(days=9)
+    # Единственное событие — далеко впереди.
+    when = datetime.now(UTC) + timedelta(days=16)
     await client.post(
         "/api/admin/events",
-        json={"starts_at": when.isoformat(), "title": "Через полторы недели"},
+        json={"starts_at": when.isoformat(), "title": "Через две недели"},
         headers=headers,
     )
 
     opened = (await client.get("/api/schedule", headers=headers)).json()
-    titles = [s["film"]["title_ru"] for s in opened["screenings"]]
-    assert titles == ["Через полторы недели"]
+
+    assert opened["week_start"] == default_week(date.today()).isoformat()
+    assert opened["screenings"] == []
 
 
-async def test_current_week_kept_while_something_is_left(client, session):
-    """Пока на этой неделе есть что впереди — остаёмся на ней."""
-    from datetime import UTC, datetime, timedelta
+async def test_this_weeks_screening_is_visible_until_friday(client, session):
+    """До пятницы расписание открывается на текущей неделе — ради её показов."""
+    from datetime import UTC, date, datetime, timedelta
 
     boss = await login(client, 777001, "Главный")
     headers = {"Authorization": f"Bearer {boss['token']}"}
 
     soon = datetime.now(UTC) + timedelta(hours=6)
-    later = datetime.now(UTC) + timedelta(days=9)
-    for when, title in ((soon, "Сегодня"), (later, "Потом")):
-        await client.post(
-            "/api/admin/events",
-            json={"starts_at": when.isoformat(), "title": title},
-            headers=headers,
-        )
+    await client.post(
+        "/api/admin/events",
+        json={"starts_at": soon.isoformat(), "title": "Сегодня"},
+        headers=headers,
+    )
 
-    opened = (await client.get("/api/schedule", headers=headers)).json()
+    today = date.today()
+    this_week = (today - timedelta(days=today.weekday())).isoformat()
+    opened = (await client.get(f"/api/schedule?week={this_week}", headers=headers)).json()
     assert "Сегодня" in [s["film"]["title_ru"] for s in opened["screenings"]]

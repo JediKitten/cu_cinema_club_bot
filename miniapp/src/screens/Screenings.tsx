@@ -14,7 +14,16 @@ function started(screening: Screening): boolean {
 }
 
 /** Этап 3 (§7): опубликованное расписание и подтверждения. */
-export function Screenings({ schedule, onChange }: { schedule: Schedule; onChange(s: Schedule): void }) {
+export function Screenings({
+  schedule,
+  onChange,
+  onGoToVoting,
+}: {
+  schedule: Schedule;
+  onChange(s: Schedule): void;
+  /** Увести на неделю, где идёт выбор фильмов. Есть, только когда он идёт. */
+  onGoToVoting?(): void;
+}) {
   const [busy, setBusy] = useState<number | null>(null);
   const [attending, setAttending] = useState<Screening | null>(null);
   const openFilm = useOpenFilm();
@@ -60,9 +69,27 @@ export function Screenings({ schedule, onChange }: { schedule: Schedule; onChang
 
   return (
     <>
-      {active.length === 0 && (
-        <p className="hint">На этой неделе показов нет.</p>
-      )}
+      {active.length === 0 &&
+        (onGoToVoting ? (
+          // Пустая неделя в выходные — это норма: расписание на неё как раз
+          // и собирается голосованием. Молчаливое «показов нет» выглядело бы
+          // так, будто клуб закрылся.
+          <>
+            <p className="hint">
+              Показов на этой неделе пока нет — их выбирают прямо сейчас.
+              Отметьте фильмы, на которые пошли бы, и вечера, когда свободны:
+              расписание соберётся из ответов.
+            </p>
+            <button className="primary" onClick={onGoToVoting}>
+              Выбрать фильмы
+            </button>
+          </>
+        ) : (
+          <p className="hint">
+            На этой неделе показов нет. Отмечайте фильмы в каталоге — из них
+            и собирается список, за который голосуют.
+          </p>
+        ))}
       {active.length > 0 && <p className="hint">Отметьте, на какие сеансы придёте.</p>}
 
       {active.map((screening) => {

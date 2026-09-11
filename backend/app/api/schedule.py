@@ -273,52 +273,38 @@ async def schedule(
     return await _week_view(session, week, user)
 
 
+# Суббота: с неё неделя считается прожитой и расписание смотрит вперёд.
+SATURDAY = 5
+DAYS_IN_WEEK = 7
+
+
 def _monday(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
 
+def default_week(today: date) -> date:
+    """Правило выбора недели — отдельно от запроса, чтобы его можно было
+    проверить на конкретном дне, а не на том, который случился при прогоне."""
+    current = _monday(today)
+    return current + timedelta(days=DAYS_IN_WEEK) if today.weekday() >= SATURDAY else current
+
+
 async def _default_week(session: AsyncSession) -> date:
-    """При открытии показываем текущую неделю.
+    """Какую неделю показываем при открытии.
 
-    Не неделю активного цикла: тот готовится к следующей, и человек увидел бы
-    пустой экран вместо сегодняшних показов.
+    До пятницы включительно — текущую: на ней ещё могут быть показы, и человек
+    открывает расписание ради них. В субботу и воскресенье неделя уже прожита,
+    и показывать её огрызок незачем — переходим к следующей, даже если она
+    пустая: как раз в эти дни идёт голосование, и пустая неделя со словами
+    «выберите фильм» полезнее доживающей.
 
-    Исключение — когда в текущей неделе ничего не осталось: в субботу вечером
-    показывать доживающую пустую неделю бессмысленно, поэтому переходим к
-    ближайшей, где что-то есть.
+    Неделя активного цикла тут не годится: он готовится к следующей, и в среду
+    человек увидел бы пустой экран вместо сегодняшнего показа.
     """
-    current = _monday(date.today())
-    _, end = await _week_bounds(session, current)
-
-    left_this_week = await session.scalar(
-        sa.select(Screening.id)
-        .join(Slot, Slot.id == Screening.slot_id)
-        .where(
-            Screening.status != ScreeningStatus.CANCELLED,
-            Slot.starts_at >= datetime.now(UTC),
-            Slot.starts_at < end,
-        )
-        .limit(1)
-    )
-    if left_this_week is not None:
-        return current
-
-    # Ближайший будущий показ — его неделю и открываем.
-    upcoming = await session.scalar(
-        sa.select(Slot.starts_at)
-        .join(Screening, Screening.slot_id == Slot.id)
-        .where(
-            Screening.status != ScreeningStatus.CANCELLED,
-            Slot.starts_at >= datetime.now(UTC),
-        )
-        .order_by(Slot.starts_at)
-        .limit(1)
-    )
-    if upcoming is None:
-        return current
-
     tz = ZoneInfo(str(await SettingsService(session).get("display_timezone")))
-    return _monday(upcoming.astimezone(tz).date())
+    # День считаем по зоне вуза, а не по часам сервера: в воскресенье ночью
+    # по Москве в UTC ещё суббота, и «следующая неделя» разъехалась бы.
+    return default_week(datetime.now(tz).date())
 
 
 async def _voting_week(session: AsyncSession) -> date | None:
