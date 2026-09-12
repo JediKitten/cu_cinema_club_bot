@@ -9,6 +9,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Round, Screening, Slot
@@ -30,6 +31,11 @@ async def tick(session: AsyncSession) -> list[str]:
     values = await SettingsService(session).all()
     tz = str(values["display_timezone"])
     done: list[str] = []
+
+    # Показы, которые уже прошли, закрываем всегда — даже когда цикла нет
+    # вовсе: ручные события ему не принадлежат.
+    if await _complete_past(session):
+        done.append("прошедшие показы отмечены завершёнными")
 
     round_ = await rounds_service.active_round(session)
 
@@ -106,6 +112,33 @@ def _first_collectable_week(
             return week
         week += timedelta(days=rounds_service.DAYS_IN_WEEK)
     return week
+
+
+async def _complete_past(session: AsyncSession) -> int:
+    """Отмечает завершёнными показы, которые уже кончились.
+
+    Раньше это делало только закрытие цикла и только для его показов. У ручного
+    события цикла нет, поэтому оно оставалось «назначенным» навсегда — и не
+    попадало ни в «Что уже смотрели», ни в статистику, хотя прошло неделю назад.
+
+    Момент — конец слота: длительность уже учитывает фильм целиком, а ждать
+    дольше незачем.
+    """
+    ended = Slot.starts_at + sa.cast(
+        sa.func.concat(Slot.duration_min, " minutes"), postgresql.INTERVAL
+    )
+    result = await session.execute(
+        sa.update(Screening)
+        .where(
+            Screening.status == ScreeningStatus.SCHEDULED,
+            Screening.slot_id.in_(sa.select(Slot.id).where(ended < sa.func.now())),
+        )
+        .values(status=ScreeningStatus.COMPLETED)
+    )
+    if result.rowcount:
+        await session.commit()
+        logger.info("Завершено показов: %d", result.rowcount)
+    return result.rowcount
 
 
 def _week_started(week_start: date, now: datetime | None = None) -> bool:

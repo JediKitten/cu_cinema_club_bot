@@ -55,6 +55,65 @@ async def test_fresh_round_does_not_race_through_all_stages(session):
     )
 
 
+async def test_past_manual_event_becomes_completed(session):
+    """Ручное событие тоже должно закрываться само.
+
+    Завершёнными показы делало только закрытие цикла, и только свои. У ручного
+    события цикла нет — оно оставалось «назначенным» навсегда и не попадало
+    ни в «Что уже смотрели», ни в статистику, хотя прошло неделю назад.
+    """
+    from datetime import UTC, datetime
+
+    from app.models import Screening, Slot
+    from app.models.enums import ScreeningStatus
+    from app.services import events
+
+    boss = await admin(session)
+    film = await make_film(session, "Бойцовский клуб")
+    await session.commit()
+
+    past = await events.create(
+        session,
+        starts_at=datetime.now(UTC) - timedelta(days=1),
+        actor_id=boss.id,
+        film_id=film.id,
+    )
+    upcoming = await events.create(
+        session,
+        starts_at=datetime.now(UTC) + timedelta(days=1),
+        actor_id=boss.id,
+        title="Ещё не было",
+    )
+
+    await cycle.tick(session)
+
+    await session.refresh(past)
+    await session.refresh(upcoming)
+    assert past.status == ScreeningStatus.COMPLETED
+    # Будущее не трогаем.
+    assert upcoming.status == ScreeningStatus.SCHEDULED
+
+    # И оно появляется в календаре прошедших.
+    from app.services import analytics
+
+    shown = await analytics.past_screenings(session)
+    assert past.id in [row["screening_id"] for row in shown]
+
+    # Показ, который ещё идёт, тоже не закрываем: слот длится три часа.
+    now_running = await events.create(
+        session,
+        starts_at=datetime.now(UTC) - timedelta(minutes=30),
+        actor_id=boss.id,
+        title="Идёт прямо сейчас",
+    )
+    await cycle.tick(session)
+    await session.refresh(now_running)
+    assert now_running.status == ScreeningStatus.SCHEDULED
+
+    assert isinstance(await session.get(Slot, past.slot_id), Slot)
+    assert isinstance(await session.get(Screening, past.id), Screening)
+
+
 async def test_tick_does_not_open_a_second_round(session):
     await cycle.tick(session)
     await cycle.tick(session)
