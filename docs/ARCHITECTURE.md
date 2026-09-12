@@ -263,7 +263,7 @@ dev_login.py       подписанная initData для просмотра в�
 | Интерес и веса | `interests`, `weights`, `ranking` |
 | Цикл | `rounds`, `cycle`, `voting`, `schedule`, `autopilot`, `reminders` |
 | Показ | `attendance`, `events` |
-| Каталог | `tmdb`, `kinopoisk`, `matching`, `deck`, `ratings` |
+| Каталог | `tmdb`, `kinopoisk`, `matching`, `catalog`, `deck`, `ratings` |
 | Люди | `roles`, `social`, `invites`, `referrals` |
 | Сообщения | `notify`, `broadcast` |
 | Турниры | `tournaments` |
