@@ -46,6 +46,14 @@ export default function App() {
   const closeProfile = useCallback(() => setOpenProfile(null), []);
   const closeTournament = useCallback(() => setOpenTournament(null), []);
 
+  // Пока открыто наложение, страница под ним не прокручивается: иначе справа
+  // оказываются две полосы прокрутки сразу — его и списка под ним.
+  const overlayOpen = openFilm !== null || openProfile !== null || openTournament !== null;
+  useEffect(() => {
+    document.body.classList.toggle("has-overlay", overlayOpen);
+    return () => document.body.classList.remove("has-overlay");
+  }, [overlayOpen]);
+
   // Бот открывает приложение адресом вида ?film=123 — сразу показываем карточку.
   useEffect(() => {
     const requested = new URLSearchParams(location.search).get("film");
