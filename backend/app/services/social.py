@@ -440,7 +440,7 @@ async def profile(session: AsyncSession, viewer_id: int, user_id: int) -> Profil
         ratings_by_score=histogram,
         relation=await relation(session, viewer_id, user_id),
         attendance=await attendance(session, user_id),
-        achievements=await achievements.of_user(session, user_id),
+        achievements=await achievements.of_user(session, user_id, viewer_id=viewer_id),
         recent=await feed(session, [user_id], limit=10),
     )
 

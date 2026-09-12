@@ -148,8 +148,64 @@ async def test_secret_stays_hidden_until_it_is_found(session):
     assert sum(after.secrets_left.values()) == 2
     assert "silver" not in after.secrets_left
     found = next(item for item in after.groups if item.group == "showcase")
-    assert found.title == "Витрина собрана"
+    assert found.title == "Choose your fighter"
     assert found.tier == Tier.SILVER
+
+
+async def test_foreign_secret_is_a_trophy_without_a_name(session):
+    """В чужом профиле секретная видна трофеем, но не названием.
+
+    Иначе достаточно заглянуть к любому старожилу, чтобы узнать их все,
+    и искать станет нечего.
+    """
+    from app.models import Favourite
+
+    owner = await make_user(session, "Открыл")
+    stranger = await make_user(session, "Не открыл")
+    films = [await make_film(session, f"Любимый {i}") for i in range(4)]
+    await session.commit()
+    for position, film in enumerate(films):
+        session.add(Favourite(user_id=owner.id, film_id=film.id, position=position))
+    await session.commit()
+    await achievements.award(session)
+
+    # Сам владелец видит всё как есть.
+    mine = await achievements.of_user(session, owner.id, viewer_id=owner.id)
+    own = next(item for item in mine.groups if item.group == "showcase")
+    assert own.title == "Choose your fighter"
+    assert own.hidden is False
+
+    # Посторонний — только трофей.
+    theirs = await achievements.of_user(session, owner.id, viewer_id=stranger.id)
+    masked = next(item for item in theirs.groups if item.group == "showcase")
+    assert masked.hidden is True
+    assert masked.title == achievements.HIDDEN_TITLE
+    assert "Выбрать 4 любимых" not in masked.description
+    # Трофей при этом засчитан — он не секрет.
+    assert masked.tier == Tier.SILVER
+    assert theirs.silver == 1
+    # И в ступенях условия тоже нет.
+    assert all(step.title == achievements.HIDDEN_TITLE for step in masked.steps)
+
+
+async def test_shared_secret_is_visible_to_the_one_who_also_found_it(session):
+    """Открывшему ту же секретную скрывать нечего — он и так знает, что это."""
+    from app.models import Favourite
+
+    people = [await make_user(session, f"Знаток {i}") for i in range(2)]
+    films = [await make_film(session, f"Любимый {i}") for i in range(4)]
+    await session.commit()
+    for person in people:
+        for position, film in enumerate(films):
+            session.add(Favourite(user_id=person.id, film_id=film.id, position=position))
+    await session.commit()
+    await achievements.award(session)
+
+    theirs = await achievements.of_user(session, people[0].id, viewer_id=people[1].id)
+    shown = next(item for item in theirs.groups if item.group == "showcase")
+
+    assert shown.hidden is False
+    assert shown.title == "Choose your fighter"
 
 
 async def test_friends_badge_counts_outgoing_subscriptions(session):
@@ -302,6 +358,61 @@ async def test_goals_follow_the_order_of_the_club_table(session):
         "ratings",
         "referrals",
     ]
+
+
+async def test_secret_achievement_says_it_was_secret(session):
+    """Секретную человек не искал и о ней не знал.
+
+    Без этого поздравление выглядит обычной ступенью, которую он и так бы
+    взял, — и весь смысл секретной теряется в момент выдачи.
+    """
+    from app.models import Favourite
+    from app.services.notify import render
+
+    user = await make_user(session, "Нашёл")
+    films = [await make_film(session, f"Любимый {i}") for i in range(4)]
+    await session.commit()
+    for position, film in enumerate(films):
+        session.add(Favourite(user_id=user.id, film_id=film.id, position=position))
+    await session.commit()
+
+    await achievements.award(session)
+
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(
+                Notification.user_id == user.id,
+                Notification.kind == NotificationKind.ACHIEVEMENT_EARNED,
+            )
+        )
+    ).scalar_one()
+    assert payload["secret"] is True
+
+    text = render(NotificationKind.ACHIEVEMENT_EARNED, None, "", payload)
+    assert "Секретное достижение" in text
+    assert "Choose your fighter" in text
+    # «Дальше» у секретной нет: ступень у неё одна.
+    assert "Дальше" not in text
+
+
+async def test_named_achievement_does_not_promise_a_next_step(session):
+    """У именной следующей ступени нет — и сообщение не должно её выдумывать."""
+    from app.services.notify import render
+
+    boss = await make_user(session, "Админ")
+    hero = await make_user(session, "Герой")
+    await session.commit()
+    await achievements.grant(session, boss.id, hero.id, "Спас показ", "Принёс проектор", "gold")
+
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(Notification.user_id == hero.id)
+        )
+    ).scalar_one()
+    text = render(NotificationKind.ACHIEVEMENT_EARNED, None, "", payload)
+
+    assert "лично" in text
+    assert "верхняя ступень" not in text
 
 
 async def test_admin_grants_a_named_achievement(session):

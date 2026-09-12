@@ -19,8 +19,13 @@ function secretsLine(count: number): string {
   }`;
 }
 
-/** Ступень: полученная — ярко и с галочкой, будущая — бледно и с прогрессом. */
-function Row({ step }: { step: AchievementStep }) {
+/** Ступень: полученная — ярко и с галочкой, будущая — бледно и с прогрессом.
+ *
+ * `hidden` — чужая секретная, которую вы сами не открыли: трофей показываем,
+ * название и условие нет. Прогресс у неё тоже не рисуем: «1 из 1» ничего
+ * не сообщает, кроме того, что она взята, а это и так видно по галочке.
+ */
+function Row({ step, hidden = false }: { step: AchievementStep; hidden?: boolean }) {
   const earned = step.earned_at !== null;
   return (
     <div className={`achievement ${earned ? "is-earned" : ""}`}>
@@ -28,9 +33,9 @@ function Row({ step }: { step: AchievementStep }) {
         <Trophy tier={step.tier} size={28} muted={!earned} />
       </span>
       <span className="achievement__text">
-        <b>{step.title}</b>
+        <b>{hidden ? "🔒 Секретное достижение" : step.title}</b>
         <span className="meta">{step.description}</span>
-        {!earned && (
+        {!earned && !hidden && (
           <span className="meta">
             {step.progress} из {step.target}
           </span>
@@ -59,7 +64,9 @@ export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
   // и недостижимые пока: вкладка «золото» у новичка иначе выглядит пустой,
   // хотя посмотреть там есть на что.
   const steps = (tier: AchievementTier) =>
-    data.groups.flatMap((item) => item.steps.filter((step) => step.tier === tier));
+    data.groups.flatMap((item) =>
+      item.steps.filter((step) => step.tier === tier).map((step) => ({ step, hidden: item.hidden })),
+    );
 
   return (
     <>
@@ -105,8 +112,8 @@ export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
             </span>
           </div>
 
-          {steps(tab).map((step) => (
-            <Row key={step.title} step={step} />
+          {steps(tab).map(({ step, hidden }, index) => (
+            <Row key={`${step.title}-${index}`} step={step} hidden={hidden} />
           ))}
 
           {(data.secrets_left[tab] ?? 0) > 0 && (

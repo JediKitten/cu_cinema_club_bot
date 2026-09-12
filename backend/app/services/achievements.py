@@ -157,7 +157,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         "english_platinum", "english", Tier.PLATINUM,
-        "English mf, so you speak it?", "Посмотреть 25 фильмов на английском", "english", 25,
+        "English mf, do you speak it?", "Посмотреть 25 фильмов на английском", "english", 25,
     ),
     # --- Кол-во друзей ---
     Rule(
@@ -166,7 +166,7 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         "friends_silver", "friends", Tier.SILVER,
-        "Бешенные псы", "Добавить в друзья 5 человек", "friends", 5,
+        "Бешеные псы", "Добавить в друзья 5 человек", "friends", 5,
     ),
     Rule(
         "friends_gold", "friends", Tier.GOLD,
@@ -213,7 +213,7 @@ RULES: tuple[Rule, ...] = (
     # --- Секретные ---
     Rule(
         "showcase_silver", "showcase", Tier.SILVER,
-        "Витрина собрана", "Выбрать 4 любимых фильма в профиле", "favourites", 4, secret=True,
+        "Choose your fighter", "Выбрать 4 любимых фильма в профиле", "favourites", 4, secret=True,
     ),
     Rule(
         "champion_gold", "champion", Tier.GOLD,
@@ -270,6 +270,9 @@ class GroupState:
     secret: bool
     # Придумана админом под конкретного человека, а не взята из реестра.
     custom: bool = False
+    # Секретная, которую смотрящий сам ещё не открыл: трофей видно, название
+    # и условие — нет.
+    hidden: bool = False
     # Полученное — высшая достигнутая ступень. None, если ещё ничего.
     tier: Tier | None = None
     emoji: str = ""
@@ -420,8 +423,20 @@ async def metrics(
     return result
 
 
-async def of_user(session: AsyncSession, user_id: int) -> Summary:
-    """Что человек собрал и куда ему расти."""
+# Чем подменяем секретную в чужом профиле.
+HIDDEN_TITLE = "Секретное достижение"
+HIDDEN_HINT = "Что это — не скажем: найдите сами"
+
+
+async def of_user(
+    session: AsyncSession, user_id: int, viewer_id: int | None = None
+) -> Summary:
+    """Что человек собрал и куда ему расти.
+
+    `viewer_id` — тот, кто смотрит. Секретную, которую он сам ещё не открыл,
+    в чужом профиле видно только как трофей: название и условие скрыты, иначе
+    достаточно было бы заглянуть к любому старожилу, чтобы узнать их все.
+    """
     counts = (await metrics(session, [user_id])).get(user_id, {})
     earned = {
         code: at
@@ -431,6 +446,21 @@ async def of_user(session: AsyncSession, user_id: int) -> Summary:
             )
         )
     }
+
+    # Что смотрящий открыл сам. В своём профиле скрывать нечего.
+    seen: set[str] = set()
+    if viewer_id is not None and viewer_id != user_id:
+        seen = set(
+            (
+                await session.execute(
+                    sa.select(Achievement.code).where(Achievement.user_id == viewer_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    else:
+        seen = set(earned)
 
     summary = Summary(groups=[])
 
@@ -479,18 +509,24 @@ async def of_user(session: AsyncSession, user_id: int) -> Summary:
             # Не найденную секретную не показываем вовсе — только считаем,
             # и считаем на её уровне: «в золоте есть что искать» ничего
             # не выдаёт, но объясняет пустую вкладку.
-            hidden = nxt.tier.value if nxt else Tier.PLATINUM.value
-            summary.secrets_left[hidden] = summary.secrets_left.get(hidden, 0) + 1
+            level = nxt.tier.value if nxt else Tier.PLATINUM.value
+            summary.secrets_left[level] = summary.secrets_left.get(level, 0) + 1
             continue
+
+        # Чужая секретная, которую смотрящий сам не открыл: трофей виден,
+        # название и условие — нет. Иначе достаточно заглянуть к любому
+        # старожилу, чтобы узнать их все, и искать станет нечего.
+        masked = secret and top is not None and top.code not in seen
 
         state = GroupState(
             group=group,
             label=GROUP_LABEL.get(group, ladder[-1].description),
             secret=secret,
+            hidden=masked,
             tier=top.tier if top else None,
             emoji=TIER_EMOJI[top.tier] if top else "",
-            title=top.title if top else "",
-            description=top.description if top else "",
+            title=HIDDEN_TITLE if masked else (top.title if top else ""),
+            description=HIDDEN_HINT if masked else (top.description if top else ""),
             earned_at=earned.get(top.code) if top else None,
             next_title=nxt.title if nxt else None,
             next_description=nxt.description if nxt else None,
@@ -501,16 +537,20 @@ async def of_user(session: AsyncSession, user_id: int) -> Summary:
             steps=[
                 Step(
                     tier=rule.tier,
-                    title=rule.title,
-                    description=rule.description,
-                    target=rule.target,
+                    title=HIDDEN_TITLE if masked else rule.title,
+                    description=HIDDEN_HINT if masked else rule.description,
+                    # У скрытой и порог не показываем: «1 из 1» ничего не даёт,
+                    # а у счётной цели выдал бы, что именно считают.
+                    target=1 if masked else rule.target,
                     # Прогресс по своей ступени: у взятой он полный, даже если
                     # показатель потом просел — награду не отбирают.
                     progress=(
                         rule.target
                         if rule.code in earned
                         else min(counts.get(rule.metric, 0), rule.target)
-                    ),
+                    )
+                    if not masked
+                    else 1,
                     earned_at=earned.get(rule.code),
                 )
                 for rule in ladder

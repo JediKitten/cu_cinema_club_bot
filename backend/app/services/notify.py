@@ -104,6 +104,30 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
 
     match kind:
         case NotificationKind.ACHIEVEMENT_EARNED:
+            emoji = payload.get("emoji", "🏅")
+            title = escape(str(payload.get("title", "Ачивка")))
+            tier = escape(str(payload.get("tier", "")))
+            hint = escape(str(payload.get("hint", "")))
+
+            if payload.get("secret"):
+                # Про секретную важно сказать, что она секретная: человек её
+                # не искал и не знал о ней, и без этого награда выглядит
+                # обычной ступенью, которую он и так бы взял.
+                return (
+                    f"🕵️ <b>Секретное достижение открыто!</b>\n\n"
+                    f"{emoji} <b>{title}</b>\n{hint}\n"
+                    f"{tier} — и её никто не подсказывал.\n\n"
+                    "Все трофеи — в профиле."
+                )
+            if payload.get("custom"):
+                # Именную придумали лично для него — «следующей ступени» у неё
+                # нет и быть не может.
+                return (
+                    f"{emoji} <b>{title}</b>\n"
+                    f"{tier} ачивка от клуба{f' — {hint}' if hint else ''}\n\n"
+                    "Её выдали вам лично. Все трофеи — в профиле."
+                )
+
             # Что дальше — обязательная часть: без неё поздравление сообщает
             # только о конце, а у ачивки со ступенями всегда есть продолжение.
             nxt = payload.get("next_title")
@@ -114,9 +138,7 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                 else "\n\nЭто верхняя ступень — выше некуда."
             )
             return (
-                f"{payload.get('emoji', '🏅')} <b>{escape(str(payload.get('title', 'Ачивка')))}</b>"
-                f"\n{escape(str(payload.get('tier', '')))} ачивка — "
-                f"{escape(str(payload.get('hint', '')))}"
+                f"{emoji} <b>{title}</b>\n{tier} ачивка — {hint}"
                 f"{ahead}\n\nВсе трофеи — в профиле."
             )
         case NotificationKind.TOURNAMENT_STARTED:

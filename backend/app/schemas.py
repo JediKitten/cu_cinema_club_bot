@@ -382,6 +382,9 @@ class AchievementGroupOut(BaseModel):
     secret: bool = False
     # Придумана админом под конкретного человека, а не взята из реестра.
     custom: bool = False
+    # Секретная, которую смотрящий сам не открыл: название и условие скрыты,
+    # трофей виден.
+    hidden: bool = False
     # Что уже получено: bronze | silver | gold | platinum. Пусто — ещё ничего.
     tier: str | None = None
     emoji: str = ""

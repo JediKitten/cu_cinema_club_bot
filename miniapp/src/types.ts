@@ -489,6 +489,8 @@ export type AchievementGroup = {
   secret: boolean;
   /** Придумана админом под конкретного человека, а не взята из реестра. */
   custom: boolean;
+  /** Секретная, которую вы сами не открыли: трофей виден, название — нет. */
+  hidden: boolean;
   /** Что уже получено. Пусто — ещё ничего. */
   tier: AchievementTier | null;
   emoji: string;

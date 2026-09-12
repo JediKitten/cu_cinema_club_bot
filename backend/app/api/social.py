@@ -223,6 +223,7 @@ async def profile(
                     label=item.label,
                     secret=item.secret,
                     custom=item.custom,
+                    hidden=item.hidden,
                     tier=item.tier,
                     emoji=item.emoji,
                     title=item.title,
