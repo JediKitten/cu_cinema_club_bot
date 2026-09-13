@@ -110,6 +110,11 @@ EDITABLE = (
     "registration_url",
 )
 
+# Что можно поменять у показа, назначенного циклом. Время и фильм — нельзя:
+# их выбрало голосование, и правка в обход правил цикла рассыпала бы матрицу
+# и подтверждения. Переносят такой показ инструментами расписания.
+EDITABLE_IN_ROUND = ("note", "in_english", "registration_url")
+
 
 async def update(
     session: AsyncSession,
@@ -132,14 +137,20 @@ async def update(
     новое время не подходит, вместо того чтобы просить отметиться заново.
     """
     event = await session.get(Screening, event_id)
-    if event is None or not event.is_manual:
+    if event is None:
         raise EventError("Событие не найдено")
     if event.status == ScreeningStatus.CANCELLED:
         raise EventError("Событие отменено, править его нечего")
 
-    unknown = set(changes) - set(EDITABLE)
+    allowed = set(EDITABLE if event.is_manual else EDITABLE_IN_ROUND)
+    unknown = set(changes) - allowed
     if unknown:
-        raise EventError(f"Нельзя менять: {', '.join(sorted(unknown))}")
+        if event.is_manual:
+            raise EventError(f"Нельзя менять: {', '.join(sorted(unknown))}")
+        raise EventError(
+            "У показа из цикла правится только подпись, язык и ссылка регистрации — "
+            "время и фильм выбрало голосование"
+        )
 
     slot = await session.get(Slot, event.slot_id)
     film_id = changes.get("film_id", event.film_id)
@@ -213,19 +224,28 @@ async def update(
     return event
 
 
-async def upcoming(session: AsyncSession, within_days: int | None = None) -> list[Screening]:
-    """Будущие ручные события — они показываются вне зависимости от цикла.
+async def upcoming(
+    session: AsyncSession, within_days: int | None = None, manual_only: bool = False
+) -> list[Screening]:
+    """Всё, что клубу предстоит: и ручные события, и показы цикла.
+
+    Раньше список был только из ручных, и назначенный голосованием фильм недели
+    в него не попадал — а прикладывать к вечеру ссылку на регистрацию или
+    помечать его английским приходится независимо от того, откуда он взялся.
+    Что у показа можно поменять, решает `update`: у фильма недели время и сам
+    фильм остаются за циклом.
 
     По умолчанию без горизонта: событие могут анонсировать за полгода, и
     администратор, который его не видит, не может ни поправить, ни отменить.
     Горизонт остаётся параметром для тех, кому нужны только ближайшие.
     """
     conditions = [
-        Screening.is_manual.is_(True),
         Screening.status != ScreeningStatus.CANCELLED,
         # Шесть часов назад, а не «сейчас»: идущее сегодня событие ещё актуально.
         Slot.starts_at >= datetime.now(UTC) - timedelta(hours=6),
     ]
+    if manual_only:
+        conditions.append(Screening.is_manual.is_(True))
     if within_days is not None:
         conditions.append(Slot.starts_at <= datetime.now(UTC) + timedelta(days=within_days))
 

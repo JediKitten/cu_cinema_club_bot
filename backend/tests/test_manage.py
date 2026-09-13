@@ -559,6 +559,59 @@ async def test_confirm_works_for_manual_event(session):
     assert cancelled.confirmed == 0
 
 
+async def test_events_list_shows_the_film_of_the_week_too(session):
+    """Показ, назначенный голосованием, тоже должен быть в списке событий.
+
+    Раньше туда попадали только ручные, и к фильму недели нельзя было даже
+    приложить ссылку на регистрацию — хотя именно он собирает зал.
+    """
+    from app.services import schedule as sched
+    from tests.test_schedule import voted_round
+
+    round_, films, slots, boss, _ = await voted_round(session)
+    from_cycle = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    # Неделя цикла в фикстуре фиксированная и уже прошла, а список — про
+    # предстоящее: двигаем вечер вперёд.
+    slot = await session.get(Slot, slots[0].id)
+    slot.starts_at = SOON
+    await session.commit()
+
+    by_hand = await events.create(
+        session, starts_at=SOON + timedelta(days=1), actor_id=boss.id, title="Встреча клуба"
+    )
+
+    listed = [event.id for event in await events.upcoming(session)]
+    assert from_cycle.id in listed
+    assert by_hand.id in listed
+
+    # Кому нужны только ручные — те просят их явно.
+    only_manual = [event.id for event in await events.upcoming(session, manual_only=True)]
+    assert only_manual == [by_hand.id]
+
+
+async def test_cycle_screening_takes_a_registration_link_but_not_a_new_time(session):
+    """У показа из цикла время и фильм выбрало голосование — их не правят здесь."""
+    from app.services import schedule as sched
+    from tests.test_schedule import voted_round
+
+    round_, films, slots, boss, _ = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+
+    updated = await events.update(
+        session,
+        screening.id,
+        boss.id,
+        {"registration_url": "https://cu.example/42", "in_english": True},
+    )
+    assert updated.registration_url == "https://cu.example/42"
+    assert updated.in_english is True
+
+    with pytest.raises(EventError, match="голосование"):
+        await events.update(session, screening.id, boss.id, {"starts_at": SOON})
+    with pytest.raises(EventError, match="голосование"):
+        await events.update(session, screening.id, boss.id, {"film_id": films[1].id})
+
+
 async def test_feedback_works_for_an_event_without_a_film(session):
     """Встреча клуба без фильма: оценивать нечего, рассказать — есть что.
 

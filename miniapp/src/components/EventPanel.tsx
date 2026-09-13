@@ -68,9 +68,13 @@ function when(iso: string): string {
 function EventFields({
   draft,
   onChange,
+  fromCycle = false,
 }: {
   draft: Draft;
   onChange(next: Draft): void;
+  /** Показ назначен голосованием: время и фильм остаются за циклом, здесь
+   *  правятся только подпись, язык и ссылка на регистрацию. */
+  fromCycle?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<FilmBrief[]>([]);
@@ -86,22 +90,27 @@ function EventFields({
 
   return (
     <>
-      <div className="setting__pair">
-        <input
-          className="field"
-          type="date"
-          value={draft.date}
-          onChange={(e) => onChange({ ...draft, date: e.target.value })}
-        />
-        <input
-          className="field"
-          type="time"
-          value={draft.time}
-          onChange={(e) => onChange({ ...draft, time: e.target.value })}
-        />
-      </div>
+      {/* Время и фильм у показа из цикла выбрало голосование: переносят его
+          инструментами расписания, а не правкой поля — иначе матрица и записи
+          разъедутся с реальностью. */}
+      {!fromCycle && (
+        <div className="setting__pair">
+          <input
+            className="field"
+            type="date"
+            value={draft.date}
+            onChange={(e) => onChange({ ...draft, date: e.target.value })}
+          />
+          <input
+            className="field"
+            type="time"
+            value={draft.time}
+            onChange={(e) => onChange({ ...draft, time: e.target.value })}
+          />
+        </div>
+      )}
 
-      {draft.film ? (
+      {fromCycle ? null : draft.film ? (
         <div className="slot-row">
           <div>
             <p className="film-row__title">{draft.film.title_ru}</p>
@@ -141,12 +150,14 @@ function EventFields({
         </>
       )}
 
-      <input
-        className="field"
-        value={draft.title}
-        placeholder="Заголовок, если без фильма"
-        onChange={(e) => onChange({ ...draft, title: e.target.value })}
-      />
+      {!fromCycle && (
+        <input
+          className="field"
+          value={draft.title}
+          placeholder="Заголовок, если без фильма"
+          onChange={(e) => onChange({ ...draft, title: e.target.value })}
+        />
+      )}
       <input
         className="field"
         value={draft.note}
@@ -191,6 +202,16 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
 
   function changes(): EventChanges {
     const patch: EventChanges = {};
+    // У показа из цикла время и фильм менять нельзя — сервер такую правку
+    // и не примет, но лучше её и не собирать.
+    if (!event.is_manual) {
+      if (draft.note.trim() !== (event.note ?? "")) patch.note = draft.note.trim() || null;
+      if (draft.inEnglish !== event.in_english) patch.in_english = draft.inEnglish;
+      if (draft.registration.trim() !== (event.registration_url ?? "")) {
+        patch.registration_url = draft.registration.trim() || null;
+      }
+      return patch;
+    }
     if (draft.date !== initial.date || draft.time !== initial.time) {
       patch.starts_at = startsAt(draft);
     }
@@ -245,9 +266,11 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
     }
   }
 
+  const fromCycle = !event.is_manual;
+
   return (
     <>
-      <EventFields draft={draft} onChange={setDraft} />
+      <EventFields draft={draft} onChange={setDraft} fromCycle={fromCycle} />
       {(draft.date !== initial.date || draft.time !== initial.time) && (
         <label className="check">
           <input
@@ -297,11 +320,15 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
   );
 }
 
-/** Событие в обход алгоритма (§10, расширение по просьбе клуба).
+/** События клуба: свои, в обход алгоритма (§10), и показы недели.
  *
- * Фильм необязателен: можно объявить время заранее и раскрыть название позже —
- * ради этого и нужна подпись вроде «ждите анонса». Уже назначенное событие
- * правится здесь же: время, фильм, подпись и отмена.
+ * Фильм у своего события необязателен: можно объявить время заранее и раскрыть
+ * название позже — ради этого и нужна подпись вроде «ждите анонса».
+ *
+ * Список общий нарочно: ссылку на регистрацию или пометку «на английском»
+ * прикладывают к вечеру независимо от того, выбрало его голосование или админ.
+ * Но время и фильм показа из цикла здесь не правятся — их переносят
+ * инструментами расписания, иначе матрица разъедется с реальностью.
  */
 export function EventPanel({ onCreated }: { onCreated(): void }) {
   const [draft, setDraft] = useState<Draft>(EMPTY);
@@ -352,7 +379,12 @@ export function EventPanel({ onCreated }: { onCreated(): void }) {
   return (
     <>
       {events.length > 0 && (
-        <Section title="Назначенные события" count={events.length} storageKey="admin-events">
+        <Section
+          title="Назначенные события"
+          count={events.length}
+          storageKey="admin-events"
+          hint="Здесь и свои события, и показы недели: ссылку на регистрацию прикладывают к любому."
+        >
           {events.map((event) => (
             <div className="slot-row" key={event.id} style={{ display: "block" }}>
               <p className="film-row__title">
@@ -361,6 +393,8 @@ export function EventPanel({ onCreated }: { onCreated(): void }) {
               <p className="meta">
                 {when(event.starts_at)}
                 {event.confirmed > 0 && ` · придут ${event.confirmed}`}
+                {/* Откуда взялся вечер — от этого зависит, что в нём правится. */}
+                {!event.is_manual && " · из цикла"}
               </p>
               {event.note && <p className="hint">{event.note}</p>}
               {editing === event.id ? (

@@ -94,6 +94,7 @@ async def _event_out(session: AsyncSession, event: Screening) -> EventOut:
         note=event.note,
         in_english=event.in_english,
         registration_url=event.registration_url,
+        is_manual=event.is_manual,
         confirmed=confirmed or 0,
     )
 
@@ -139,9 +140,13 @@ async def cancel_event(
     admin: RequireAdmin,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> EventOut:
-    """Отмена события. Комментарий уходит всем, кто собирался прийти (§7)."""
+    """Отмена события. Комментарий уходит всем, кто собирался прийти (§7).
+
+    Отменить можно и показ цикла: отмена у них одна и та же — с причиной
+    и уведомлением записавшимся, — и держать для неё отдельную дверь незачем.
+    """
     event = await session.get(Screening, event_id)
-    if event is None or not event.is_manual:
+    if event is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Событие не найдено")
     try:
         cancelled = await schedule_service.cancel_screening(

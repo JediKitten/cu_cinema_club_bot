@@ -131,7 +131,7 @@ URL-закодировать и открыть как `http://localhost:5175/?in
 ### Тесты
 
 ```bash
-cd backend && ./venv/bin/python -m pytest -q          # 394 теста
+cd backend && ./venv/bin/python -m pytest -q          # 396 тестов
 cd backend && ./venv/bin/python -m pytest tests/test_weights.py -q -k затухание
 cd miniapp && npm test                                 # 24 теста
 ```

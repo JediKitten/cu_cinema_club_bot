@@ -355,6 +355,8 @@ export type ClubEvent = {
   /** Показ идёт на английском — от этого зависит своя ачивка. */
   in_english: boolean;
   registration_url: string | null;
+  /** Своё событие или показ, назначенный циклом: у второго правится не всё. */
+  is_manual: boolean;
   confirmed: number;
 };
 

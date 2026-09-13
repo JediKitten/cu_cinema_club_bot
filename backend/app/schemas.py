@@ -882,6 +882,8 @@ class EventOut(BaseModel):
     note: str | None = None
     in_english: bool = False
     registration_url: str | None = None
+    # Ручное событие или показ, назначенный циклом: у второго правится не всё.
+    is_manual: bool = True
     confirmed: int = 0
 
 
