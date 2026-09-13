@@ -300,6 +300,12 @@ export type Analytics = {
   top_rated: { title: string; year: number | null; rating: number; votes: number }[];
 };
 
+export type ExportPassword = {
+  is_set: boolean;
+  updated_at: string | null;
+  updated_by: string | null;
+};
+
 export type PastScreening = {
   screening_id: number;
   film_id: number;

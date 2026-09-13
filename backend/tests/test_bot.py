@@ -4,7 +4,8 @@
 Сами обработчики — тонкая обвязка над этими функциями.
 """
 
-from app.bot import TOUR, tour_keyboard, tour_text
+from app.bot import TOUR, analytics_keyboard, analytics_menu_text, tour_keyboard, tour_text
+from app.services import exports
 
 # Предел Telegram на текст сообщения.
 MESSAGE_LIMIT = 4096
@@ -47,3 +48,31 @@ def test_app_button_is_on_every_step():
 def test_without_published_url_there_is_no_broken_button():
     buttons = [button for row in tour_keyboard(0, "").inline_keyboard for button in row]
     assert all(button.web_app is None for button in buttons)
+
+
+# --- Меню выгрузки (/analytics) ---------------------------------------------
+
+
+def test_export_menu_fits_in_one_message():
+    text = analytics_menu_text()
+    assert len(text) < MESSAGE_LIMIT
+    # Каждый набор должен быть подписан: кнопка «📮 Заявки» сама по себе
+    # не говорит, что внутри.
+    for dataset in exports.DATASETS:
+        assert dataset.summary in text
+
+
+def test_every_dataset_has_its_own_button():
+    buttons = [button for row in analytics_keyboard().inline_keyboard for button in row]
+    keys = [button.callback_data.removeprefix("dl:") for button in buttons]
+
+    assert keys == [dataset.key for dataset in exports.DATASETS] + [exports.EVERYTHING]
+    # Telegram режет callback_data на 64 байтах — ключи должны быть короткими.
+    assert all(len(button.callback_data.encode()) <= 64 for button in buttons)
+
+
+def test_everything_is_a_row_of_its_own():
+    """«Выгрузить всё» — другой по смыслу шаг, и попасть в него мимоходом,
+    целясь в соседнюю кнопку, не должно."""
+    last = analytics_keyboard().inline_keyboard[-1]
+    assert len(last) == 1 and last[0].callback_data == f"dl:{exports.EVERYTHING}"

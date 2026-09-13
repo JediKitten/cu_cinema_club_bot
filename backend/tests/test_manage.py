@@ -790,19 +790,25 @@ async def test_empty_week_is_shown_as_is_on_the_weekend(client, session):
 
 async def test_this_weeks_screening_is_visible_until_friday(client, session):
     """До пятницы расписание открывается на текущей неделе — ради её показов."""
-    from datetime import UTC, date, datetime, timedelta
+    from datetime import UTC, date, datetime, time, timedelta
 
     boss = await login(client, 777001, "Главный")
     headers = {"Authorization": f"Bearer {boss['token']}"}
 
-    soon = datetime.now(UTC) + timedelta(hours=6)
+    # Середина недели, а не «сейчас плюс шесть часов»: в воскресенье вечером
+    # такое смещение уезжает в следующий понедельник, и тест падал по календарю,
+    # а не по делу. Среда 19:00 UTC лежит внутри недели при любом разумном
+    # часовом поясе клуба.
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    midweek = datetime.combine(monday + timedelta(days=2), time(19, 0), tzinfo=UTC)
     await client.post(
         "/api/admin/events",
-        json={"starts_at": soon.isoformat(), "title": "Сегодня"},
+        json={"starts_at": midweek.isoformat(), "title": "Сегодня"},
         headers=headers,
     )
 
-    today = date.today()
-    this_week = (today - timedelta(days=today.weekday())).isoformat()
-    opened = (await client.get(f"/api/schedule?week={this_week}", headers=headers)).json()
+    opened = (
+        await client.get(f"/api/schedule?week={monday.isoformat()}", headers=headers)
+    ).json()
     assert "Сегодня" in [s["film"]["title_ru"] for s in opened["screenings"]]

@@ -798,6 +798,20 @@ class AnalyticsOut(BaseModel):
     top_rated: list[dict] = Field(default_factory=list)
 
 
+class ExportPasswordOut(BaseModel):
+    """Состояние пароля на /analytics. Самого пароля тут нет и быть не может —
+    в базе лежит только хеш."""
+
+    is_set: bool
+    updated_at: datetime | None = None
+    updated_by: str | None = None
+
+
+class ExportPasswordIn(BaseModel):
+    # Пустая строка снимает пароль и выключает выгрузку в боте.
+    password: str = ""
+
+
 class PastScreeningOut(BaseModel):
     screening_id: int
     film_id: int

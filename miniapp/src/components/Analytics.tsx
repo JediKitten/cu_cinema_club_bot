@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { getAnalytics } from "../api";
+import { ApiError, getAnalytics, getExportPassword, saveExportPassword } from "../api";
 import { Bars } from "./Bars";
 import { Section } from "./Section";
 import { weekLabel } from "../dates";
-import type { Analytics as Data, FunnelStep } from "../types";
+import { showMessage } from "../telegram";
+import type { Analytics as Data, ExportPassword, FunnelStep } from "../types";
 
 /** Воронка §14: важны переходы, а не абсолютные числа.
  *
@@ -43,6 +44,95 @@ function Funnel({ step }: { step: FunnelStep }) {
   );
 }
 
+/** Пароль на команду /analytics в боте.
+ *
+ * Графики выше отвечают на вопросы, которые мы придумали заранее; сырые
+ * таблицы нужны для всех остальных. Заказывают их в боте, а не здесь: файл
+ * приходит в переписку, откуда его сразу перешлют куда надо.
+ *
+ * Пароль отдельный от ролей намеренно: таблицы бывают нужны тем, кому админка
+ * не нужна вовсе, а выдавать ради выгрузки роль админа значит выдавать заодно
+ * отмену показов и правку параметров.
+ */
+function ExportAccess() {
+  const [state, setState] = useState<ExportPassword | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getExportPassword()
+      .then(setState)
+      .catch(() => setState({ is_set: false, updated_at: null, updated_by: null }));
+  }, []);
+
+  async function save(password: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setState(await saveExportPassword(password));
+      setDraft("");
+      showMessage(password ? "Пароль обновлён" : "Выгрузка выключена");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Не получилось сохранить");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!state) return null;
+
+  const changed = new Date(state.updated_at ?? 0);
+
+  return (
+    <Section
+      title="Выгрузка в Excel"
+      storageKey="stats-export"
+      defaultOpen={false}
+      hint="Команда /analytics в боте: человек вводит пароль и выбирает, какие таблицы скачать. Пароль знает только тот, кому вы его передали, — роль админа для этого не нужна."
+    >
+      <p className="hint">
+        {state.is_set
+          ? `Пароль задан${state.updated_by ? `, поставил ${state.updated_by}` : ""}${
+              state.updated_at ? ` ${changed.toLocaleDateString("ru-RU")}` : ""
+            }.`
+          : "Пароль не задан — команда никому ничего не отдаёт."}
+      </p>
+
+      <input
+        className="field"
+        type="password"
+        autoComplete="new-password"
+        placeholder="Новый пароль, от 8 символов"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+      />
+      {error && <div className="error">{error}</div>}
+
+      <div className="marks">
+        <button
+          className="primary"
+          disabled={busy || draft.trim().length < 8}
+          onClick={() => save(draft.trim())}
+        >
+          {state.is_set ? "Сменить пароль" : "Включить выгрузку"}
+        </button>
+        {state.is_set && (
+          <button className="mark" disabled={busy} onClick={() => save("")}>
+            Выключить
+          </button>
+        )}
+      </div>
+
+      <p className="hint">
+        Показать действующий пароль нельзя: в базе лежит только его отпечаток.
+        Забыли — поставьте новый. Старый после этого перестанет работать.
+      </p>
+    </Section>
+  );
+}
+
 export function Analytics() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +150,8 @@ export function Analytics() {
 
   return (
     <>
+      <ExportAccess />
+
       <Section
         title="Воронка по неделям"
         count={data.funnel.length}

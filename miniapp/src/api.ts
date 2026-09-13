@@ -22,6 +22,7 @@ import type {
   ScreeningCode,
   Slot,
   ClubEvent,
+  ExportPassword,
   EventChanges,
   Circle,
   Deck,
@@ -351,6 +352,17 @@ export const getScreeningStats = (screeningId: number) =>
   request<ScreeningStats>(`/api/admin/screenings/${screeningId}/stats`);
 
 export const getPastScreenings = () => request<PastScreening[]>("/api/screenings/past");
+
+// Пароль на выгрузку в боте (/analytics). Сам пароль сюда не возвращается
+// никогда — в базе лежит хеш, и показать нечего, кроме «задан или нет».
+export const getExportPassword = () =>
+  request<ExportPassword>("/api/admin/analytics/password");
+
+export const saveExportPassword = (password: string) =>
+  request<ExportPassword>("/api/admin/analytics/password", {
+    method: "PUT",
+    body: JSON.stringify({ password }),
+  });
 
 // --- Управление клубом ------------------------------------------------------
 
