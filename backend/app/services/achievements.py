@@ -665,8 +665,13 @@ async def granted_by_hand(session: AsyncSession) -> list[tuple[Achievement, str]
 async def award(session: AsyncSession) -> int:
     """Выдаёт всё заслуженное и поздравляет. Идемпотентна.
 
-    Ачивка низшей ступени той же цели при этом снимается: человек держит одну,
-    высшую. Возвращает число новых.
+    Пройденные ступени остаются: в профиле они горят как взятые, и отбирать
+    у человека бронзу за то, что он дорос до серебра, незачем. Трофей у цели
+    при этом всё равно один — высший: числа считает `of_user` по верхней
+    достигнутой, а не по числу строк.
+
+    Поздравляем только за высшую новую: три сообщения подряд за один рывок
+    читаются как сбой, а не как награда. Возвращает число новых ступеней.
     """
     counts = await metrics(session)
     if not counts:
@@ -703,25 +708,23 @@ async def award(session: AsyncSession) -> int:
             if top.code in mine:
                 continue
 
+            # Записываем все пройденные ступени, а не одну верхнюю: перепрыгнув
+            # через бронзу, человек её всё равно прошёл, и в профиле она должна
+            # гореть. Заодно это чинит тех, у кого низшие когда-то снимались.
             # ON CONFLICT, а не проверка выше: два прохода разом не должны
             # ронять всю пачку на уникальном ключе.
-            created = await session.execute(
-                insert(Achievement)
-                .values(user_id=user_id, code=top.code)
-                .on_conflict_do_nothing(index_elements=[Achievement.user_id, Achievement.code])
-                .returning(Achievement.id)
-            )
-            if created.scalar_one_or_none() is None:
-                continue
-
-            # Ступени пониже той же цели уступают место.
-            lower = [rule.code for rule in ladder if rule.rank < top.rank]
-            if lower:
-                await session.execute(
-                    sa.delete(Achievement).where(
-                        Achievement.user_id == user_id, Achievement.code.in_(lower)
-                    )
+            fresh = False
+            for rule in reached:
+                created = await session.execute(
+                    insert(Achievement)
+                    .values(user_id=user_id, code=rule.code)
+                    .on_conflict_do_nothing(index_elements=[Achievement.user_id, Achievement.code])
+                    .returning(Achievement.id)
                 )
+                if created.scalar_one_or_none() is not None and rule.code == top.code:
+                    fresh = True
+            if not fresh:
+                continue
 
             # Следующая ступень той же цели — её называем прямо в сообщении.
             ahead = next((rule for rule in ladder if rule.rank > top.rank), None)

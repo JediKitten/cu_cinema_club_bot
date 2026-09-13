@@ -48,8 +48,12 @@ async def test_ladder_gives_the_badge_and_congratulates(session):
     assert payload["tier"] == "бронзовая"
 
 
-async def test_higher_tier_replaces_the_lower_one(session):
-    """Ачивка той же цели заменяется на значок получше, а не копится рядом."""
+async def test_higher_tier_takes_the_trophy_but_the_lower_one_keeps_burning(session):
+    """Трофей у цели один — высший, но пройденная ступень остаётся взятой.
+
+    Отбирать у человека бронзу за то, что он дорос до серебра, незачем:
+    в своей вкладке она должна гореть с галочкой, а не выглядеть недостижимой.
+    """
     user = await make_user(session, "Зритель")
     await session.commit()
     await rate_films(session, user, 5)
@@ -58,32 +62,57 @@ async def test_higher_tier_replaces_the_lower_one(session):
     await rate_films(session, user, 20)  # всего 25 — серебро
     await achievements.award(session)
 
-    codes = (
+    codes = sorted(
         (await session.execute(sa.select(Achievement.code).where(Achievement.user_id == user.id)))
         .scalars()
         .all()
     )
-    assert codes == ["ratings_silver"]
+    assert codes == ["ratings_bronze", "ratings_silver"]
 
     summary = await achievements.of_user(session, user.id)
+    # В числах цель считается один раз — по высшей ступени.
     assert summary.bronze == 0
     assert summary.silver == 1
 
+    goal = next(item for item in summary.groups if item.group == "ratings")
+    assert goal.tier == Tier.SILVER
+    passed = {step.tier: step.earned_at is not None for step in goal.steps}
+    assert passed[Tier.BRONZE] is True
+    assert passed[Tier.SILVER] is True
+    assert passed[Tier.GOLD] is False
 
-async def test_jumping_over_a_tier_gives_only_the_higher_one(session):
-    """Набрал сразу на серебро — получает серебро, а не две ачивки подряд."""
+
+async def test_jumping_over_a_tier_congratulates_once(session):
+    """Набрал сразу на серебро — одно поздравление, но бронза тоже пройдена.
+
+    Три сообщения подряд за один рывок читаются как сбой, а не как награда.
+    """
     user = await make_user(session, "Зритель")
     await session.commit()
     await rate_films(session, user, 25)
 
     assert await achievements.award(session) == 1
 
-    codes = (
+    codes = sorted(
         (await session.execute(sa.select(Achievement.code).where(Achievement.user_id == user.id)))
         .scalars()
         .all()
     )
-    assert codes == ["ratings_silver"]
+    assert codes == ["ratings_bronze", "ratings_silver"]
+
+    told = (
+        (
+            await session.execute(
+                sa.select(Notification.payload).where(
+                    Notification.user_id == user.id,
+                    Notification.kind == NotificationKind.ACHIEVEMENT_EARNED,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [item["title"] for item in told] == ["Готов высказаться"]
 
 
 async def test_award_is_idempotent(session):

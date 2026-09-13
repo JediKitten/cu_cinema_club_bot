@@ -78,17 +78,28 @@ async def search_films(
 ) -> list[FilmBrief]:
     """Сначала локальная база, затем добор из TMDB.
 
+    Ищем и по режиссёру: «Нолан» — такой же способ вспомнить фильм, как
+    половина названия, а в каталоге на полторы тысячи карточек перебирать
+    их глазами бессмысленно.
+
     Фильм из TMDB возвращается с id=None: в каталог он попадёт при первой отметке,
     иначе поиск засорял бы базу всем, что кто-то когда-то набрал.
     """
     pattern = f"%{q}%"
+    # Режиссёры лежат массивом: склеиваем в строку, иначе на каждое имя
+    # пришлось бы городить подзапрос с unnest.
+    by_director = sa.func.array_to_string(Film.directors, ", ").ilike(pattern)
     local = (
         (
             await session.execute(
                 sa.select(Film)
                 .where(
                     Film.status == FilmStatus.ACTIVE,
-                    sa.or_(Film.title_ru.ilike(pattern), Film.title_orig.ilike(pattern)),
+                    sa.or_(
+                        Film.title_ru.ilike(pattern),
+                        Film.title_orig.ilike(pattern),
+                        by_director,
+                    ),
                 )
                 .order_by(sa.func.coalesce(Film.ext_votes, 0).desc())
                 .limit(20)

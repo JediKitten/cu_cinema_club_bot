@@ -92,25 +92,24 @@ function EventFields({
 
   return (
     <>
-      {/* Время и фильм у показа из цикла выбрало голосование: переносят его
-          инструментами расписания, а не правкой поля — иначе матрица и записи
-          разъедутся с реальностью. */}
-      {!fromCycle && (
-        <div className="setting__pair">
-          <input
-            className="field"
-            type="date"
-            value={draft.date}
-            onChange={(e) => onChange({ ...draft, date: e.target.value })}
-          />
-          <input
-            className="field"
-            type="time"
-            value={draft.time}
-            onChange={(e) => onChange({ ...draft, time: e.target.value })}
-          />
-        </div>
-      )}
+      {/* Дата и время правятся у любого показа: зал бывает занят, ведущий
+          болеет, и переносить приходится в том числе на час, которого в сетке
+          вечеров нет. Фильм у показа цикла при этом не трогают — его выбрало
+          голосование. */}
+      <div className="setting__pair">
+        <input
+          className="field"
+          type="date"
+          value={draft.date}
+          onChange={(e) => onChange({ ...draft, date: e.target.value })}
+        />
+        <input
+          className="field"
+          type="time"
+          value={draft.time}
+          onChange={(e) => onChange({ ...draft, time: e.target.value })}
+        />
+      </div>
 
       {fromCycle ? null : draft.film ? (
         <div className="slot-row">
@@ -207,6 +206,9 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
     // У показа из цикла время и фильм менять нельзя — сервер такую правку
     // и не примет, но лучше её и не собирать.
     if (!event.is_manual) {
+      if (draft.date !== initial.date || draft.time !== initial.time) {
+        patch.starts_at = startsAt(draft);
+      }
       if (draft.note.trim() !== (event.note ?? "")) patch.note = draft.note.trim() || null;
       if (draft.inEnglish !== event.in_english) patch.in_english = draft.inEnglish;
       if (draft.registration.trim() !== (event.registration_url ?? "")) {
@@ -373,8 +375,9 @@ function MoveToEvening({ event, onDone }: { event: ClubEvent; onDone(): void }) 
   return (
     <>
       <p className="hint">
-        Перенести на другой вечер недели. Записи при этом сбрасываются — вечер
-        люди выбирали сами.
+        Быстрый перенос на другой вечер недели — те, за которые голосовали.
+        На любое другое время переносят полями выше. Записи в обоих случаях
+        сбрасываются: вечер люди выбирали сами.
       </p>
       <div className="marks">
         {free.map((slot) => (

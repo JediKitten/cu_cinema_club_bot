@@ -645,3 +645,42 @@ async def test_ratings_from_a_handful_of_votes_do_not_lead(client, session):
     ).json()
 
     assert [f["title_ru"] for f in listing] == ["Проверенное", "Десять восторгов"]
+
+
+async def test_search_finds_films_by_director(client, session):
+    """«Нолан» — такой же способ вспомнить фильм, как половина названия."""
+    from app.models import Film
+    from app.models.enums import FilmStatus
+
+    session.add(
+        Film(
+            title_ru="Начало",
+            title_orig="Inception",
+            year=2010,
+            status=FilmStatus.ACTIVE,
+            directors=["Кристофер Нолан"],
+        )
+    )
+    session.add(
+        Film(
+            title_ru="Крёстный отец",
+            title_orig="The Godfather",
+            year=1972,
+            status=FilmStatus.ACTIVE,
+            directors=["Фрэнсис Форд Коппола"],
+        )
+    )
+    await session.commit()
+
+    auth = await login(client, 777050, "Зритель")
+    headers = {"Authorization": f"Bearer {auth['token']}"}
+
+    found = (await client.get("/api/films/search?q=нолан", headers=headers)).json()
+    titles = [film["title_ru"] for film in found]
+
+    assert "Начало" in titles
+    assert "Крёстный отец" not in titles
+
+    # По названию ищется как и раньше.
+    by_title = (await client.get("/api/films/search?q=крёстный", headers=headers)).json()
+    assert "Крёстный отец" in [film["title_ru"] for film in by_title]

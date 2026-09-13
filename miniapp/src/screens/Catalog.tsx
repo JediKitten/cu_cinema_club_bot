@@ -110,7 +110,7 @@ export function Catalog({ onOpen, onOpenTournament }: Props) {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Найти фильм"
+          placeholder="Фильм или режиссёр"
           autoComplete="off"
         />
         {query && <button onClick={() => setQuery("")}>✕</button>}

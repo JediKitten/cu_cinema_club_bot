@@ -589,13 +589,21 @@ async def test_events_list_shows_the_film_of_the_week_too(session):
     assert only_manual == [by_hand.id]
 
 
-async def test_cycle_screening_takes_a_registration_link_but_not_a_new_time(session):
-    """У показа из цикла время и фильм выбрало голосование — их не правят здесь."""
+async def test_cycle_screening_moves_in_time_but_keeps_its_film(session):
+    """Время у показа цикла правится, фильм — нет.
+
+    Зал бывает занят, ведущий болеет, и переносить приходится в том числе
+    на час, которого в сетке вечеров нет. А фильм выбрало голосование:
+    подменить его здесь значило бы обойти цикл целиком.
+    """
+    from app.models import Confirmation, Slot
     from app.services import schedule as sched
     from tests.test_schedule import voted_round
 
-    round_, films, slots, boss, _ = await voted_round(session)
+    round_, films, slots, boss, voters = await voted_round(session)
     screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+    await sched.confirm(session, screening.id, voters[0].id)
 
     updated = await events.update(
         session,
@@ -606,8 +614,18 @@ async def test_cycle_screening_takes_a_registration_link_but_not_a_new_time(sess
     assert updated.registration_url == "https://cu.example/42"
     assert updated.in_english is True
 
-    with pytest.raises(EventError, match="голосование"):
-        await events.update(session, screening.id, boss.id, {"starts_at": SOON})
+    # Перенос на своё время — вечер уезжает вместе с показом.
+    await events.update(session, screening.id, boss.id, {"starts_at": SOON})
+    slot = await session.get(Slot, screening.slot_id)
+    assert slot.starts_at == SOON
+    # И записи сброшены: доступность отмечали под прежний вечер (§7).
+    left = await session.scalar(
+        sa.select(sa.func.count())
+        .select_from(Confirmation)
+        .where(Confirmation.screening_id == screening.id)
+    )
+    assert left == 0
+
     with pytest.raises(EventError, match="голосование"):
         await events.update(session, screening.id, boss.id, {"film_id": films[1].id})
 
