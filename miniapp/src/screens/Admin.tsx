@@ -338,8 +338,20 @@ export function Admin({ me }: { me: User }) {
             </>
           )}
 
-          {(round.stage === "slot_voting" || round.stage === "schedule_review") && (
-            <Section title="Матрица «фильм × вечер»" storageKey="admin-matrix">
+          {/* Матрица нужна не только при расстановке. Показ переносят и после
+              публикации — заболел ведущий, заняли зал, — и решать, на какой
+              вечер, приходится по тем же голосам. Раньше она пропадала ровно
+              в тот момент, когда расписание становилось живым. */}
+          {round.stage !== "collecting" && round.stage !== "shortlist_review" && (
+            <Section
+              title="Матрица «фильм × вечер»"
+              storageKey="admin-matrix"
+              hint={
+                round.stage === "published" || round.stage === "running"
+                  ? "Расписание уже объявлено — матрица остаётся под рукой на случай переноса."
+                  : undefined
+              }
+            >
               <Matrix />
             </Section>
           )}
