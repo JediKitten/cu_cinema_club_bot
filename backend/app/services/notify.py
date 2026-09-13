@@ -103,6 +103,21 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
     film_line = _film_line(film)
 
     match kind:
+        case NotificationKind.REGISTRATION_LINK:
+            url = escape(str(payload.get("url", "")))
+            # В очереди ссылка тоже нужна: место может освободиться в последний
+            # час, и регистрироваться тогда будет некогда.
+            place = (
+                "Вы в листе ожидания — место может освободиться, "
+                "и регистрация понадобится сразу."
+                if payload.get("waitlist")
+                else "Вы записаны."
+            )
+            return (
+                f"📝 <b>Регистрация на показ</b>\n\n{film_line}\n{when}\n\n"
+                f"{place}\nОсталось отметиться у вуза — это отдельный от клуба учёт:\n"
+                f"{url}"
+            )
         case NotificationKind.ACHIEVEMENT_EARNED:
             emoji = payload.get("emoji", "🏅")
             title = escape(str(payload.get("title", "Ачивка")))

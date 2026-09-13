@@ -578,6 +578,8 @@ class ScreeningOut(BaseModel):
     is_manual: bool = False
     # Показ идёт на английском — это видно и в расписании, и в ачивках.
     in_english: bool = False
+    # Своя регистрация у вуза: ссылку показываем записавшимся.
+    registration_url: str | None = None
     # Подпись к событию без фильма: «ждите анонса».
     note: str | None = None
     # Состояние текущего пользователя по этому показу.
@@ -822,6 +824,8 @@ class EventIn(BaseModel):
     duration_min: int = Field(default=180, ge=30, le=600)
     # Показ в оригинале: свойство сеанса, а не фильма.
     in_english: bool = False
+    # Куда записаться помимо клуба — вуз ведёт свой учёт.
+    registration_url: str | None = Field(default=None, max_length=500)
 
 
 class EventPatch(BaseModel):
@@ -834,6 +838,7 @@ class EventPatch(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
     duration_min: int | None = Field(default=None, ge=30, le=600)
     in_english: bool | None = None
+    registration_url: str | None = Field(default=None, max_length=500)
     # Не поле события, а указание: оставить ли записи при переносе времени.
     keep_confirmations: bool = False
 
@@ -876,6 +881,7 @@ class EventOut(BaseModel):
     title: str | None = None
     note: str | None = None
     in_english: bool = False
+    registration_url: str | None = None
     confirmed: int = 0
 
 

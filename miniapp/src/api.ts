@@ -427,6 +427,7 @@ export const createEvent = (payload: {
   title: string | null;
   note: string | null;
   in_english: boolean;
+  registration_url: string | null;
 }) => request<{ id: number }>("/api/admin/events", { method: "POST", body: JSON.stringify(payload) });
 
 export const listEvents = () => request<ClubEvent[]>("/api/admin/events");

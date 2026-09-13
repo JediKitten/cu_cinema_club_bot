@@ -369,6 +369,85 @@ async def test_returning_after_cancel_goes_to_the_end_of_the_queue(session):
     assert returned.place_in_queue == 2
 
 
+async def test_registration_link_is_sent_on_sign_up(session):
+    """У показа может быть своя регистрация — вуз ведёт учёт отдельно от клуба.
+
+    Ссылку отдаём в момент записи, пока человек помнит, на что подписался,
+    и ровно один раз, сколько бы он ни передумывал.
+    """
+    from app.models import Notification
+    from app.models.enums import NotificationKind
+
+    round_, films, slots, boss, voters = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    screening.registration_url = "https://cu.example/events/42"
+    await sched.publish_schedule(session, round_, boss.id)
+
+    await sched.confirm(session, screening.id, voters[0].id)
+    await sched.cancel(session, screening.id, voters[0].id, late_cancel_hours=24)
+    await sched.confirm(session, screening.id, voters[0].id)
+
+    sent = (
+        (
+            await session.execute(
+                sa.select(Notification).where(
+                    Notification.user_id == voters[0].id,
+                    Notification.kind == NotificationKind.REGISTRATION_LINK,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(sent) == 1
+    assert sent[0].payload["url"] == "https://cu.example/events/42"
+
+
+async def test_no_link_means_no_extra_message(session):
+    """Без регистрации и напоминать не о чем."""
+    from app.models import Notification
+    from app.models.enums import NotificationKind
+
+    round_, films, slots, boss, voters = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+
+    await sched.confirm(session, screening.id, voters[0].id)
+
+    assert not (
+        await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(Notification)
+            .where(Notification.kind == NotificationKind.REGISTRATION_LINK)
+        )
+    )
+
+
+async def test_waitlisted_person_gets_the_link_too(session):
+    """Место может освободиться в последний час — регистрироваться тогда некогда."""
+    from app.models import Notification
+    from app.models.enums import NotificationKind
+
+    round_, films, slots, boss, voters = await voted_round(session, capacity=1)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    screening.registration_url = "https://cu.example/events/42"
+    await sched.publish_schedule(session, round_, boss.id)
+
+    await sched.confirm(session, screening.id, voters[0].id)
+    queued = await sched.confirm(session, screening.id, voters[1].id)
+    assert queued.state == ConfirmationState.WAITLIST
+
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(
+                Notification.user_id == voters[1].id,
+                Notification.kind == NotificationKind.REGISTRATION_LINK,
+            )
+        )
+    ).scalar_one()
+    assert payload["waitlist"] is True
+
+
 async def test_repeat_confirm_is_idempotent(session):
     round_, films, slots, boss, voters = await voted_round(session)
     screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)

@@ -18,6 +18,7 @@ type Draft = {
   note: string;
   film: FilmBrief | null;
   inEnglish: boolean;
+  registration: string;
 };
 
 const EMPTY: Draft = {
@@ -27,6 +28,7 @@ const EMPTY: Draft = {
   note: "",
   film: null,
   inEnglish: false,
+  registration: "",
 };
 
 function pad(value: number): string {
@@ -43,6 +45,7 @@ function toDraft(event: ClubEvent): Draft {
     note: event.note ?? "",
     film: event.film,
     inEnglish: event.in_english,
+    registration: event.registration_url ?? "",
   };
 }
 
@@ -150,6 +153,15 @@ function EventFields({
         placeholder="Подпись, например «ждите анонса»"
         onChange={(e) => onChange({ ...draft, note: e.target.value })}
       />
+      {/* Вуз ведёт учёт посещений отдельно от клуба, и ссылка у каждого показа
+          своя. Записавшемуся её пришлёт бот, а в приложении рядом с «Приду»
+          появится напоминание. */}
+      <input
+        className="field"
+        value={draft.registration}
+        placeholder="Ссылка на регистрацию, если она нужна"
+        onChange={(e) => onChange({ ...draft, registration: e.target.value })}
+      />
       {/* Свойство сеанса, а не фильма: один и тот же фильм клуб может показать
           и с дубляжом, и в оригинале. На этом держится своя ачивка. */}
       <label className="check">
@@ -186,6 +198,9 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
     if (draft.title.trim() !== (event.title ?? "")) patch.title = draft.title.trim() || null;
     if (draft.note.trim() !== (event.note ?? "")) patch.note = draft.note.trim() || null;
     if (draft.inEnglish !== event.in_english) patch.in_english = draft.inEnglish;
+    if (draft.registration.trim() !== (event.registration_url ?? "")) {
+      patch.registration_url = draft.registration.trim() || null;
+    }
     return patch;
   }
 
@@ -321,6 +336,7 @@ export function EventPanel({ onCreated }: { onCreated(): void }) {
         title: draft.title.trim() || null,
         note: draft.note.trim() || null,
         in_english: draft.inEnglish,
+        registration_url: draft.registration.trim() || null,
       });
       setDraft(EMPTY);
       showMessage("Событие создано");

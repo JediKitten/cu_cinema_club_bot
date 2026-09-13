@@ -204,6 +204,9 @@ async def _to_out(
                 cancel_reason=screening.cancel_reason,
                 is_manual=screening.is_manual,
                 in_english=screening.in_english,
+                # Ссылку отдаём всем: увидит её только записавшийся, но
+                # прятать на сервере нечего — это публичная регистрация.
+                registration_url=screening.registration_url,
                 note=screening.note,
                 my_state=confirmation.state if confirmation else None,
                 my_place_in_queue=place,

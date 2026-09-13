@@ -120,6 +120,21 @@ export function Screenings({
                 )}
               </p>
 
+              {/* Записался, а у показа своя регистрация у вуза — она не
+                  заменяется нашим «Приду», и человек про неё забывает.
+                  Ту же ссылку присылает бот: приложение могли и закрыть. */}
+              {(going || queued) && screening.registration_url && (
+                <a
+                  className="notice notice--link"
+                  href={screening.registration_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  Не забудьте зарегистрироваться в @cu_clubs_bot →
+                </a>
+              )}
+
               <div className="marks">
                 <button
                   className={`mark ${going ? "mark--going is-on" : queued ? "mark--soon is-on" : ""}`}

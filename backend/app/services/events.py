@@ -31,6 +31,7 @@ async def create(
     duration_min: int = 180,
     hall_id: int | None = None,
     in_english: bool = False,
+    registration_url: str | None = None,
 ) -> Screening:
     """Заводит событие вне цикла.
 
@@ -62,6 +63,7 @@ async def create(
         slot_id=slot.id,
         is_manual=True,
         in_english=in_english,
+        registration_url=(registration_url or "").strip() or None,
         title=(title or "").strip() or None,
         note=(note or "").strip() or None,
         decided_by=actor_id,
@@ -98,7 +100,15 @@ async def _check_free(
 
 
 # Что администратор вправе поменять у уже назначенного события.
-EDITABLE = ("starts_at", "duration_min", "film_id", "title", "note", "in_english")
+EDITABLE = (
+    "starts_at",
+    "duration_min",
+    "film_id",
+    "title",
+    "note",
+    "in_english",
+    "registration_url",
+)
 
 
 async def update(
@@ -162,6 +172,8 @@ async def update(
         event.note = (changes["note"] or "").strip() or None
     if "in_english" in changes:
         event.in_english = bool(changes["in_english"])
+    if "registration_url" in changes:
+        event.registration_url = (changes["registration_url"] or "").strip() or None
     event.decided_by = actor_id
     event.decided_at = datetime.now(UTC)
 

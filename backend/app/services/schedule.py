@@ -277,6 +277,23 @@ async def confirm(
         # встаёт в её конец: место, которое он сам освободил, уже чужое.
         existing.created_at = datetime.now(UTC)
 
+    # У показа может быть своя регистрация — вуз ведёт учёт отдельно от клуба.
+    # Ссылку отдаём сразу, пока человек помнит, на что записался; dedup_key
+    # держит её одной на пару «человек + показ», сколько бы раз он ни
+    # передумывал.
+    if screening.registration_url:
+        await notify.queue(
+            session,
+            user_id,
+            NotificationKind.REGISTRATION_LINK,
+            dedup_key=f"registration:{screening_id}:{user_id}",
+            payload={
+                "screening_id": screening_id,
+                "url": screening.registration_url,
+                "waitlist": state == ConfirmationState.WAITLIST,
+            },
+        )
+
     await session.commit()
     return await _result(session, screening_id, existing, capacity)
 

@@ -137,6 +137,10 @@ class Screening(Base, CreatedAtMixin):
     # Заголовок и подпись — для события без фильма.
     title: Mapped[str | None] = mapped_column(sa.String(200))
     note: Mapped[str | None] = mapped_column(sa.Text)
+    # Куда записаться помимо клуба: вуз ведёт свой учёт посещений, и ссылку
+    # на регистрацию админ прикладывает к каждому показу отдельно — она у всех
+    # своя. Пусто — значит регистрироваться негде и напоминать не о чем.
+    registration_url: Mapped[str | None] = mapped_column(sa.String(500))
     status: Mapped[ScreeningStatus] = mapped_column(
         enum_col(ScreeningStatus, "screening_status"),
         default=ScreeningStatus.SCHEDULED,

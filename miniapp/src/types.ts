@@ -199,6 +199,8 @@ export type Screening = {
   is_manual: boolean;
   /** Подпись к событию без фильма: «ждите анонса». */
   note: string | null;
+  /** Своя регистрация у вуза — показываем записавшимся. */
+  registration_url: string | null;
   my_state: ConfirmState | null;
   my_place_in_queue: number | null;
   confirmed: number;
@@ -352,6 +354,7 @@ export type ClubEvent = {
   note: string | null;
   /** Показ идёт на английском — от этого зависит своя ачивка. */
   in_english: boolean;
+  registration_url: string | null;
   confirmed: number;
 };
 
@@ -370,6 +373,7 @@ export type EventChanges = {
   title?: string | null;
   note?: string | null;
   in_english?: boolean;
+  registration_url?: string | null;
   /** Не поле события: оставить ли записи «приду» при переносе времени. */
   keep_confirmations?: boolean;
 };

@@ -618,6 +618,13 @@ h3 {
   padding-bottom: 32px;
 }
 
+/* Тот же вид, что у плашки, но это ссылка наружу, а не кнопка внутрь. */
+.notice--link {
+  display: block;
+  margin: 6px 0;
+  text-decoration: none;
+}
+
 .notice {
   width: 100%;
   text-align: left;
