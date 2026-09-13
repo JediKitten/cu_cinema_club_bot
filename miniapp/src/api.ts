@@ -440,6 +440,18 @@ export const updateEvent = (eventId: number, changes: EventChanges) =>
     body: JSON.stringify(changes),
   });
 
+/** Перенос показа цикла в другой вечер той же недели.
+ *
+ * У него не «время», а слот: вечера задаёт цикл, и свободен ли выбранный,
+ * решает сервер. Смена времени сбрасывает подтверждения (§7) — записавшимся
+ * уходит уведомление.
+ */
+export const moveScreening = (screeningId: number, slotId: number) =>
+  request<Schedule>(`/api/schedule/screenings/${screeningId}/move`, {
+    method: "POST",
+    body: JSON.stringify({ slot_id: slotId }),
+  });
+
 export const cancelEvent = (eventId: number, reason: string) =>
   request<ClubEvent>(`/api/admin/events/${eventId}/cancel`, {
     method: "POST",

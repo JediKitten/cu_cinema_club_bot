@@ -3,13 +3,15 @@ import {
   ApiError,
   cancelEvent,
   createEvent,
+  getRound,
   listEvents,
+  moveScreening,
   searchFilms,
   updateEvent,
 } from "../api";
-import { showMessage } from "../telegram";
+import { askConfirm, showMessage } from "../telegram";
 import { Section } from "./Section";
-import type { ClubEvent, EventChanges, FilmBrief } from "../types";
+import type { ClubEvent, EventChanges, FilmBrief, Slot } from "../types";
 
 type Draft = {
   date: string;
@@ -270,6 +272,7 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
 
   return (
     <>
+      {fromCycle && <MoveToEvening event={event} onDone={onDone} />}
       <EventFields draft={draft} onChange={setDraft} fromCycle={fromCycle} />
       {(draft.date !== initial.date || draft.time !== initial.time) && (
         <label className="check">
@@ -316,6 +319,75 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
           </button>
         </div>
       )}
+    </>
+  );
+}
+
+/** Перенос показа цикла на другой вечер недели.
+ *
+ * У него не «время», а слот: вечера задаёт цикл, и назначать показ можно
+ * только в них. Поэтому здесь не поле даты, а список свободных вечеров —
+ * занятый или заблокированный сервер всё равно не примет.
+ *
+ * Перенос сбрасывает подтверждения (§7): доступность человек отмечал под
+ * конкретный вечер, и молча тащить его на другой нельзя. Записавшимся уходит
+ * уведомление.
+ */
+function MoveToEvening({ event, onDone }: { event: ClubEvent; onDone(): void }) {
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getRound()
+      .then((round) => setSlots(round?.slots ?? []))
+      // Без списка вечеров переносить некуда — молчим и не показываем блок.
+      .catch(() => setSlots([]));
+  }, []);
+
+  // Сравниваем моменты, а не строки: сервер отдаёт время с микросекундами
+  // и своим смещением, и «тот же вечер» текстом не совпадает сам с собой.
+  const now = new Date(event.starts_at).getTime();
+  const free = slots.filter(
+    (slot) => !slot.blocked && new Date(slot.starts_at).getTime() !== now,
+  );
+  if (free.length === 0) return null;
+
+  async function move(slot: Slot) {
+    if (busy) return;
+    const ok = await askConfirm(
+      `Перенести на ${when(slot.starts_at)}? Записи сбросятся, всем уйдёт уведомление.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await moveScreening(event.id, slot.id);
+      showMessage("Показ перенесён, записавшимся ушло уведомление");
+      onDone();
+    } catch (error) {
+      showMessage(error instanceof ApiError ? error.message : "Не получилось");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <p className="hint">
+        Перенести на другой вечер недели. Записи при этом сбрасываются — вечер
+        люди выбирали сами.
+      </p>
+      <div className="marks">
+        {free.map((slot) => (
+          <button
+            className="mark"
+            key={slot.id}
+            disabled={busy}
+            onClick={() => void move(slot)}
+          >
+            {when(slot.starts_at)}
+          </button>
+        ))}
+      </div>
     </>
   );
 }
