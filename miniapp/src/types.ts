@@ -114,7 +114,10 @@ export type Round = {
   shortlist: ShortlistItem[];
   slots: Slot[];
   autopilot_film_ids: number[];
-  // Окно ручной сборки шорт-листа: среда 20:00 — четверг 08:00.
+  // Неделя объявлена англоязычной: показ пройдёт в оригинале без дубляжа.
+  in_english: boolean;
+  // Сборка шорт-листа руками открывается срезом интереса; верхней границы
+  // по часам нет — её держит этап цикла.
   shortlist_window_opens_at: string | null;
   shortlist_autopilot_at: string | null;
   shortlist_window_open: boolean;
@@ -163,6 +166,7 @@ export type Ballot = {
   slots: Slot[];
   my_film_ids: number[];
   my_slot_ids: number[];
+  in_english: boolean;
 };
 
 export type MatrixCell = { film_id: number; slot_id: number; count: number };

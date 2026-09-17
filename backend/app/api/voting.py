@@ -74,6 +74,7 @@ async def _ballot(session: AsyncSession, round_: Round, user_id: int) -> BallotO
         slots=await _slot_out(session, slots),
         my_film_ids=await voting.my_votes(session, round_, user_id),
         my_slot_ids=await voting.my_availability(session, round_, user_id),
+        in_english=round_.in_english,
     )
 
 

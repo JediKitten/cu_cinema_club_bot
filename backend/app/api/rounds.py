@@ -13,6 +13,7 @@ from app.schemas import (
     BlockSlotIn,
     FilmBrief,
     OpenRoundIn,
+    RoundLanguageIn,
     RoundOut,
     ShortlistIn,
     ShortlistItemOut,
@@ -97,6 +98,7 @@ async def _serialize(session: AsyncSession, round_: Round) -> RoundOut:
             for slot, hall in slots
         ],
         autopilot_film_ids=list((proposal.payload or {}).get("film_ids", [])) if proposal else [],
+        in_english=round_.in_english,
         shortlist_window_opens_at=window.opens_at,
         shortlist_autopilot_at=window.autopilot_at,
         shortlist_window_open=window.is_open,
@@ -123,6 +125,24 @@ async def open_round(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     # Подсказку автопилота считаем сразу: админ должен видеть её рядом с рейтингами.
     await autopilot.propose_shortlist(session, round_)
+    return await _serialize(session, round_)
+
+
+@router.patch("/language", response_model=RoundOut)
+async def set_language(
+    body: RoundLanguageIn,
+    admin: RequireModerator,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RoundOut:
+    """«Эта неделя на английском».
+
+    Ставится до голосования: человек решает, пойдёт ли он, ещё выбирая фильм,
+    — поэтому пометка едет в том же сообщении, что зовёт голосовать.
+    """
+    round_ = await rounds_service.active_round(session)
+    if round_ is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Активного цикла нет")
+    await rounds_service.set_in_english(session, round_, body.in_english, admin.id)
     return await _serialize(session, round_)
 
 

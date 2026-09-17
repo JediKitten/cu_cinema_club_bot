@@ -19,6 +19,7 @@ import {
   openRound,
   publishShortlist,
   saveShortlist,
+  setRoundLanguage,
 } from "../api";
 import { Poster } from "../components/FilmRow";
 import { haptic } from "../telegram";
@@ -226,6 +227,23 @@ export function Admin({ me }: { me: User }) {
             <p className="meta">{STAGE_LABEL[round.stage] ?? round.stage}</p>
             {round.low_activity && (
               <p className="badge">Низкая активность: фильмов выше порога меньше нужного</p>
+            )}
+            {/* Язык объявляют до того, как фильм выбран, поэтому пометка живёт
+                на неделе: показ унаследует её, когда встанет в расписание. */}
+            <div className="marks">
+              <button
+                className={`mark ${round.in_english ? "is-on mark--wishlist" : ""}`}
+                disabled={busy}
+                onClick={() => act(() => setRoundLanguage(!round.in_english), setRound)}
+              >
+                {round.in_english ? "🇬🇧 Неделя на английском" : "Показ на русском"}
+              </button>
+            </div>
+            {round.in_english && (
+              <p className="hint">
+                Про язык скажем в сообщении о голосовании, и показ этой недели получит
+                пометку сам.
+              </p>
             )}
           </div>
 

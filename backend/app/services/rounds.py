@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AuditLog, Film, Hall, Round, ShortlistItem, Slot, User
+from app.models import AuditLog, Film, Hall, Round, Screening, ShortlistItem, Slot, User
 from app.models.enums import NotificationKind, RoundStage, ShortlistSource
 from app.services import notify
 from app.services.settings import SettingsService
@@ -289,6 +289,33 @@ async def set_shortlist(
     return items
 
 
+async def set_in_english(
+    session: AsyncSession, round_: Round, in_english: bool, actor_id: int
+) -> Round:
+    """Объявляет неделю англоязычной (или снимает пометку).
+
+    Меняется и после публикации расписания: язык показа уточняют поздно,
+    а показ уже назначенный наследовать пометку задним числом обязан.
+    """
+    round_.in_english = in_english
+    await session.execute(
+        sa.update(Screening)
+        .where(Screening.round_id == round_.id)
+        .values(in_english=in_english)
+    )
+    session.add(
+        AuditLog(
+            actor_id=actor_id,
+            entity="round",
+            entity_id=round_.id,
+            action="set_in_english",
+            payload={"in_english": in_english},
+        )
+    )
+    await session.commit()
+    return round_
+
+
 async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int) -> Round:
     """Открывает этап 2: список зафиксирован, идёт голосование по фильмам и вечерам."""
     if round_.stage == RoundStage.COLLECTING:
@@ -350,7 +377,9 @@ async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int)
             user_id,
             NotificationKind.SHORTLIST_PUBLISHED,
             dedup_key=f"shortlist:{round_.id}:{user_id}",
-            payload={"films": list(titles)},
+            # Про язык надо сказать здесь, а не после расстановки: человек
+            # решает, пойдёт ли он, ещё голосуя за фильм.
+            payload={"films": list(titles), "in_english": round_.in_english},
         )
 
     session.add(

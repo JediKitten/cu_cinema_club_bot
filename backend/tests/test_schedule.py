@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.models import Confirmation, Hall, Notification, Screening, Slot
 from app.models.enums import ConfirmationState, NotificationKind, RoundStage, ScreeningStatus
+from app.services import rounds as rounds_service
 from app.services import schedule as sched
 from app.services import voting
 from app.services.schedule import ScheduleError
@@ -458,3 +459,27 @@ async def test_repeat_confirm_is_idempotent(session):
 
     assert result.state == ConfirmationState.CONFIRMED
     assert result.confirmed == 1
+
+
+async def test_screening_of_an_english_week_inherits_the_language(session):
+    """Неделю объявляют англоязычной до того, как фильм выбран голосованием.
+
+    Значит, пометку должен унаследовать сам показ — иначе о ней пришлось бы
+    вспоминать вручную в тот момент, когда думают уже о другом.
+    """
+    round_, films, slots, boss, _ = await voted_round(session)
+    await rounds_service.set_in_english(session, round_, True, boss.id)
+
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    assert screening.in_english is True
+
+
+async def test_language_of_an_already_scheduled_week_reaches_its_screening(session):
+    """Язык уточняют и поздно — когда показ уже стоит в расписании."""
+    round_, films, slots, boss, _ = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    assert screening.in_english is False
+
+    await rounds_service.set_in_english(session, round_, True, boss.id)
+    await session.refresh(screening)
+    assert screening.in_english is True

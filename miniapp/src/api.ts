@@ -259,6 +259,14 @@ export const saveShortlist = (filmIds: number[]) =>
 export const publishShortlist = () =>
   request<Round>("/api/admin/round/shortlist/publish", { method: "POST" });
 
+// «Эта неделя на английском» — ставится до голосования: язык показа влияет
+// на то, пойдёт ли человек, и знать о нём надо, выбирая фильм.
+export const setRoundLanguage = (inEnglish: boolean) =>
+  request<Round>("/api/admin/round/language", {
+    method: "PATCH",
+    body: JSON.stringify({ in_english: inEnglish }),
+  });
+
 export const blockSlot = (slotId: number, blocked: boolean, reason?: string) =>
   request<Round>(`/api/admin/round/slots/${slotId}/block`, {
     method: "POST",

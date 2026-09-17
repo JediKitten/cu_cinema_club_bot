@@ -41,6 +41,11 @@ class Round(Base, CreatedAtMixin):
     schedule_locked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     published_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     low_activity: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
+    # Неделя объявлена англоязычной: показ, который выберут голосованием,
+    # пройдёт в оригинале без дубляжа. Стоит на цикле, а не на показе, потому
+    # что объявляют это до того, как фильм известен, — и потому что сказать
+    # об этом надо в том же сообщении, что зовёт голосовать.
+    in_english: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     # Если все вечера заблокированы — показов на неделе нет (§3).
     skipped_reason: Mapped[str | None] = mapped_column(sa.Text)
 

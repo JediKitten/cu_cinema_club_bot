@@ -246,3 +246,41 @@ async def test_round_and_films_isolated_between_weeks(session):
 
     rounds_count = await session.scalar(sa.select(sa.func.count()).select_from(Round))
     assert rounds_count == 2
+
+
+async def test_english_week_is_announced_with_the_vote(session):
+    """Язык показа решает, пойдёт человек или нет, не хуже самого фильма, —
+    значит, о нём говорят в том же сообщении, что зовёт голосовать."""
+    from app.models import Notification
+    from app.models.enums import NotificationKind
+    from app.services import notify
+
+    boss = await admin(session)
+    film = await make_film(session, "Социальная сеть")
+    await session.commit()
+
+    round_ = await rounds_service.open_round(session, rounds_service.next_week_start(), boss.id)
+    await rounds_service.set_in_english(session, round_, True, boss.id)
+    await set_shortlist(session, round_, [film.id], boss.id)
+    await rounds_service.publish_shortlist(session, round_, boss.id)
+
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(
+                Notification.kind == NotificationKind.SHORTLIST_PUBLISHED
+            )
+        )
+    ).scalar_one()
+    assert payload["in_english"] is True
+    text = notify.render(NotificationKind.SHORTLIST_PUBLISHED, None, "", payload)
+    assert text is not None and "на английском" in text
+
+
+async def test_ordinary_week_says_nothing_about_language(session):
+    from app.models.enums import NotificationKind
+    from app.services import notify
+
+    text = notify.render(
+        NotificationKind.SHORTLIST_PUBLISHED, None, "", {"films": ["Фильм"], "in_english": False}
+    )
+    assert text is not None and "английск" not in text

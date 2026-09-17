@@ -178,10 +178,18 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
         case NotificationKind.SHORTLIST_PUBLISHED:
             films = payload.get("films") or []
             listed = "\n".join(f"• {escape(str(title))}" for title in films)
+            # Язык показа влияет на то, пойдёт ли человек, — значит, знать
+            # о нём надо до голоса, а не из расписания.
+            language = (
+                "\n\n🇬🇧 <b>Показ пройдёт на английском</b> — оригинал без дубляжа."
+                if payload.get("in_english")
+                else ""
+            )
             return (
                 "🗳 <b>Голосование открыто!</b>\n\n"
                 "Фильмы недели:\n"
-                f"{listed}\n\n"
+                f"{listed}"
+                f"{language}\n\n"
                 "Отметьте в приложении, на какие пошли бы и в какие вечера свободны."
             )
         case NotificationKind.SCHEDULE_PUBLISHED:

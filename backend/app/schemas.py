@@ -492,6 +492,8 @@ class RoundOut(BaseModel):
     slots: list[SlotOut] = Field(default_factory=list)
     # Решение автопилота показывается рядом с ручным выбором как подсказка (§5).
     autopilot_film_ids: list[int] = Field(default_factory=list)
+    # Неделя объявлена англоязычной: показ пройдёт в оригинале без дубляжа.
+    in_english: bool = False
     # Когда шорт-лист можно собирать руками. Интерфейс по этому объясняет,
     # почему кнопки не нажимаются, вместо того чтобы молча их гасить.
     shortlist_window_opens_at: datetime | None = None
@@ -503,6 +505,10 @@ class RoundOut(BaseModel):
 
 class OpenRoundIn(BaseModel):
     week_start: date | None = None
+
+
+class RoundLanguageIn(BaseModel):
+    in_english: bool
 
 
 class ShortlistIn(BaseModel):
@@ -526,6 +532,9 @@ class BallotOut(BaseModel):
     slots: list[SlotOut]
     my_film_ids: list[int] = Field(default_factory=list)
     my_slot_ids: list[int] = Field(default_factory=list)
+    # Неделя объявлена англоязычной. Голосуя, человек должен это знать:
+    # язык решает, пойдёт он или нет, не хуже самого фильма.
+    in_english: bool = False
 
 
 class VotesIn(BaseModel):

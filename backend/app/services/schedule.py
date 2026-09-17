@@ -79,6 +79,9 @@ async def assign(
         # Ожидаемая явка — та самая ячейка матрицы. Сохраняем снимком: позже
         # по ней сверяют, насколько прогноз сошёлся с фактом (§14).
         expected_attendance=matrix.cell(film_id, slot_id),
+        # Неделю объявили англоязычной до того, как выбрали фильм: показ
+        # наследует пометку, иначе о ней пришлось бы вспоминать вручную.
+        in_english=round_.in_english,
         decided_by=actor_id,
         decided_at=datetime.now(UTC),
     )
