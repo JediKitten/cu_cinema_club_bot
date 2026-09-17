@@ -30,7 +30,13 @@ const STATS_ROLES = new Set(["admin", "superadmin"]);
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("catalog");
+  // Кнопка под уведомлением открывает приложение адресом ?tab=vote — человек
+  // уже отметил фильмы в чате, и приводить его в каталог значило бы прятать
+  // то, ради чего он нажал.
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = new URLSearchParams(location.search).get("tab");
+    return TABS.some((item) => item.key === requested) ? (requested as Tab) : "catalog";
+  });
   // Фильм из поиска ещё не в каталоге — у него есть только tmdb_id.
   const [openFilm, setOpenFilm] = useState<FilmBrief | null>(null);
   // Профиль открывается поверх вкладок — как карточка фильма.

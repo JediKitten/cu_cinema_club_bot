@@ -175,3 +175,56 @@ async def test_voting_stops_after_stage_moves_on(session):
 
     with pytest.raises(VotingError, match="закрыто"):
         await voting.set_votes(session, round_, voter.id, [films[0].id])
+
+
+async def test_button_toggles_a_single_vote(session):
+    """Кнопка под уведомлением ставит и снимает ровно один голос."""
+    round_, films, _, _ = await prepared_round(session)
+    voter = await make_user(session, "Зритель")
+    await session.commit()
+
+    on, chosen = await voting.toggle_vote(session, round_, voter.id, films[0].id)
+    assert on and chosen == [films[0].id]
+
+    on, chosen = await voting.toggle_vote(session, round_, voter.id, films[1].id)
+    assert on and chosen == sorted([films[0].id, films[1].id])
+
+    off, chosen = await voting.toggle_vote(session, round_, voter.id, films[0].id)
+    assert not off and chosen == [films[1].id]
+
+
+async def test_button_does_not_wipe_a_neighbouring_vote(session):
+    """Нажатия приходят подряд, и голос соседнего фильма переписывать нечем:
+    `toggle_vote` трогает одну строку, а не весь набор."""
+    round_, films, _, _ = await prepared_round(session)
+    voter = await make_user(session, "Зритель")
+    await session.commit()
+    await voting.set_votes(session, round_, voter.id, [films[0].id, films[1].id])
+
+    await voting.toggle_vote(session, round_, voter.id, films[2].id)
+
+    assert await voting.my_votes(session, round_, voter.id) == sorted(
+        [films[0].id, films[1].id, films[2].id]
+    )
+
+
+async def test_button_refuses_a_film_outside_the_shortlist(session):
+    round_, films, _, _ = await prepared_round(session)
+    voter = await make_user(session, "Зритель")
+    stranger = await make_film(session, "Не в списке")
+    await session.commit()
+
+    with pytest.raises(VotingError, match="шорт-лист"):
+        await voting.toggle_vote(session, round_, voter.id, stranger.id)
+
+
+async def test_button_is_dead_after_voting_closes(session):
+    round_, films, _, _ = await prepared_round(session)
+    voter = await make_user(session, "Зритель")
+    await session.commit()
+
+    round_.stage = RoundStage.SCHEDULE_REVIEW
+    await session.commit()
+
+    with pytest.raises(VotingError, match="закрыто"):
+        await voting.toggle_vote(session, round_, voter.id, films[0].id)

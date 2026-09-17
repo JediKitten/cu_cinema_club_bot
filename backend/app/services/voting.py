@@ -8,6 +8,7 @@
 from dataclasses import dataclass, field
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Availability, Film, FilmVote, Round, ShortlistItem, Slot
@@ -67,6 +68,41 @@ async def my_availability(session: AsyncSession, round_: Round, user_id: int) ->
         )
     )
     return sorted(rows.scalars())
+
+
+async def toggle_vote(
+    session: AsyncSession, round_: Round, user_id: int, film_id: int
+) -> tuple[bool, list[int]]:
+    """Переключает один голос. Возвращает («теперь отмечен», весь выбор).
+
+    Отдельно от `set_votes` намеренно. Кнопка в чате присылает одно нажатие,
+    и переписывать ради него весь набор значило бы потерять соседний голос,
+    если два нажатия пришли одновременно: тапают по кнопкам быстро и подряд.
+    """
+    ensure_open(round_)
+
+    allowed = {film.id for film in await shortlist_films(session, round_)}
+    if film_id not in allowed:
+        raise VotingError("Этого фильма нет в шорт-листе")
+
+    removed = await session.execute(
+        sa.delete(FilmVote).where(
+            FilmVote.round_id == round_.id,
+            FilmVote.user_id == user_id,
+            FilmVote.film_id == film_id,
+        )
+    )
+    now_on = removed.rowcount == 0
+    if now_on:
+        await session.execute(
+            insert(FilmVote)
+            .values(round_id=round_.id, user_id=user_id, film_id=film_id)
+            .on_conflict_do_nothing(
+                index_elements=[FilmVote.round_id, FilmVote.user_id, FilmVote.film_id]
+            )
+        )
+    await session.commit()
+    return now_on, await my_votes(session, round_, user_id)
 
 
 async def set_votes(

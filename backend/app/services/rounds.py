@@ -350,18 +350,19 @@ async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int)
     # Об открытии голосования надо сказать вслух. Без этого весь этап 2 —
     # а при включённом автопилоте он и начинается сам — проходил молча: человек
     # узнавал о нём, только если случайно открывал приложение в эти три дня.
-    titles = (
-        (
+    # Не только названия: в сообщении у каждого фильма своя кнопка, и ей
+    # нужен id, чтобы нажатие стало голосом, не открывая приложение.
+    listed = [
+        {"id": film_id, "title": title}
+        for film_id, title in (
             await session.execute(
-                sa.select(Film.title_ru)
+                sa.select(Film.id, Film.title_ru)
                 .join(ShortlistItem, ShortlistItem.film_id == Film.id)
                 .where(ShortlistItem.round_id == round_.id)
                 .order_by(ShortlistItem.position)
             )
-        )
-        .scalars()
-        .all()
-    )
+        ).all()
+    ]
     audience = (
         (
             await session.execute(
@@ -379,7 +380,12 @@ async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int)
             dedup_key=f"shortlist:{round_.id}:{user_id}",
             # Про язык надо сказать здесь, а не после расстановки: человек
             # решает, пойдёт ли он, ещё голосуя за фильм.
-            payload={"films": list(titles), "in_english": round_.in_english},
+            payload={
+                "round_id": round_.id,
+                "week_start": round_.week_start.isoformat(),
+                "films": listed,
+                "in_english": round_.in_english,
+            },
         )
 
     session.add(

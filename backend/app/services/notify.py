@@ -176,8 +176,14 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                 "Спасибо всем, кто голосовал."
             )
         case NotificationKind.SHORTLIST_PUBLISHED:
+            # Фильм приходит словарём {id, title}: у каждого своя кнопка под
+            # сообщением. Старые записи в очереди хранят голое название —
+            # шаблон переживает и их.
             films = payload.get("films") or []
-            listed = "\n".join(f"• {escape(str(title))}" for title in films)
+            listed = "\n".join(
+                f"• {escape(str(film.get('title') if isinstance(film, dict) else film))}"
+                for film in films
+            )
             # Язык показа влияет на то, пойдёт ли человек, — значит, знать
             # о нём надо до голоса, а не из расписания.
             language = (
@@ -190,7 +196,8 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                 "Фильмы недели:\n"
                 f"{listed}"
                 f"{language}\n\n"
-                "Отметьте в приложении, на какие пошли бы и в какие вечера свободны."
+                "Отметьте кнопками, на какие фильмы пошли бы, — а вечера, "
+                "когда вы свободны, выберите в приложении."
             )
         case NotificationKind.SCHEDULE_PUBLISHED:
             return (

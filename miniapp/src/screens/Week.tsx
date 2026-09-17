@@ -13,8 +13,16 @@ import { Vote } from "./Vote";
  * иначе показы недели. По неделям можно листать: расписание — это не только
  * ближайшие дни, но и то, что уже было и что будет.
  */
+/** Неделя из адреса: кнопка под уведомлением в боте открывает приложение
+ * сразу на бюллетене, а не на расписании текущей недели с плашкой «идёт
+ * голосование» — человек уже отметил фильмы в чате и пришёл за вечерами. */
+function requestedWeek(): string | null {
+  const raw = new URLSearchParams(location.search).get("week");
+  return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
 export function Week({ onOpenTournament }: { onOpenTournament(id: number): void }) {
-  const [week, setWeek] = useState<string | null>(null);
+  const [week, setWeek] = useState<string | null>(requestedWeek);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

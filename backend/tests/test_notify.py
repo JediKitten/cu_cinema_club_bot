@@ -344,7 +344,10 @@ async def test_opening_the_vote_is_announced_to_everyone(session):
     )
 
     assert {item.user_id for item in announced} >= {member.id for member in club}
-    assert films[0].title_ru in announced[0].payload["films"]
+    # В payload едут и id: у каждого фильма под сообщением своя кнопка.
+    listed = announced[0].payload["films"]
+    assert [film["title"] for film in listed] == [film.title_ru for film in films]
+    assert [film["id"] for film in listed] == [film.id for film in films]
 
     bot = FakeBot()
     await notify.deliver(session, bot, moscow)
