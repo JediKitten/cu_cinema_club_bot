@@ -437,3 +437,19 @@ async def test_no_feedback_reminder_after_rating(session):
     await session.commit()
 
     assert await reminders.remind_about_feedback(session) == 0
+
+
+def test_the_vote_reminder_does_not_repeat_the_opening():
+    """Второй заход — то же сообщение с кнопками, но человеку, который уже
+    читал «голосование открыто», повторять это незачем."""
+    payload = {
+        "round_id": 1,
+        "week_start": "2026-09-21",
+        "films": [{"id": 1, "title": "Начало"}],
+        "reminder": True,
+    }
+    text = notify.render(NotificationKind.SHORTLIST_PUBLISHED, None, "", payload)
+
+    assert text is not None
+    assert "Голосование идёт" in text and "Голосование открыто" not in text
+    assert "Начало" in text
