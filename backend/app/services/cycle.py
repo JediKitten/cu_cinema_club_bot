@@ -37,13 +37,25 @@ async def tick(session: AsyncSession) -> list[str]:
     if await _complete_past(session):
         done.append("прошедшие показы отмечены завершёнными")
 
-    round_ = await rounds_service.active_round(session)
+    # Недели с объявленным расписанием двигаем отдельно и первыми. Они уже
+    # ничего не готовят, и следующий цикл не должен ждать, пока они кончатся:
+    # его срез приходится на середину как раз такой недели.
+    for settled in await rounds_service.settled_rounds(session):
+        if settled.stage == RoundStage.PUBLISHED and _week_started(settled.week_start):
+            settled.stage = RoundStage.RUNNING
+            await session.commit()
+            done.append(f"неделя показов {settled.week_start} началась")
+        if settled.stage == RoundStage.RUNNING and await _week_finished(session, settled):
+            await _close(session, settled)
+            done.append(f"цикл {settled.week_start} закрыт")
+
+    round_ = await rounds_service.preparing_round(session)
 
     if round_ is None:
-        # Цикла нет — заводим, чтобы люди могли голосовать, когда придёт срок.
-        round_ = await rounds_service.open_round(
-            session, _first_collectable_week(values, tz), actor_id=None
-        )
+        # Готовить нечего — заводим следующий цикл, чтобы люди успели
+        # проголосовать до его недели.
+        week = _first_collectable_week(values, tz, taken=await rounds_service.taken_weeks(session))
+        round_ = await rounds_service.open_round(session, week, actor_id=None)
         done.append(f"открыт цикл на {round_.week_start}")
 
     def passed(setting: str) -> bool:
@@ -79,36 +91,36 @@ async def tick(session: AsyncSession) -> list[str]:
         except schedule_service.ScheduleError as exc:
             logger.warning("Не удалось опубликовать расписание: %s", exc)
 
-    if round_.stage == RoundStage.PUBLISHED and _week_started(round_.week_start):
-        round_.stage = RoundStage.RUNNING
-        await session.commit()
-        done.append("неделя показов началась")
-
-    if round_.stage == RoundStage.RUNNING and await _week_finished(session, round_):
-        await _close(session, round_)
-        done.append("цикл закрыт")
-
     if done:
         logger.info("Цикл %s: %s", round_.week_start, "; ".join(done))
     return done
 
 
 def _first_collectable_week(
-    values: dict, tz: str, now: datetime | None = None
+    values: dict, tz: str, now: datetime | None = None, taken: set[date] | None = None
 ) -> date:
     """Ближайшая неделя показов, по которой ещё можно успеть собрать интерес.
 
     Дедлайны отсчитываются от недели, ПРЕДШЕСТВУЮЩЕЙ показам. В обычном ритме
-    цикл закрывается в понедельник, и у следующей недели все сроки впереди.
-    Но если цикла нет вовсе — бота запустили впервые или он долго лежал, —
-    ближайший понедельник может оказаться таким, что его дедлайны уже в
-    прошлом. Тогда один проход `tick` собрал бы шорт-лист, опубликовал его,
-    расставил показы и объявил расписание подряд, не дав людям ни минуты
-    ни на отметки, ни на голосование. Пропускаем такие недели.
+    следующий цикл заводится в воскресенье, сразу после публикации расписания,
+    и у недели через одну все сроки впереди. Но если цикла нет вовсе — бота
+    запустили впервые или он долго лежал, — ближайший понедельник может
+    оказаться таким, что его дедлайны уже в прошлом. Тогда один проход `tick`
+    собрал бы шорт-лист, опубликовал его, расставил показы и объявил
+    расписание подряд, не дав людям ни минуты ни на отметки, ни на
+    голосование. Пропускаем такие недели.
+
+    Недели, на которые цикл уже заводили, пропускаем тоже: заводить второй
+    цикл на ту же неделю нечем — `week_start` уникален, — и `open_round`
+    молча вернул бы старый, а `tick` принялся бы двигать давно объявленную
+    неделю по этапам заново.
     """
+    taken = taken or set()
     week = rounds_service.next_week_start(now.date() if now else None)
     for _ in range(MAX_WEEKS_AHEAD):
-        if not autopilot.deadline_passed(week, str(values["stage1_cut_at"]), tz, now):
+        if week not in taken and not autopilot.deadline_passed(
+            week, str(values["stage1_cut_at"]), tz, now
+        ):
             return week
         week += timedelta(days=rounds_service.DAYS_IN_WEEK)
     return week

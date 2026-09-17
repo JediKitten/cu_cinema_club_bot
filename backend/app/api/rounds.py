@@ -98,7 +98,7 @@ async def _serialize(session: AsyncSession, round_: Round) -> RoundOut:
         ],
         autopilot_film_ids=list((proposal.payload or {}).get("film_ids", [])) if proposal else [],
         shortlist_window_opens_at=window.opens_at,
-        shortlist_window_closes_at=window.closes_at,
+        shortlist_autopilot_at=window.autopilot_at,
         shortlist_window_open=window.is_open,
     )
 

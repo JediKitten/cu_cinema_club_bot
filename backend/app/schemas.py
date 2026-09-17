@@ -492,10 +492,12 @@ class RoundOut(BaseModel):
     slots: list[SlotOut] = Field(default_factory=list)
     # Решение автопилота показывается рядом с ручным выбором как подсказка (§5).
     autopilot_film_ids: list[int] = Field(default_factory=list)
-    # Окно, в котором шорт-лист собирают руками. Интерфейс по нему объясняет,
+    # Когда шорт-лист можно собирать руками. Интерфейс по этому объясняет,
     # почему кнопки не нажимаются, вместо того чтобы молча их гасить.
     shortlist_window_opens_at: datetime | None = None
-    shortlist_window_closes_at: datetime | None = None
+    # Когда список соберётся сам, если админ ничего не сделает. Не граница
+    # запрета: после автопилота править можно, пока не опубликовано.
+    shortlist_autopilot_at: datetime | None = None
     shortlist_window_open: bool = False
 
 

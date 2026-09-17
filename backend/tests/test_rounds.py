@@ -90,11 +90,11 @@ async def test_shortlist_replaces_previous_selection(session):
     assert round_.stage == RoundStage.SHORTLIST_REVIEW
 
 
-async def test_shortlist_window_opens_wednesday_evening_and_closes_thursday_morning(session):
-    """Собирать шорт-лист руками можно только в окне (решение клуба).
+async def test_shortlist_is_not_assembled_before_the_cut(session):
+    """До среза интереса список собирать нечем: веса ещё набираются.
 
-    Окно считается от недели, предшествующей неделе показов: среда 20:00 —
-    четверг 08:00, те же параметры §13, по которым цикл двигает автопилот.
+    Срез считается от недели, предшествующей неделе показов: среда 20:00 —
+    тот же параметр §13, по которому цикл двигает автопилот.
     """
     boss = await admin(session)
     round_ = await rounds_service.open_round(session, date(2026, 9, 14), boss.id)
@@ -105,19 +105,38 @@ async def test_shortlist_window_opens_wednesday_evening_and_closes_thursday_morn
     window = rounds_service.shortlist_window(round_.week_start, values)
     moscow = ZoneInfo("Europe/Moscow")
     assert window.opens_at.astimezone(moscow) == datetime(2026, 9, 9, 20, tzinfo=moscow)
-    assert window.closes_at.astimezone(moscow) == datetime(2026, 9, 10, 8, tzinfo=moscow)
+    assert window.autopilot_at.astimezone(moscow) == datetime(2026, 9, 10, 8, tzinfo=moscow)
 
     too_early = window.opens_at - timedelta(minutes=1)
-    with pytest.raises(RoundError, match="только в окне"):
+    with pytest.raises(RoundError, match="после среза"):
         await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=too_early)
-
-    too_late = window.closes_at
-    with pytest.raises(RoundError, match="закрылось"):
-        await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=too_late)
 
     inside = window.opens_at + timedelta(hours=1)
     items = await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=inside)
     assert [item.film_id for item in items] == [film.id]
+
+
+async def test_missing_the_autopilot_hour_does_not_lock_the_admin_out(session):
+    """Раньше окно закрывалось временем автопилота, и админ, проспавший ночной
+    промежуток, не мог собрать список вовсе — даже когда автопилот не отработал
+    и публиковать было нечего."""
+    boss = await admin(session)
+    round_ = await rounds_service.open_round(session, date(2026, 9, 14), boss.id)
+    film = await make_film(session, "Фильм")
+    await session.commit()
+
+    values = await SettingsService(session).all()
+    window = rounds_service.shortlist_window(round_.week_start, values)
+
+    late = window.autopilot_at + timedelta(hours=9)
+    items = await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=late)
+    assert [item.film_id for item in items] == [film.id]
+
+    # А вот опубликованный список правке не подлежит — это и есть настоящий
+    # запрет, ради которого окно заводили.
+    await rounds_service.publish_shortlist(session, round_, boss.id)
+    with pytest.raises(RoundError, match="уже опубликован"):
+        await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=late)
 
 
 async def test_shortlist_rejects_duplicates(session):

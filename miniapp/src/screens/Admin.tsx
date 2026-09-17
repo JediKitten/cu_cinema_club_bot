@@ -58,9 +58,13 @@ function showLabel(record: ScreeningRecord): string {
     : `${day} — ${record.came}`;
 }
 
+/** Почему шорт-лист пока не собрать.
+ *
+ * Причина теперь одна: срез интереса ещё не прошёл. Верхней границы у сборки
+ * нет — пока список не опубликован, его можно собрать и после автопилота.
+ */
 function windowNotice(round: Round): string {
   const opens = new Date(round.shortlist_window_opens_at!);
-  const closes = new Date(round.shortlist_window_closes_at!);
   const clock = (at: Date) =>
     at.toLocaleString("ru-RU", {
       weekday: "short",
@@ -69,9 +73,10 @@ function windowNotice(round: Round): string {
       hour: "2-digit",
       minute: "2-digit",
     });
-  return Date.now() < opens.getTime()
-    ? `Шорт-лист собирают с ${clock(opens)} до ${clock(closes)} — пока только смотрим.`
-    : `Окно сборки закрылось ${clock(closes)}: список ушёл в голосование.`;
+  const auto = round.shortlist_autopilot_at
+    ? ` Если не вмешаться, в ${clock(new Date(round.shortlist_autopilot_at))} соберёт автопилот.`
+    : "";
+  return `Шорт-лист собирают после среза интереса — ${clock(opens)}.${auto}`;
 }
 
 type Panel =

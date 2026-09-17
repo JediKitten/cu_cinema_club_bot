@@ -116,7 +116,7 @@ export type Round = {
   autopilot_film_ids: number[];
   // Окно ручной сборки шорт-листа: среда 20:00 — четверг 08:00.
   shortlist_window_opens_at: string | null;
-  shortlist_window_closes_at: string | null;
+  shortlist_autopilot_at: string | null;
   shortlist_window_open: boolean;
 };
 

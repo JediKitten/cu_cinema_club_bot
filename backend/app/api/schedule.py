@@ -125,6 +125,24 @@ async def _round_or_404(session: AsyncSession) -> Round:
     return round_
 
 
+async def _screening_week(session: AsyncSession, screening_id: int) -> date:
+    """Неделя, которой принадлежит показ.
+
+    Правят и показы идущей недели, а готовится в это время уже следующая —
+    возвращать в ответ её расписание значило бы показать админу не тот экран,
+    на котором он только что нажал кнопку.
+    """
+    starts_at = await session.scalar(
+        sa.select(Slot.starts_at)
+        .join(Screening, Screening.slot_id == Slot.id)
+        .where(Screening.id == screening_id)
+    )
+    if starts_at is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Показ не найден")
+    tz = ZoneInfo(str(await SettingsService(session).get("display_timezone")))
+    return rounds_service.week_start_for(starts_at.astimezone(tz).date())
+
+
 async def _to_out(
     session: AsyncSession, rows: list, round_: Round | None, user_id: int
 ) -> list[ScreeningOut]:
@@ -373,12 +391,12 @@ async def move(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ScheduleOut:
     """Правка опубликованного расписания — только админ (§9)."""
-    round_ = await _round_or_404(session)
     try:
         await schedule_service.move_screening(session, screening_id, body.slot_id, admin.id)
     except ScheduleError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _week_view(session, round_.week_start, admin, force_show=True)
+    week = await _screening_week(session, screening_id)
+    return await _week_view(session, week, admin, force_show=True)
 
 
 @router.post("/screenings/{screening_id}/cancel", response_model=ScheduleOut)
@@ -388,12 +406,12 @@ async def cancel_screening(
     admin: RequireAdmin,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ScheduleOut:
-    round_ = await _round_or_404(session)
+    week = await _screening_week(session, screening_id)
     try:
         await schedule_service.cancel_screening(session, screening_id, body.reason, admin.id)
     except ScheduleError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    return await _week_view(session, round_.week_start, admin, force_show=True)
+    return await _week_view(session, week, admin, force_show=True)
 
 
 # --- Подтверждения (все) ---------------------------------------------------

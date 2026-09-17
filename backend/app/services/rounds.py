@@ -42,21 +42,28 @@ def deadline_moment(week_start: date, spec: str, tz_name: str) -> datetime:
 
 @dataclass(frozen=True, slots=True)
 class ShortlistWindow:
-    """Окно, в котором шорт-лист собирают руками (по решению клуба).
+    """Когда шорт-лист собирают руками (по решению клуба).
 
-    Открывается срезом этапа 1 и закрывается временем автопилота: до среза
-    веса ещё набираются и список был бы преждевременным, после автопилота
-    список уже уходит в голосование. Границы — те же параметры §13, что
-    двигают цикл, чтобы окно и автоматика не разъезжались.
+    Открывается срезом этапа 1: до него веса ещё набираются и список был бы
+    преждевременным. Верхней границы по часам нет — её держит этап цикла:
+    опубликованный список правке не подлежит, и об этом скажет `set_shortlist`.
+
+    Так было не всегда: окно закрывалось временем автопилота, и админ, не
+    успевший в ночной промежуток между срезом и автопилотом, не мог собрать
+    список вовсе — даже когда автопилот не отработал и публиковать было нечего.
+    Запрет должен защищать голосование, а не наказывать за позднее утро.
+
+    `autopilot_at` остаётся: админу важно видеть, когда список соберётся сам,
+    если он ничего не сделает.
     """
 
     opens_at: datetime
-    closes_at: datetime
+    autopilot_at: datetime
     now: datetime
 
     @property
     def is_open(self) -> bool:
-        return self.opens_at <= self.now < self.closes_at
+        return self.opens_at <= self.now
 
 
 def shortlist_window(
@@ -65,7 +72,7 @@ def shortlist_window(
     tz = str(values["display_timezone"])
     return ShortlistWindow(
         opens_at=deadline_moment(week_start, str(values["stage1_cut_at"]), tz),
-        closes_at=deadline_moment(week_start, str(values["stage1_autopilot_at"]), tz),
+        autopilot_at=deadline_moment(week_start, str(values["stage1_autopilot_at"]), tz),
         now=now or datetime.now(UTC),
     )
 
@@ -162,8 +169,27 @@ async def open_round(
     return round_
 
 
+# Этапы подготовки: от сбора интереса до расстановки показов. Пока цикл здесь,
+# им занимаются — и админ в панели «Цикл», и голосующие.
+PREPARING_STAGES = (
+    RoundStage.COLLECTING,
+    RoundStage.SHORTLIST_REVIEW,
+    RoundStage.SLOT_VOTING,
+    RoundStage.SCHEDULE_REVIEW,
+)
+
+# Этапы, когда подготовка позади: расписание объявлено, дальше цикл просто
+# доживает свою неделю.
+SETTLED_STAGES = (RoundStage.PUBLISHED, RoundStage.RUNNING)
+
+
 async def active_round(session: AsyncSession) -> Round | None:
-    """Цикл, который сейчас в работе. Закрытые не в счёт."""
+    """Цикл, которым занимаются сейчас. Закрытые не в счёт.
+
+    Циклов без закрытия бывает два: неделя показов ещё идёт, а следующая уже
+    готовится — её сроки приходятся как раз на эту неделю. Работают всегда
+    с поздним: ранний своё отголосовал.
+    """
     return (
         await session.execute(
             sa.select(Round)
@@ -172,6 +198,38 @@ async def active_round(session: AsyncSession) -> Round | None:
             .limit(1)
         )
     ).scalar_one_or_none()
+
+
+async def preparing_round(session: AsyncSession) -> Round | None:
+    """Цикл, который ещё готовят: его двигают дедлайны этапов."""
+    return (
+        await session.execute(
+            sa.select(Round)
+            .where(Round.stage.in_(PREPARING_STAGES))
+            .order_by(Round.week_start.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def settled_rounds(session: AsyncSession) -> list[Round]:
+    """Циклы с объявленным расписанием: им остаётся начаться и закрыться."""
+    return list(
+        (
+            await session.execute(
+                sa.select(Round)
+                .where(Round.stage.in_(SETTLED_STAGES))
+                .order_by(Round.week_start)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def taken_weeks(session: AsyncSession) -> set[date]:
+    """Недели, на которые цикл уже заводили, — включая закрытые."""
+    return set((await session.execute(sa.select(Round.week_start))).scalars().all())
 
 
 async def set_shortlist(
@@ -194,12 +252,10 @@ async def set_shortlist(
     window = shortlist_window(round_.week_start, values, now)
     if not window.is_open:
         tz = ZoneInfo(str(values["display_timezone"]))
-        when = window.opens_at.astimezone(tz).strftime("%d.%m в %H:%M")
         raise RoundError(
-            "Шорт-лист собирают только в окне с "
-            f"{window.opens_at.astimezone(tz):%H:%M} до "
-            f"{window.closes_at.astimezone(tz):%H:%M}. "
-            + ("Оно уже закрылось." if window.now >= window.closes_at else f"Откроется {when}.")
+            "Шорт-лист собирают после среза интереса — "
+            f"{window.opens_at.astimezone(tz):%d.%m в %H:%M}. "
+            "До него веса ещё набираются, и список вышел бы преждевременным."
         )
 
     if not film_ids:

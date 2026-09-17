@@ -272,3 +272,60 @@ async def test_full_path_from_collecting_to_published(session):
     screening = (await session.execute(sa.select(Screening))).scalars().first()
     assert screening is not None
     assert screening.film_id == film.id
+
+
+async def test_next_round_opens_while_the_current_week_is_still_running(session):
+    """Следующую неделю готовят во время текущей, а не после неё.
+
+    Сроки подготовки — срез в среду, голосование до воскресенья — приходятся
+    ровно на идущую неделю показов. Пока новый цикл ждал закрытия старого,
+    он заводился в воскресенье ночью, когда среда уже прошла, и `tick`
+    перескакивал через неделю: клуб молча оставался без кино и без
+    приглашения голосовать.
+    """
+    boss = await admin(session)
+    this_week = date.today() - timedelta(days=date.today().weekday())
+    running = await rounds_service.open_round(session, this_week, boss.id)
+    running.stage = RoundStage.RUNNING
+    await session.commit()
+
+    await cycle.tick(session)
+
+    prepared = await rounds_service.preparing_round(session)
+    assert prepared is not None, "следующий цикл не завёлся"
+    assert prepared.week_start > this_week
+    # Идущая неделя при этом остаётся идущей: её не тронули.
+    await session.refresh(running)
+    assert running.stage == RoundStage.RUNNING
+
+
+async def test_a_week_already_scheduled_is_not_prepared_twice(session):
+    """Опубликованное расписание — не повод собирать шорт-лист заново.
+
+    `open_round` идемпотентна по неделе и молча вернула бы существующий цикл;
+    если бы `tick` взял его как «готовящийся», он погнал бы объявленную
+    неделю по этапам второй раз.
+    """
+    boss = await admin(session)
+    next_week = rounds_service.next_week_start()
+    published = await rounds_service.open_round(session, next_week, boss.id)
+    published.stage = RoundStage.PUBLISHED
+    await session.commit()
+
+    await cycle.tick(session)
+
+    await session.refresh(published)
+    assert published.stage in (RoundStage.PUBLISHED, RoundStage.RUNNING)
+    prepared = await rounds_service.preparing_round(session)
+    assert prepared is not None and prepared.week_start > next_week
+
+
+async def test_finished_week_closes_even_while_the_next_one_is_being_prepared(session):
+    """Закрытие идущей недели не должно зависеть от того, чем занят цикл рядом."""
+    boss = await admin(session)
+    old = await past_round(session, boss, RoundStage.RUNNING)
+    await cycle.tick(session)
+
+    await session.refresh(old)
+    assert old.stage == RoundStage.CLOSED
+    assert (await rounds_service.preparing_round(session)) is not None
