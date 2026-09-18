@@ -21,6 +21,10 @@ function secretsLine(count: number): string {
 
 /** Ступень: полученная — ярко и с галочкой, будущая — бледно и с прогрессом.
  *
+ * У неполученной сервер не присылает названия: как её назовут, приятнее
+ * узнать в момент выдачи. Подписью строки становится само условие — знать,
+ * что делать, человек должен, и строка без заголовка выглядела бы поломкой.
+ *
  * `hidden` — чужая секретная, которую вы сами не открыли: трофей показываем,
  * название и условие нет. Прогресс у неё тоже не рисуем: «1 из 1» ничего
  * не сообщает, кроме того, что она взята, а это и так видно по галочке.
@@ -33,8 +37,8 @@ function Row({ step, hidden = false }: { step: AchievementStep; hidden?: boolean
         <Trophy tier={step.tier} size={28} muted={!earned} />
       </span>
       <span className="achievement__text">
-        <b>{hidden ? "🔒 Секретное достижение" : step.title}</b>
-        <span className="meta">{step.description}</span>
+        <b>{hidden ? "🔒 Секретное достижение" : step.title || step.description}</b>
+        {(hidden || step.title) && <span className="meta">{step.description}</span>}
         {!earned && !hidden && (
           <span className="meta">
             {step.progress} из {step.target}
@@ -48,13 +52,14 @@ function Row({ step, hidden = false }: { step: AchievementStep; hidden?: boolean
 
 /** Ачивки: четыре трофея с числами, каждый — вкладка своей редкости.
  *
- * Человек держит одну ачивку на цель — высшую достигнутую, — поэтому числа
- * считают цели, а не награды. Во вкладке уровня стоит и то, что на нём уже
- * взято, и то, что на нём же ещё можно взять: список одних наград не отвечает
- * на единственный интересный вопрос — что дальше.
+ * Числа считают все взятые ступени: взял серебро — бронза той же цели
+ * остаётся полученной и продолжает гореть. Во вкладке уровня стоит и то,
+ * что на нём уже взято, и то, что на нём же ещё можно взять: список одних
+ * наград не отвечает на единственный интересный вопрос — что дальше.
  *
- * Секретные до получения не показываются: ни названия, ни условия, только
- * счётчик на своём уровне. Найти их должно быть сюрпризом.
+ * Названия неполученных скрыты, условия — нет. Секретные до получения
+ * не показываются вовсе: ни названия, ни условия, только счётчик на своём
+ * уровне. Найти их должно быть сюрпризом.
  */
 export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
   const [tab, setTab] = useState<AchievementTier | null>(null);
@@ -113,7 +118,7 @@ export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
           </div>
 
           {steps(tab).map(({ step, hidden }, index) => (
-            <Row key={`${step.title}-${index}`} step={step} hidden={hidden} />
+            <Row key={`${step.description}-${index}`} step={step} hidden={hidden} />
           ))}
 
           {(data.secrets_left[tab] ?? 0) > 0 && (

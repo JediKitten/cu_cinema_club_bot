@@ -290,7 +290,13 @@ class GroupState:
 
 @dataclass(slots=True)
 class Summary:
-    """Четыре числа для профиля — по одному на уровень."""
+    """Четыре числа для профиля — по одному на уровень.
+
+    Считают ВСЕ взятые ступени, а не только верхние. Раньше считались цели:
+    взял серебро — бронза той же цели переставала входить в число, и трофей
+    под ней гас, хотя ачивка получена и никуда не делась. Награду за пройденную
+    ступень не отбирают; ладдер и так виден по вкладкам.
+    """
 
     bronze: int = 0
     silver: int = 0
@@ -427,6 +433,12 @@ async def metrics(
 HIDDEN_TITLE = "Секретное достижение"
 HIDDEN_HINT = "Что это — не скажем: найдите сами"
 
+# Название неполученной ачивки не показываем — ни своей, ни чужой. Условие
+# показываем всегда: человек должен знать, что делать, а как это назовут —
+# приятнее узнать в момент выдачи. Пустая строка, а не заглушка: подписью
+# строки становится само условие, и лишнего «???» в списке не появляется.
+LOCKED_TITLE = ""
+
 
 async def of_user(
     session: AsyncSession, user_id: int, viewer_id: int | None = None
@@ -528,7 +540,8 @@ async def of_user(
             title=HIDDEN_TITLE if masked else (top.title if top else ""),
             description=HIDDEN_HINT if masked else (top.description if top else ""),
             earned_at=earned.get(top.code) if top else None,
-            next_title=nxt.title if nxt else None,
+            # Название следующей ступени — тоже сюрприз: видно только условие.
+            next_title=None,
             next_description=nxt.description if nxt else None,
             next_tier=nxt.tier if nxt else None,
             # Прогресс к следующей ступени. Взята платина — расти некуда.
@@ -537,7 +550,11 @@ async def of_user(
             steps=[
                 Step(
                     tier=rule.tier,
-                    title=HIDDEN_TITLE if masked else rule.title,
+                    title=(
+                        HIDDEN_TITLE
+                        if masked
+                        else (rule.title if rule.code in earned else LOCKED_TITLE)
+                    ),
                     description=HIDDEN_HINT if masked else rule.description,
                     # У скрытой и порог не показываем: «1 из 1» ничего не даёт,
                     # а у счётной цели выдал бы, что именно считают.
@@ -558,8 +575,10 @@ async def of_user(
         )
         summary.groups.append(state)
 
-        if top is not None:
-            setattr(summary, top.tier.value, getattr(summary, top.tier.value) + 1)
+        # Каждая взятая ступень — в своё число. Верхняя не вытесняет нижние:
+        # бронза остаётся полученной и после серебра.
+        for rule in done:
+            setattr(summary, rule.tier.value, getattr(summary, rule.tier.value) + 1)
 
     # Порядок не трогаем: цели идут теми же строками, что в таблице клуба.
     # Сортировка по «ближе всего» путала бы — список менялся бы местами
@@ -739,7 +758,9 @@ async def award(session: AsyncSession) -> int:
                     "title": top.title,
                     "hint": top.description,
                     "secret": top.secret,
-                    "next_title": ahead.title if ahead else None,
+                    # Название следующей ступени не раскрываем: в профиле
+                    # оно тоже скрыто, и поздравление не должно быть
+                    # единственным местом, где сюрприз испорчен.
                     "next_hint": ahead.description if ahead else None,
                 },
             )

@@ -7,7 +7,7 @@ import sqlalchemy as sa
 
 from app.models import Achievement, Favourite, Notification
 from app.models.enums import InterestKind, NotificationKind
-from app.services import achievements, ratings, social, tournaments
+from app.services import achievements, notify, ratings, social, tournaments
 from app.services.achievements import Tier
 from tests.test_analytics import held_screening
 from tests.test_tournaments import admin as tournament_admin
@@ -70,8 +70,9 @@ async def test_higher_tier_takes_the_trophy_but_the_lower_one_keeps_burning(sess
     assert codes == ["ratings_bronze", "ratings_silver"]
 
     summary = await achievements.of_user(session, user.id)
-    # В числах цель считается один раз — по высшей ступени.
-    assert summary.bronze == 0
+    # Обе ступени взяты — обе и светятся. Раньше числа считали цели, и бронза
+    # под серебром гасла, хотя ачивка получена и никуда не делась.
+    assert summary.bronze == 1
     assert summary.silver == 1
 
     goal = next(item for item in summary.groups if item.group == "ratings")
@@ -138,12 +139,14 @@ async def test_progress_points_at_the_next_tier(session):
 
     assert goal.tier == Tier.BRONZE
     assert goal.title == "Появилось свое мнение..."
-    assert goal.next_title == "Готов высказаться"
+    # Что дальше — только условием: название следующей ступени тоже сюрприз.
+    assert goal.next_title is None
+    assert goal.next_description == "Оценить 25 фильмов"
     assert (goal.progress, goal.target) == (7, 25)
 
 
-async def test_four_numbers_count_goals_not_badges(session):
-    """В профиле четыре числа — по одному на уровень, и цель считается один раз."""
+async def test_four_numbers_count_every_badge_taken(session):
+    """В профиле четыре числа — по одному на уровень, и считают они всё взятое."""
     _, _, _, _, voters = await held_screening(session)
     user = voters[0]
     await rate_films(session, user, 5)
@@ -345,8 +348,10 @@ async def test_referrals_count_only_those_who_agreed(session):
     assert counts.get("referrals") == 1
 
 
-async def test_congratulation_names_the_next_step(session):
-    """Поздравление без «что дальше» сообщает только о конце."""
+async def test_congratulation_says_what_is_next_without_naming_it(session):
+    """Поздравление без «что дальше» сообщает только о конце. Но и название
+    следующей ступени не выдаёт: в профиле оно скрыто до получения, и портить
+    сюрприз единственным местом было бы странно."""
     user = await make_user(session, "Зритель")
     await session.commit()
     await rate_films(session, user, 5)
@@ -361,8 +366,12 @@ async def test_congratulation_names_the_next_step(session):
         )
     ).scalar_one()
 
-    assert payload["next_title"] == "Готов высказаться"
+    assert "next_title" not in payload
     assert payload["next_hint"] == "Оценить 25 фильмов"
+
+    text = notify.render(NotificationKind.ACHIEVEMENT_EARNED, None, "", payload)
+    assert text is not None
+    assert "Оценить 25 фильмов" in text and "Готов высказаться" not in text
 
 
 async def test_top_tier_has_nothing_ahead(session):
@@ -540,3 +549,45 @@ async def test_summary_rides_along_with_the_profile(session):
 
     assert profile.achievements.bronze == 1
     assert sum(profile.achievements.secrets_left.values()) == 3
+
+
+async def test_name_of_an_unearned_badge_is_a_surprise(session):
+    """Название до получения скрыто, условие — нет.
+
+    Знать, что делать, человек должен; как это назовут — приятнее узнать
+    в момент выдачи. Пряталось раньше только секретное, и весь список ступеней
+    читался как оглавление.
+    """
+    user = await make_user(session, "Зритель")
+    await session.commit()
+    await rate_films(session, user, 5)
+    await achievements.award(session)
+
+    goal = next(
+        item
+        for item in (await achievements.of_user(session, user.id)).groups
+        if item.group == "ratings"
+    )
+    taken = next(step for step in goal.steps if step.tier == Tier.BRONZE)
+    ahead = next(step for step in goal.steps if step.tier == Tier.SILVER)
+
+    assert taken.title == "Появилось свое мнение..." and taken.done
+    assert ahead.title == "" and not ahead.done
+    # Условие остаётся: без него непонятно, что делать.
+    assert ahead.description == "Оценить 25 фильмов"
+    assert (ahead.progress, ahead.target) == (5, 25)
+
+
+async def test_no_badge_names_leak_through_the_ladder(session):
+    """Ни одного названия неполученной ступени — ни в одной цели."""
+    user = await make_user(session, "Новичок")
+    await session.commit()
+
+    summary = await achievements.of_user(session, user.id)
+    names = {
+        step.title
+        for item in summary.groups
+        for step in item.steps
+        if step.earned_at is None
+    }
+    assert names == {""}

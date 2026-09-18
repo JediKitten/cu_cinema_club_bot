@@ -145,11 +145,12 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
 
             # Что дальше — обязательная часть: без неё поздравление сообщает
             # только о конце, а у ачивки со ступенями всегда есть продолжение.
-            nxt = payload.get("next_title")
+            # Название следующей не раскрываем — только условие: в профиле оно
+            # тоже скрыто до получения, и портить сюрприз здесь незачем.
+            hint = payload.get("next_hint")
             ahead = (
-                f"\n\nДальше — <b>{escape(str(nxt))}</b>: "
-                f"{escape(str(payload.get('next_hint', '')))}"
-                if nxt
+                f"\n\nДальше — {escape(str(hint))}."
+                if hint
                 else "\n\nЭто верхняя ступень — выше некуда."
             )
             return (
