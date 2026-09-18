@@ -724,16 +724,24 @@ async def award(session: AsyncSession) -> int:
             if not reached:
                 continue
             top = reached[-1]
-            if top.code in mine:
+
+            # Проверяем ВСЮ лестницу, а не только верхнюю ступень. Раньше цель
+            # с уже взятым верхом пропускалась целиком — и дырки, оставшиеся
+            # от времён, когда низшие ступени снимались при получении высшей,
+            # не зарастали никогда: у человека было серебро без бронзы, и одно
+            # из четырёх чисел в профиле недосчитывалось.
+            missing = [rule for rule in reached if rule.code not in mine]
+            if not missing:
                 continue
 
             # Записываем все пройденные ступени, а не одну верхнюю: перепрыгнув
             # через бронзу, человек её всё равно прошёл, и в профиле она должна
-            # гореть. Заодно это чинит тех, у кого низшие когда-то снимались.
-            # ON CONFLICT, а не проверка выше: два прохода разом не должны
-            # ронять всю пачку на уникальном ключе.
+            # гореть. ON CONFLICT, а не доверие к `mine`: два прохода разом
+            # не должны ронять всю пачку на уникальном ключе. У дозаписанной
+            # задним числом ступени `earned_at` будет сегодняшним — настоящей
+            # даты не осталось, строку когда-то удалили.
             fresh = False
-            for rule in reached:
+            for rule in missing:
                 created = await session.execute(
                     insert(Achievement)
                     .values(user_id=user_id, code=rule.code)
@@ -743,6 +751,8 @@ async def award(session: AsyncSession) -> int:
                 if created.scalar_one_or_none() is not None and rule.code == top.code:
                     fresh = True
             if not fresh:
+                # Дозаписали пройденное — поздравлять не с чем: верхнюю
+                # ступень человек взял давно и уже получил за неё сообщение.
                 continue
 
             # Следующая ступень той же цели — её называем прямо в сообщении.

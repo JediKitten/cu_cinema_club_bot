@@ -591,3 +591,41 @@ async def test_no_badge_names_leak_through_the_ladder(session):
         if step.earned_at is None
     }
     assert names == {""}
+
+
+async def test_a_missing_lower_step_is_filled_in_later(session):
+    """Дырки от старого поведения должны зарастать сами.
+
+    Когда-то высшая ступень стирала низшую, и у людей осталось серебро без
+    бронзы — одно из четырёх чисел в профиле недосчитывалось. Цель с уже
+    взятым верхом пропускалась целиком, и починить это было некому.
+    """
+    user = await make_user(session, "Зритель")
+    await session.commit()
+    await rate_films(session, user, 25)
+    await achievements.award(session)
+
+    # Воспроизводим старую беду: бронзы нет, серебро есть.
+    await session.execute(
+        sa.delete(Achievement).where(
+            Achievement.user_id == user.id, Achievement.code == "ratings_bronze"
+        )
+    )
+    await session.commit()
+    assert (await achievements.of_user(session, user.id)).bronze == 0
+
+    await achievements.award(session)
+
+    summary = await achievements.of_user(session, user.id)
+    assert summary.bronze == 1 and summary.silver == 1
+    # И без второго поздравления: серебро человек взял давно.
+    assert (
+        await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(Notification)
+            .where(
+                Notification.user_id == user.id,
+                Notification.kind == NotificationKind.ACHIEVEMENT_EARNED,
+            )
+        )
+    ) == 1
