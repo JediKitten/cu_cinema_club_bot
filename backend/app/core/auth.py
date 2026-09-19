@@ -63,7 +63,15 @@ async def authenticated_user(
     now = datetime.now(UTC)
     if user.last_seen_at is None or now - user.last_seen_at >= LAST_SEEN_PRECISION:
         await session.execute(
-            sa.update(User).where(User.id == user.id).values(last_seen_at=sa.func.now())
+            sa.update(User)
+            .where(User.id == user.id)
+            .values(last_seen_at=sa.func.now())
+            # Синхронизировать сессию незачем: значение никто здесь не читает,
+            # а ORM ради неё помечает колонку просроченной — и следующее
+            # обращение к ней уходит в базу отдельным запросом. В бою сессия
+            # живёт один запрос и это незаметно, но в тестах, где она одна
+            # на всех, дочитывание случалось уже вне async-контекста.
+            .execution_options(synchronize_session=False)
         )
         await session.commit()
     return user

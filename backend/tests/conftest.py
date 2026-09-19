@@ -96,6 +96,11 @@ def make_init_data(tg_id: int, first_name: str, token: str = BOT_TOKEN) -> str:
 async def client(session, monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", BOT_TOKEN)
     monkeypatch.setenv("BOOTSTRAP_SUPERADMIN_TG_ID", str(SUPERADMIN_TG_ID))
+    # Ключи внешних каталогов гасим: иначе прогон на машине разработчика лез
+    # в TMDB по-настоящему — за чужой ответ и чужую сеть тесты не отвечают.
+    # Тем, кому TMDB нужен, подменяют `configured` и сам клиент.
+    monkeypatch.setenv("TMDB_API_TOKEN", "")
+    monkeypatch.setenv("KINOPOISK_API_TOKEN", "")
     get_config.cache_clear()
 
     # Закрытая бета выключена по умолчанию: иначе каждый тест начинался бы

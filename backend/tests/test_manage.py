@@ -812,3 +812,59 @@ async def test_this_weeks_screening_is_visible_until_friday(client, session):
         await client.get(f"/api/schedule?week={monday.isoformat()}", headers=headers)
     ).json()
     assert "Сегодня" in [s["film"]["title_ru"] for s in opened["screenings"]]
+
+
+async def test_moving_a_screening_onto_another_evening_of_the_same_week(session):
+    """Перенос на час, который в сетке вечеров уже есть.
+
+    Вечера недели — это слоты, и у каждого своё время. Показ, который двигают
+    руками на время соседнего вечера, раньше тащил туда свой слот и упирался
+    в уникальность «цикл + зал + время»: администратор получал пятисотку
+    вместо переноса. Правильный ответ — переселить показ в тот вечер,
+    а не создавать второй с тем же временем.
+    """
+    from app.models import Slot
+    from app.services import schedule as sched
+    from tests.test_schedule import voted_round
+
+    round_, films, slots, boss, _ = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+
+    target = slots[1].starts_at
+    await events.update(session, screening.id, boss.id, {"starts_at": target})
+
+    await session.refresh(screening)
+    slot = await session.get(Slot, screening.slot_id)
+    assert slot.starts_at == target
+    assert slot.id == slots[1].id, "показ должен переехать в существующий вечер"
+
+    # Прежний вечер остаётся свободным, а не исчезает и не двоится.
+    assert (await session.get(Slot, slots[0].id)).starts_at == slots[0].starts_at
+    same_time = await session.scalar(
+        sa.select(sa.func.count())
+        .select_from(Slot)
+        .where(Slot.round_id == round_.id, Slot.starts_at == target)
+    )
+    assert same_time == 1
+
+
+async def test_moving_onto_a_blocked_evening_says_so(session):
+    """Закрытый вечер — причина отказа, а не повод молча создать второй слот."""
+    from app.models import Slot
+    from app.services import rounds as rounds_service
+    from app.services import schedule as sched
+    from tests.test_schedule import voted_round
+
+    round_, films, slots, boss, _ = await voted_round(session)
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+    await rounds_service.set_slot_blocked(session, slots[1].id, True, "ремонт", boss.id)
+
+    with pytest.raises(EventError, match="закрыт"):
+        await events.update(session, screening.id, boss.id, {"starts_at": slots[1].starts_at})
+
+    # Показ остался там, где был, и лишних вечеров не появилось.
+    await session.refresh(screening)
+    assert screening.slot_id == slots[0].id
+    assert (await session.get(Slot, slots[1].id)).starts_at == slots[1].starts_at

@@ -119,6 +119,47 @@ EDITABLE = (
 EDITABLE_IN_ROUND = ("starts_at", "duration_min", "note", "in_english", "registration_url")
 
 
+async def _slot_for(
+    session: AsyncSession, event: Screening, slot: Slot, starts_at: datetime
+) -> Slot:
+    """Куда переселить показ на новое время.
+
+    У недели цикла вечера уже нарезаны, и время соседнего вечера в сетке
+    занято им же. Тащить туда свой слот нельзя: «цикл + зал + время»
+    уникально, и правка падала на ограничении базы — администратор получал
+    пятисотку вместо переноса, причём ровно в самом обычном случае, когда
+    показ двигают на час внутри той же недели.
+
+    Поэтому: есть вечер с таким временем — показ переезжает в него, прежний
+    остаётся свободным. Нет — двигаем свой слот, как и раньше: заводить новый
+    значило бы плодить пустые окна в расписании.
+    """
+    if slot.round_id is None:
+        # Ручное событие: слот заведён под него одно и ничьим вечером не был.
+        slot.starts_at = starts_at
+        return slot
+
+    sibling = (
+        await session.execute(
+            sa.select(Slot).where(
+                Slot.round_id == slot.round_id,
+                Slot.hall_id == slot.hall_id,
+                Slot.starts_at == starts_at,
+                Slot.id != slot.id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if sibling is None:
+        slot.starts_at = starts_at
+        return slot
+    if sibling.blocked:
+        raise EventError("Этот вечер закрыт — снимите блокировку или выберите другое время")
+
+    event.slot_id = sibling.id
+    return sibling
+
+
 async def update(
     session: AsyncSession,
     event_id: int,
@@ -173,10 +214,7 @@ async def update(
         time_changed = starts_at != slot.starts_at
         if time_changed:
             await _check_free(session, slot.hall_id, starts_at, except_id=event.id)
-            # Слот двигаем на месте: заводить новый значило бы плодить пустые
-            # окна в расписании. У показа цикла вместе с ним уезжает и вечер —
-            # это честно, вечер и есть слот, а голосовали за один показ в него.
-            slot.starts_at = starts_at
+            slot = await _slot_for(session, event, slot, starts_at)
     if "duration_min" in changes:
         slot.duration_min = changes["duration_min"]
 
