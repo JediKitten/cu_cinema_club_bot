@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -80,9 +80,28 @@ async def health() -> dict[str, str]:
 
 _frontend = Path(get_config().frontend_dir)
 
+# index.html обязан перепроверяться при каждом открытии, а собранные файлы —
+# наоборот, кэшироваться навсегда. Имя каждого из них содержит хеш содержимого,
+# поэтому новая сборка — это новые имена, и старый ответ из кэша устареть
+# не может. А вот сам index.html имя не меняет, и стоит ему залечь в кэше
+# WebView, человек продолжает открывать позавчерашнее приложение: Telegram
+# держит Mini App в кэше долго и о выкатах не знает.
+IMMUTABLE = "public, max-age=31536000, immutable"
+REVALIDATE = "no-cache"
+
+
+class HashedAssets(StaticFiles):
+    """Статика с хешем в имени: кэшируется навсегда."""
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = IMMUTABLE
+        return response
+
+
 if (_frontend / "index.html").is_file():
     if (_frontend / "assets").is_dir():
-        app.mount("/assets", StaticFiles(directory=_frontend / "assets"), name="assets")
+        app.mount("/assets", HashedAssets(directory=_frontend / "assets"), name="assets")
 
     @app.get("/{path:path}", include_in_schema=False)
     async def spa(path: str) -> FileResponse:
@@ -95,5 +114,5 @@ if (_frontend / "index.html").is_file():
         candidate = (_frontend / path).resolve()
         # Проверка на выход за пределы каталога: путь приходит из запроса.
         if path and _frontend.resolve() in candidate.parents and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(_frontend / "index.html")
+            return FileResponse(candidate, headers={"Cache-Control": REVALIDATE})
+        return FileResponse(_frontend / "index.html", headers={"Cache-Control": REVALIDATE})

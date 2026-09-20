@@ -684,3 +684,38 @@ async def test_search_finds_films_by_director(client, session):
     # По названию ищется как и раньше.
     by_title = (await client.get("/api/films/search?q=крёстный", headers=headers)).json()
     assert "Крёстный отец" in [film["title_ru"] for film in by_title]
+
+
+async def test_login_still_reports_access_for_cached_clients(client):
+    """Вход по кодам убран, но приложение, залёгшее в кэше Telegram, решает
+    по этому полю, показывать ли экран «введите код». Перестав его присылать,
+    мы заперли снаружи всех, к кому новая сборка ещё не доехала."""
+    auth = await login(client, 777060, "Из кэша")
+    assert auth["user"]["access"] is True
+
+    me = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {auth['token']}"}
+    )
+    assert me.json()["access"] is True
+
+
+async def test_index_is_revalidated_and_assets_are_not(client):
+    """index.html имя не меняет — залежавшись в кэше WebView, он держит
+    человека на позавчерашней сборке. У собранных файлов имя с хешем,
+    и кэшировать их можно навсегда."""
+    from pathlib import Path
+
+    from app.config import get_config
+    from app.main import IMMUTABLE
+
+    built = Path(get_config().frontend_dir)
+    if not (built / "index.html").is_file():
+        pytest.skip("фронтенд не собран — отдавать нечего")
+
+    page = await client.get("/")
+    assert page.headers["cache-control"] == "no-cache"
+
+    asset = next((built / "assets").glob("*.js"), None)
+    assert asset is not None
+    served = await client.get(f"/assets/{asset.name}")
+    assert served.headers["cache-control"] == IMMUTABLE
