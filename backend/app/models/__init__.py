@@ -19,7 +19,7 @@ from app.models.interest import Interest
 from app.models.rating import FilmRating
 from app.models.skip import FilmSkip
 from app.models.social import Favourite, Friendship
-from app.models.system import AuditLog, InviteCode, Notification, Setting
+from app.models.system import AuditLog, Notification, Setting
 from app.models.tournament import (
     Tournament,
     TournamentMatch,
@@ -47,7 +47,6 @@ __all__ = [
     "Friendship",
     "Hall",
     "Interest",
-    "InviteCode",
     "Notification",
     "Referral",
     "Round",

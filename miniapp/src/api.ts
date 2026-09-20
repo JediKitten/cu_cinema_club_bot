@@ -28,7 +28,6 @@ import type {
   Deck,
   FeedItem,
   FilmStats,
-  InviteCode,
   PersonBrief,
   Profile,
   PersonRow,
@@ -383,33 +382,6 @@ export const saveSettings = (values: Record<string, unknown>) =>
   });
 
 export const getTeam = () => request<TeamMember[]>("/api/admin/team");
-
-// --- Закрытая бета ----------------------------------------------------------
-
-export const redeemCode = (code: string) =>
-  request<{ access: boolean; code: string }>("/api/invites/redeem", {
-    method: "POST",
-    body: JSON.stringify({ code }),
-  });
-
-export const getInviteCodes = () => request<InviteCode[]>("/api/admin/invites");
-
-/** Пачка кодов: `count` штук по `maxActivations` активаций каждый.
- *  Ответ всегда список, даже когда код один. */
-export const createInviteCodes = (count: number, maxActivations: number, note: string | null) =>
-  request<InviteCode[]>("/api/admin/invites", {
-    method: "POST",
-    body: JSON.stringify({ count, max_activations: maxActivations, note }),
-  });
-
-export const getBetaState = () =>
-  request<{ enabled: boolean; waiting: number }>("/api/admin/beta");
-
-export const setBeta = (enabled: boolean) =>
-  request<{ enabled: boolean; opened: number }>("/api/admin/beta", {
-    method: "POST",
-    body: JSON.stringify({ enabled }),
-  });
 
 export const getPeople = () => request<PersonRow[]>("/api/admin/people");
 

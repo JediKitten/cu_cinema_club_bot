@@ -312,12 +312,6 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
             # Подпись обязательна: сообщение приходит от бота, и человек должен
             # понимать, что это клуб, а не система напоминаний ошиблась.
             return f"📣 <b>Сообщение от клуба</b>\n\n{message}"
-        case NotificationKind.BETA_OPENED:
-            return (
-                "🎉 Киноклуб открыт для всех!\n\n"
-                "Код-приглашение больше не нужен — доступ у вас есть.\n"
-                "Нажмите /start: покажу, как всё устроено."
-            )
         case NotificationKind.FILM_REQUEST_RESOLVED:
             if payload.get("approved"):
                 return "✅ Ваш фильм добавлен в каталог — можно отмечать."

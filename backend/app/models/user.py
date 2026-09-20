@@ -29,14 +29,6 @@ class User(Base, CreatedAtMixin):
     # Показывали ли знакомство с ботом. Хранится, а не выводится из created_at:
     # аккаунт может завестись до первого /start — например, по чужой ссылке.
     onboarded_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
-    # Доступ на время закрытого бета-теста. Пусто — человек ещё не ввёл код.
-    # У всех, кто пришёл до беты, проставлено миграцией: их не выгоняют.
-    access_granted_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
-    # use_alter: ссылки users → invite_codes и invite_codes.created_by → users
-    # образуют цикл, и без этого SQLAlchemy не может упорядочить таблицы.
-    invite_code_id: Mapped[int | None] = mapped_column(
-        sa.ForeignKey("invite_codes.id", use_alter=True)
-    )
     is_active: Mapped[bool] = mapped_column(default=True, server_default=sa.true())
 
     def __repr__(self) -> str:  # pragma: no cover

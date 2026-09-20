@@ -27,7 +27,7 @@ from app.models import (
     Slot,
     User,
 )
-from app.models.enums import ConfirmationState, InterestKind, RoundStage, ScreeningStatus
+from app.models.enums import ConfirmationState, InterestKind, ScreeningStatus
 from app.services.weights import WeightParams, active_interest_clause, age_days_expr
 
 WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
@@ -464,11 +464,3 @@ async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
         for sid, film_id, title, year, poster, starts_at, status, expected, came, rating in rows
     ]
 
-
-async def current_stage_label(session: AsyncSession) -> str:
-    round_ = (
-        await session.execute(
-            sa.select(Round).where(Round.stage != RoundStage.CLOSED).limit(1)
-        )
-    ).scalar_one_or_none()
-    return round_.stage if round_ else "нет активного цикла"

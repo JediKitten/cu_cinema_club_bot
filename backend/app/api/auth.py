@@ -12,7 +12,6 @@ from app.db import get_session
 from app.models import User
 from app.models.enums import UserRole
 from app.schemas import AuthOut, TelegramAuthIn, UserOut
-from app.services import invites
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +67,7 @@ async def login_via_telegram(
 
 
 async def _out(session: AsyncSession, user: User) -> UserOut:
-    """Признак доступа считается здесь: приложению нужно решить, показывать
-    экран кода или сам клуб."""
-    return UserOut(
-        **UserOut.model_validate(user, from_attributes=True).model_dump(exclude={"access"}),
-        access=invites.has_access(user, await invites.beta_enabled(session)),
-    )
+    return UserOut.model_validate(user, from_attributes=True)
 
 
 @router.get("/me", response_model=UserOut)

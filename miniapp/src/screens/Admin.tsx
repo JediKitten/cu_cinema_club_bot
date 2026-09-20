@@ -4,7 +4,6 @@ import { Analytics } from "../components/Analytics";
 import { EventPanel } from "../components/EventPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { TeamPanel } from "../components/TeamPanel";
-import { InvitePanel } from "../components/InvitePanel";
 import { PeoplePanel } from "../components/PeoplePanel";
 import { BroadcastPanel } from "../components/BroadcastPanel";
 import { TournamentPanel } from "../components/TournamentPanel";
@@ -87,7 +86,6 @@ type Panel =
   | "awards"
   | "stats"
   | "team"
-  | "invites"
   | "people"
   | "broadcast"
   | "settings";
@@ -103,7 +101,6 @@ const PANELS: { key: Panel; label: string; minRole: keyof typeof RANK }[] = [
   { key: "awards", label: "Ачивки", minRole: "admin" },
   { key: "stats", label: "Аналитика", minRole: "admin" },
   { key: "team", label: "Команда", minRole: "admin" },
-  { key: "invites", label: "Коды", minRole: "admin" },
   { key: "broadcast", label: "Рассылка", minRole: "admin" },
   { key: "people", label: "Люди", minRole: "superadmin" },
   { key: "settings", label: "Параметры", minRole: "superadmin" },
@@ -194,7 +191,6 @@ export function Admin({ me }: { me: User }) {
       </div>
 
       {panel === "team" && <TeamPanel me={me} />}
-      {panel === "invites" && <InvitePanel isSuperadmin={role === "superadmin"} />}
       {panel === "people" && <PeoplePanel />}
       {panel === "broadcast" && <BroadcastPanel />}
       {panel === "settings" && <SettingsPanel />}

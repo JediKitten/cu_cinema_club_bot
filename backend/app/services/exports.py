@@ -46,7 +46,6 @@ from app.models import (
     Friendship,
     Hall,
     Interest,
-    InviteCode,
     Referral,
     Round,
     Screening,
@@ -282,8 +281,6 @@ async def build_users(session: AsyncSession) -> list[Sheet]:
             User.created_at,
             User.last_seen_at,
             User.onboarded_at,
-            User.access_granted_at,
-            InviteCode.code,
             _count(
                 Interest,
                 Interest.user_id == User.id,
@@ -319,7 +316,6 @@ async def build_users(session: AsyncSession) -> list[Sheet]:
             _count(Referral, Referral.referrer_id == User.id),
         )
         .select_from(User)
-        .outerjoin(InviteCode, InviteCode.id == User.invite_code_id)
         .order_by(User.id)
     )
 
@@ -327,14 +323,14 @@ async def build_users(session: AsyncSession) -> list[Sheet]:
     for row in (await session.execute(query)).all():
         (
             user_id, tg_id, username, name, role, is_active, created, seen, onboarded,
-            access, code, wishlist, soon, watched, skipped, ratings, avg_score, favourites,
+            wishlist, soon, watched, skipped, ratings, avg_score, favourites,
             following, followers, confirmed, attended, feedback, awards, film_votes,
             evenings, tournament_votes, invited,
         ) = row
         rows.append(
             (
                 user_id, tg_id, username, name, label(ROLE_LABEL, role),
-                "да" if is_active else "нет", created, seen, onboarded, access, code,
+                "да" if is_active else "нет", created, seen, onboarded,
                 wishlist, soon, watched, skipped, ratings,
                 round(float(avg_score) / 2, 2) if avg_score is not None else None,
                 favourites, following, followers, confirmed, attended, feedback, awards,
@@ -347,7 +343,7 @@ async def build_users(session: AsyncSession) -> list[Sheet]:
             "Пользователи",
             (
                 "ID", "Telegram ID", "Ник", "Имя", "Роль", "Активен", "Зарегистрирован",
-                "Последний визит", "Знакомство пройдено", "Доступ выдан", "Код приглашения",
+                "Последний визит", "Знакомство пройдено",
                 "«Желаемое»", "«Ближайшее»", "Просмотрено", "Пролистано в ленте", "Оценок",
                 "Средняя оценка", "Любимых фильмов", "Подписок", "Подписчиков", "Записей «приду»",
                 "Посещений", "Отзывов", "Достижений", "Голосов за фильмы", "Отмечено вечеров",
@@ -1087,33 +1083,12 @@ async def build_requests(session: AsyncSession) -> list[Sheet]:
         resolved_at in (await session.execute(requests)).all()
     ]
 
-    author = aliased(User)
-    codes = (
-        sa.select(
-            InviteCode.code,
-            author.display_name,
-            InviteCode.max_activations,
-            _count(User, User.invite_code_id == InviteCode.id),
-            InviteCode.note,
-            InviteCode.revoked_at,
-            InviteCode.created_at,
-        )
-        .join(author, author.id == InviteCode.created_by)
-        .order_by(InviteCode.created_at)
-    )
-    code_rows = [tuple(row) for row in (await session.execute(codes)).all()]
-
     return [
         Sheet(
             "Заявки на фильмы",
             ("ID", *WHO_HEADERS, "Что просили", "Год", "Комментарий", "Статус", "Какой фильм",
              "Кто разобрал", "Решение", "Создана", "Разобрана"),
             request_rows,
-        ),
-        Sheet(
-            "Коды приглашений",
-            ("Код", "Создал", "Активаций всего", "Использовано", "Заметка", "Отозван", "Создан"),
-            code_rows,
         ),
     ]
 
@@ -1160,7 +1135,7 @@ DATASETS: tuple[Dataset, ...] = (
         "Друзья", build_social,
     ),
     Dataset(
-        "requests", "📮 Заявки", "заявки на фильмы и коды приглашений",
+        "requests", "📮 Заявки", "заявки на фильмы, которых не нашли в каталоге",
         "Заявки", build_requests,
     ),
 )

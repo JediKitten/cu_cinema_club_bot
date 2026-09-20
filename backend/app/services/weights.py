@@ -79,18 +79,6 @@ def interest_weight_expr(
     )
 
 
-def is_expired_soon_expr(params: WeightParams) -> ColumnElement:
-    """Отметка «Ближайшее», у которой вышел срок.
-
-    Такая отметка уже ведёт себя как «Желаемое», но пользователю мы предлагаем
-    продлить её — поэтому интерфейсу нужно отличать её от обычного «Желаемого».
-    """
-    return sa.and_(
-        Interest.kind == InterestKind.SOON,
-        age_days_expr(Interest.created_at) >= sa.literal(float(params.soon_ttl_days)),
-    )
-
-
 def effective_kind(kind: InterestKind, age_days: float, params: WeightParams) -> InterestKind:
     """Та же логика для кода на Python: чем отметка является сейчас."""
     if kind == InterestKind.SOON and age_days >= params.soon_ttl_days:

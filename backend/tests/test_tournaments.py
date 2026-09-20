@@ -16,7 +16,6 @@ from tests.test_weights import make_film, make_user
 async def admin(session):
     user = await make_user(session, "Админ")
     user.role = UserRole.ADMIN
-    user.access_granted_at = sa.func.now()
     await session.commit()
     return user
 

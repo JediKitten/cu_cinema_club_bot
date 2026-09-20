@@ -125,8 +125,6 @@ class NotificationKind(StrEnum):
     ADMIN_FILM_REQUEST = "admin_film_request"
     # Роль выдана: человек должен узнать об этом, а не наткнуться на новую вкладку.
     ROLE_GRANTED = "role_granted"
-    # Бета кончилась: код больше не нужен, и тем, кто на нём застрял, надо сказать.
-    BETA_OPENED = "beta_opened"
     # Произвольное сообщение от админа: клубу нужно говорить и то, чего нет
     # ни в одном шаблоне.
     ADMIN_BROADCAST = "admin_broadcast"

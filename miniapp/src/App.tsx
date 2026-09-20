@@ -3,7 +3,6 @@ import { login } from "./api";
 import { Catalog } from "./screens/Catalog";
 import { Deck } from "./screens/Deck";
 import { FilmDetail } from "./screens/FilmDetail";
-import { Gate } from "./screens/Gate";
 import { Profile } from "./screens/Profile";
 import { ProfileTab } from "./screens/ProfileTab";
 import { Tournament } from "./screens/Tournament";
@@ -104,12 +103,6 @@ export default function App() {
   }
 
   if (!user) return <div className="center">Входим…</div>;
-
-  // Закрытая бета: без кода внутрь не пускают. Проверяет всё равно сервер —
-  // здесь мы только показываем, куда его вводить.
-  if (!user.access) {
-    return <Gate onOpen={() => setUser({ ...user, access: true })} />;
-  }
 
   function open(film: FilmBrief) {
     if (film.id !== null || film.tmdb_id !== null) setOpenFilm(film);

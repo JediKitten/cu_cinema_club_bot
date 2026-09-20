@@ -3,10 +3,10 @@ import { getPeople } from "../api";
 import { ROLE_LABEL } from "../roles";
 import type { PersonRow } from "../types";
 
-/** Все участники клуба и то, как каждый сюда попал (просьба клуба).
+/** Все участники клуба: кто, с каким ником, с какой роли и с какого дня.
  *
- * Вопрос не праздный: на бете важно видеть, чей код разошёлся и кто ещё стоит
- * за дверью.
+ * Список с поиском, а не выгрузка: найти человека глазами в полутора сотнях
+ * строк нельзя, а зайти сюда надо ровно затем, чтобы найти одного.
  */
 export function PeoplePanel() {
   const [people, setPeople] = useState<PersonRow[]>([]);
@@ -26,8 +26,7 @@ export function PeoplePanel() {
     ? people.filter(
         (person) =>
           person.display_name.toLowerCase().includes(needle) ||
-          (person.tg_username ?? "").toLowerCase().includes(needle) ||
-          (person.invite_code ?? "").toLowerCase().includes(needle),
+          (person.tg_username ?? "").toLowerCase().includes(needle),
       )
     : people;
 
@@ -37,7 +36,7 @@ export function PeoplePanel() {
       <input
         className="field"
         value={query}
-        placeholder="Имя, @username или код"
+        placeholder="Имя или @username"
         onChange={(event) => setQuery(event.target.value)}
       />
 
@@ -50,13 +49,6 @@ export function PeoplePanel() {
           <p className="meta">
             {ROLE_LABEL[person.role]} · с{" "}
             {new Date(person.created_at).toLocaleDateString("ru-RU")}
-          </p>
-          <p className="meta">
-            {!person.has_access
-              ? "⏳ ждёт кода"
-              : person.invite_code
-                ? `по коду ${person.invite_code} · выдал ${person.invited_by ?? "—"}`
-                : "без кода — был до беты"}
           </p>
         </div>
       ))}

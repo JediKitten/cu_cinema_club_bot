@@ -41,8 +41,8 @@
    срок жизни — сутки.
 3. В ответ приходит свой JWT сессии; дальше он ездит в `Authorization: Bearer`.
 4. Каждый защищённый эндпоинт зависит от `current_user`
-   ([core/auth.py](../backend/app/core/auth.py)) — это единственная точка, где
-   проверяются и сессия, и доступ к закрытой бете. Роль требуется отдельно:
+   ([core/auth.py](../backend/app/core/auth.py)) — единственная точка, где
+   проверяются сессия и привязка Telegram. Роль требуется отдельно:
    `RequireAdmin`, `RequireSuperadmin`.
 
 Ключевое: **подделать вход нельзя, не имея токена бота**. Поэтому тот же
@@ -71,8 +71,8 @@ Alembic; ORM-модели — в [backend/app/models](../backend/app/models).
 **Показ.** `confirmations` (придёт / в очереди / отменил), `attendance`
 (фактический приход), `cancel_requests`, `feedback` (оценка и отзыв после показа).
 
-**Люди и системное.** `users`, `friendships`, `invite_codes`, `notifications`,
-`settings`, `audit_log`.
+**Люди и системное.** `users`, `friendships`, `notifications`, `settings`,
+`audit_log`.
 
 Инварианты, которые стоит знать до первой правки:
 
@@ -373,7 +373,7 @@ main.py            сборка FastAPI, статика Mini App
 bot.py             aiogram: команды, тур, доставка уведомлений, фоновые задачи
 config.py          чтение .env (pydantic-settings)
 db.py              движок и сессии SQLAlchemy
-core/              auth.py (сессии, роли, гейт беты), telegram_auth.py (подпись)
+core/              auth.py (сессии и роли), telegram_auth.py (подпись initData)
 models/            ORM: catalog, cycle, interest, rating, skip, social, system, user
 api/               роутеры (см. ниже)
 services/          вся логика; API их только вызывает
@@ -383,7 +383,7 @@ dev_login.py       подписанная initData для просмотра в�
 ```
 
 Роутеры: `auth`, `films`, `interests`, `film_requests`, `social`, `schedule`,
-`attendance`, `voting`, `rounds`, `admin`, `manage`, `analytics`, `invites`,
+`attendance`, `voting`, `rounds`, `admin`, `manage`, `analytics`,
 `tournaments`.
 Живая документация — `/docs` (Swagger) у запущенного api.
 
@@ -395,7 +395,7 @@ dev_login.py       подписанная initData для просмотра в�
 | Цикл | `rounds`, `cycle`, `voting`, `schedule`, `autopilot`, `reminders` |
 | Показ | `attendance`, `events` |
 | Каталог | `tmdb`, `kinopoisk`, `matching`, `catalog`, `deck`, `ratings` |
-| Люди | `roles`, `social`, `invites`, `referrals` |
+| Люди | `roles`, `social`, `referrals` |
 | Сообщения | `notify`, `broadcast` |
 | Турниры | `tournaments` |
 | Ачивки | `achievements` |

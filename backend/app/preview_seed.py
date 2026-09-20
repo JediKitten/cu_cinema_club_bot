@@ -66,7 +66,6 @@ async def ensure_personas(session) -> dict[UserRole, User]:
         user.tg_username = username
         user.role = role
         # Бета-гейт не должен мешать смотреть интерфейс.
-        user.access_granted_at = user.access_granted_at or datetime.now(UTC)
         user.onboarded_at = user.onboarded_at or datetime.now(UTC)
         people[role] = user
     await session.commit()

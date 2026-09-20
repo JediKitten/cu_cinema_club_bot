@@ -12,8 +12,6 @@ class UserOut(BaseModel):
     role: UserRole
     photo_url: str | None = None
     tg_username: str | None = None
-    # Пускать ли внутрь: на время закрытой беты нужен код-приглашение.
-    access: bool = True
 
 
 class AuthOut(BaseModel):
@@ -25,54 +23,14 @@ class TelegramAuthIn(BaseModel):
     init_data: str
 
 
-# --- Бета-доступ по кодам ----------------------------------------------------
-
-
-class InviteIn(BaseModel):
-    """Сколько кодов выдать и на сколько человек каждый."""
-
-    count: int = Field(default=1, ge=1, le=100)
-    max_activations: int = Field(default=1, ge=1, le=1000)
-    note: str | None = Field(default=None, max_length=200)
-
-
-class RedeemIn(BaseModel):
-    code: str = Field(min_length=1, max_length=32)
-
-
-class BetaIn(BaseModel):
-    enabled: bool
-
-
-class InviteeOut(BaseModel):
-    user_id: int
-    display_name: str
-
-
-class InviteCodeOut(BaseModel):
-    id: int
-    code: str
-    max_activations: int
-    used: int
-    left: int
-    note: str | None = None
-    created_at: datetime
-    created_by: int
-    created_by_name: str
-    invitees: list[InviteeOut] = Field(default_factory=list)
-
-
 class PersonRowOut(BaseModel):
-    """Строка вкладки «Пользователи» у главного админа."""
+    """Строка вкладки «Люди» у главного админа."""
 
     id: int
     display_name: str
     tg_username: str | None = None
     role: UserRole
     created_at: datetime
-    has_access: bool
-    invite_code: str | None = None
-    invited_by: str | None = None
 
 
 class FilmBrief(BaseModel):
@@ -946,7 +904,3 @@ class InviteOut(BaseModel):
     invited: int = 0
     accepted: int = 0
 
-
-class ReferralStatsOut(BaseModel):
-    invited: int
-    accepted: int

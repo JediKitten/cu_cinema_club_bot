@@ -59,22 +59,3 @@ class Notification(Base, CreatedAtMixin):
     attempts: Mapped[int] = mapped_column(default=0, server_default="0")
     # Когда пробовать снова. NULL — можно прямо сейчас.
     next_attempt_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
-
-
-class InviteCode(Base, CreatedAtMixin):
-    """Код-приглашение на время закрытого бета-теста.
-
-    Активации не считаются отдельной таблицей: пришедший по коду помечается
-    в users.invite_code_id, и «сколько осталось» выводится из этого же поля.
-    Одна запись вместо двух — и невозможно рассинхронизировать счётчик
-    с фактическим списком приглашённых.
-    """
-
-    __tablename__ = "invite_codes"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(sa.String(16), unique=True, index=True)
-    created_by: Mapped[int] = mapped_column(sa.ForeignKey("users.id"), index=True)
-    max_activations: Mapped[int] = mapped_column(default=1, server_default="1")
-    note: Mapped[str | None] = mapped_column(sa.String(200))
-    revoked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))

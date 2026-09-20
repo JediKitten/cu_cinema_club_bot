@@ -103,11 +103,6 @@ async def client(session, monkeypatch):
     monkeypatch.setenv("KINOPOISK_API_TOKEN", "")
     get_config.cache_clear()
 
-    # Закрытая бета выключена по умолчанию: иначе каждый тест начинался бы
-    # с ввода кода. Сам гейт проверяется отдельно, в test_invites.
-    await SettingsService(session).set_many({"beta_invite_required": False}, None)
-    await session.commit()
-
     from app.db import get_session
     from app.main import app
 

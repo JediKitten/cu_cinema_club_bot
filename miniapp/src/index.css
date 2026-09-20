@@ -921,25 +921,6 @@ h3 {
   font-size: 12px;
 }
 
-/* --- Закрытая бета --------------------------------------------------------- */
-
-.gate {
-  justify-content: center;
-  min-height: 70vh;
-}
-
-.gate__lock {
-  font-size: 44px;
-  text-align: center;
-}
-
-.code-chip {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 2px;
-}
-
 /* --- Плитка постеров ------------------------------------------------------- */
 
 .poster-grid {

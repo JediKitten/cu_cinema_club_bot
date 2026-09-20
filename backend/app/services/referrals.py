@@ -20,10 +20,6 @@ from app.models import Film, Interest, Referral, User
 PAYLOAD = re.compile(r"^f(\d+)r(\d+)$")
 
 
-class ReferralError(ValueError):
-    pass
-
-
 def make_payload(film_id: int, referrer_id: int) -> str:
     return f"f{film_id}r{referrer_id}"
 

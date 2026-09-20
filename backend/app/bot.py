@@ -37,7 +37,6 @@ from app.services import (
     analytics_gate,
     cycle,
     exports,
-    invites,
     notify,
     referrals,
     reminders,
@@ -79,14 +78,6 @@ WELCOME = (
     "и сгорает само\n\n"
     "Открывайте каталог кнопкой ниже."
 )
-
-GATE = (
-    "🔒 <b>Киноклуб пока в закрытом бета-тесте.</b>\n\n"
-    "Чтобы войти, отправьте код-приглашение — его выдают администраторы клуба.\n"
-    "Код из шести символов, регистр и пробелы значения не имеют."
-)
-
-WELCOME_BACK = "Код принят. Добро пожаловать в клуб!"
 
 HELP = (
     "Всё происходит в приложении — кнопка «Открыть киноклуб» под /start.\n\n"
@@ -432,15 +423,6 @@ async def mark_onboarded(tg_id: int) -> None:
         await session.commit()
 
 
-async def needs_code(session, user: User) -> bool:
-    """Остановить ли человека на коде.
-
-    Спрашивать код у администратора нельзя: коды выдаёт он сам, и запертым
-    оказался бы тот, кто должен отпирать.
-    """
-    return not invites.has_access(user, await invites.beta_enabled(session))
-
-
 def build_dispatcher() -> Dispatcher:
     dispatcher = Dispatcher()
 
@@ -463,16 +445,8 @@ def build_dispatcher() -> Dispatcher:
             if film is None:
                 await start(message)
                 return
-            # Приглашение засчитываем и запертому: код он введёт следом,
-            # и позвавший не должен терять его из-за порядка событий.
             await referrals.record(session, referrer_id, invitee.id, film_id)
             referrer = await session.get(User, referrer_id)
-            if await needs_code(session, invitee):
-                await message.answer(
-                    f"Вас зовут на «{film.title_ru}» — но клуб пока в закрытом бета-тесте.\n\n"
-                    f"{GATE}"
-                )
-                return
 
         who = referrer.display_name if referrer else "Кто-то из клуба"
         year = f" ({film.year})" if film.year else ""
@@ -505,9 +479,6 @@ def build_dispatcher() -> Dispatcher:
 
         async with SessionLocal() as session:
             user = await _ensure_user(session, message)
-            if await needs_code(session, user):
-                await message.answer(GATE)
-                return
             first_time = user.onboarded_at is None
 
         if first_time:
@@ -523,9 +494,7 @@ def build_dispatcher() -> Dispatcher:
     async def tour_command(message: Message) -> None:
         """Знакомство можно перечитать: /tour, а не «удалите чат и начните заново»."""
         async with SessionLocal() as session:
-            if await needs_code(session, await _ensure_user(session, message)):
-                await message.answer(GATE)
-                return
+            await _ensure_user(session, message)
         await message.answer(tour_text(0), reply_markup=tour_keyboard(0, current_miniapp_url()))
 
     @dispatcher.callback_query(F.data.startswith("tour:"))
@@ -568,13 +537,6 @@ def build_dispatcher() -> Dispatcher:
                 if user is None:
                     await callback.answer("Сначала напишите боту /start", show_alert=True)
                     return
-                if await needs_code(session, user):
-                    await callback.answer(
-                        "Клуб пока в закрытом бета-тесте — нужен код-приглашение",
-                        show_alert=True,
-                    )
-                    return
-
                 round_ = await session.get(Round, round_id)
                 try:
                     voting.ensure_open(round_)
@@ -758,30 +720,10 @@ def build_dispatcher() -> Dispatcher:
 
     @dispatcher.message()
     async def fallback(message: Message) -> None:
-        """Любое сообщение от человека без доступа — попытка ввести код.
-
-        Отдельной команды нет намеренно: человек, которого встретили запертой
-        дверью, пишет код сразу, а не ищет, каким глаголом его назвать.
-        """
+        """Всё, что не команда: человек написал боту и ждёт ответа."""
         async with SessionLocal() as session:
-            user = await _ensure_user(session, message)
-            if not await needs_code(session, user):
-                await message.answer(HELP)
-                return
-
-            try:
-                await invites.redeem(session, user, message.text or "")
-            except invites.InviteError as exc:
-                await message.answer(f"{exc}.\n\n{GATE}")
-                return
-
-            # Код принят — сразу знакомство, а не «нажмите /start ещё раз».
-            user.onboarded_at = sa.func.now()
-            await session.commit()
-
-        url = current_miniapp_url()
-        await message.answer(WELCOME_BACK)
-        await message.answer(tour_text(0), reply_markup=tour_keyboard(0, url))
+            await _ensure_user(session, message)
+        await message.answer(HELP)
 
     return dispatcher
 
@@ -816,9 +758,6 @@ async def watch_miniapp_url(bot: Bot, initial: str) -> None:
 
 def _notify_keyboard(kind: NotificationKind, payload: dict):
     """Кнопка приложения там, где сообщение зовёт зайти."""
-    url = current_miniapp_url()
-    if kind == NotificationKind.BETA_OPENED and url:
-        return open_app_keyboard(url)
     if kind == NotificationKind.SHORTLIST_PUBLISHED:
         return shortlist_keyboard(payload)
     return None

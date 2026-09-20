@@ -1,5 +1,6 @@
 from typing import Annotated
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,7 @@ from app.schemas import (
     CustomAchievementIn,
     CustomAchievementOut,
     FilmStatsOut,
+    PersonRowOut,
     RankingsOut,
     RankRow,
     SandboxIn,
@@ -279,3 +281,23 @@ async def revoke_achievement(
         await achievements.revoke(session, admin.id, achievement_id)
     except achievements.AchievementError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+
+@router.get("/people", response_model=list[PersonRowOut])
+async def people(
+    admin: RequireSuperadmin, session: Annotated[AsyncSession, Depends(get_session)]
+) -> list[PersonRowOut]:
+    """Все участники клуба, новые сверху."""
+    rows = (
+        await session.execute(sa.select(User).order_by(User.created_at.desc()))
+    ).scalars()
+    return [
+        PersonRowOut(
+            id=user.id,
+            display_name=user.display_name,
+            tg_username=user.tg_username,
+            role=user.role,
+            created_at=user.created_at,
+        )
+        for user in rows
+    ]

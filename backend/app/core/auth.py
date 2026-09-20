@@ -12,7 +12,6 @@ from app.config import get_config
 from app.db import get_session
 from app.models import User
 from app.models.enums import UserRole
-from app.services import invites
 
 ALGORITHM = "HS256"
 
@@ -80,21 +79,10 @@ async def authenticated_user(
 AuthenticatedUser = Annotated[User, Depends(authenticated_user)]
 
 
-async def current_user(
-    user: AuthenticatedUser,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> User:
-    """Обычная зависимость: вход плюс доступ.
-
-    Проверка стоит здесь, в единственной точке, через которую проходят все
-    ручки, — гейт, который где-то забыли повесить, не гейт вовсе.
-    """
-    if not invites.has_access(user, await invites.beta_enabled(session)):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, invites.NEED_CODE)
-    return user
-
-
-CurrentUser = Annotated[User, Depends(current_user)]
+# Обычная зависимость для всех ручек. Отдельной проверки доступа здесь больше
+# нет: вход по кодам-приглашениям клуб отменил, и привязки Telegram из
+# `authenticated_user` достаточно.
+CurrentUser = AuthenticatedUser
 
 
 def require_role(minimum: UserRole):
