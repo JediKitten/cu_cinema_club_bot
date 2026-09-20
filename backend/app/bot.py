@@ -59,6 +59,16 @@ NOTIFY_INTERVAL_SECONDS = 5
 # поэтому проход раз в пять минут ничего не пропускает.
 JOBS_INTERVAL_SECONDS = 300
 
+# Сколько даём одному проходу, прежде чем считать его зависшим. Фоновые задачи
+# ходят только в базу, и минуты им хватает с большим запасом. Ограничение нужно
+# не ради скорости: зависший `await` не бросает исключения, и `except Exception`
+# вокруг тела цикла его не ловит — задача просто перестаёт существовать. Именно
+# так однажды тихо встал весь цикл клуба: уведомления продолжали уходить, а
+# расписание, ачивки и напоминания не двигались восемнадцать часов, и ни одной
+# строчки в логе об этом не было.
+JOB_TIMEOUT_SECONDS = 120
+NOTIFY_TIMEOUT_SECONDS = 120
+
 WELCOME = (
     "<b>Университетский киноклуб</b>\n\n"
     "Отмечайте фильмы, которые хотите посмотреть, — раз в неделю мы выбираем из них "
@@ -822,15 +832,18 @@ async def notification_loop(bot: Bot) -> None:
     """
     while True:
         try:
-            async with SessionLocal() as session:
-                tz = ZoneInfo(str(await SettingsService(session).get("display_timezone")))
+            async with asyncio.timeout(NOTIFY_TIMEOUT_SECONDS):
+                async with SessionLocal() as session:
+                    tz = ZoneInfo(str(await SettingsService(session).get("display_timezone")))
 
-                def to_local(value: datetime, tz: ZoneInfo = tz) -> str:
-                    return value.astimezone(tz).strftime("%d.%m в %H:%M")
+                    def to_local(value: datetime, tz: ZoneInfo = tz) -> str:
+                        return value.astimezone(tz).strftime("%d.%m в %H:%M")
 
-                sent = await notify.deliver(session, bot, to_local, keyboard=_notify_keyboard)
-                if sent:
-                    logger.info("Отправлено уведомлений: %d", sent)
+                    sent = await notify.deliver(session, bot, to_local, keyboard=_notify_keyboard)
+                    if sent:
+                        logger.info("Отправлено уведомлений: %d", sent)
+        except TimeoutError:
+            logger.error("Отправка уведомлений зависла — прерываю проход")
         except Exception:
             # Цикл обязан пережить любую ошибку: иначе одна неудача навсегда
             # останавливает всю рассылку.
@@ -842,13 +855,19 @@ async def jobs_loop() -> None:
     """Периодические задачи: напоминания, предупреждения о недоборе (§7)."""
     while True:
         try:
-            async with SessionLocal() as session:
-                # Порядок важен: сначала двигаем цикл, потом рассылаем — иначе
-                # приглашения после автопубликации ждали бы лишние пять минут.
-                await cycle.tick(session)
-                await tournaments.tick(session)
-                await achievements.award(session)
-                await reminders.run_all(session)
+            # Таймаут снаружи всего прохода: повиснуть может любой из четырёх
+            # шагов, а починка одна — прервать и попробовать через пять минут.
+            async with asyncio.timeout(JOB_TIMEOUT_SECONDS):
+                async with SessionLocal() as session:
+                    # Порядок важен: сначала двигаем цикл, потом рассылаем —
+                    # иначе приглашения после автопубликации ждали бы лишние
+                    # пять минут.
+                    await cycle.tick(session)
+                    await tournaments.tick(session)
+                    await achievements.award(session)
+                    await reminders.run_all(session)
+        except TimeoutError:
+            logger.error("Фоновые задачи зависли — прерываю проход")
         except Exception:
             logger.exception("Сбой в фоновых задачах")
         await asyncio.sleep(JOBS_INTERVAL_SECONDS)

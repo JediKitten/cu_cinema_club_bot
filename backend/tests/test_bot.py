@@ -153,3 +153,41 @@ def test_the_announcement_goes_out_with_its_buttons(monkeypatch):
 
     assert markup is not None
     assert [button.callback_data for button in flat(markup)] == ["v:7:1", "v:7:2"]
+
+
+# --- Живучесть фоновых задач ------------------------------------------------
+
+
+async def test_a_hung_job_does_not_stop_the_loop(monkeypatch):
+    """Зависший запрос не должен уносить с собой весь цикл клуба.
+
+    `except Exception` вокруг тела цикла зависание не ловит: исключения нет,
+    `await` просто не возвращается. Однажды так и случилось — расписание,
+    ачивки и напоминания не двигались восемнадцать часов, уведомления при
+    этом продолжали уходить, и в логе не было ни строчки.
+    """
+    import asyncio
+
+    from app import bot as botmod
+
+    monkeypatch.setattr(botmod, "JOB_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(botmod, "JOBS_INTERVAL_SECONDS", 0.01)
+
+    started = 0
+
+    async def hang(session):
+        nonlocal started
+        started += 1
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(botmod.cycle, "tick", hang)
+
+    task = asyncio.create_task(botmod.jobs_loop())
+    await asyncio.sleep(0.5)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert started >= 2, "после зависания цикл обязан зайти на следующий круг"
