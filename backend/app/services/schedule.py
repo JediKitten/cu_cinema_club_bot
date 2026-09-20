@@ -6,6 +6,7 @@
 в лист ожидания.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -505,12 +506,20 @@ async def reset_confirmations(session: AsyncSession, screening: Screening) -> No
 
 
 async def notify_affected(
-    session: AsyncSession, screening: Screening, kind: NotificationKind, payload: dict
+    session: AsyncSession,
+    screening: Screening,
+    kind: NotificationKind,
+    payload: dict,
+    also_voters_for: Sequence[int] = (),
 ) -> None:
     """Уведомления получают только затронутые пользователи (§7).
 
     Публична: тем же правилом пользуются ручные события — у них нет цикла,
     но есть те, кто уже собрался прийти.
+
+    `also_voters_for` добавляет голосовавших за перечисленные фильмы — это про
+    замену фильма: узнать о ней должны и те, кого звали на прежний, и те, кто
+    голосовал за новый и теперь может прийти.
     """
     users = (
         (
@@ -539,8 +548,22 @@ async def notify_affected(
             .all()
         )
 
+    audience = set(users)
+    for film_id in also_voters_for:
+        audience |= set(
+            (
+                await session.execute(
+                    sa.select(FilmVote.user_id).where(
+                        FilmVote.round_id == screening.round_id, FilmVote.film_id == film_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
     stamp = datetime.now(UTC).isoformat(timespec="seconds")
-    for user_id in set(users):
+    for user_id in audience:
         await notify.queue(
             session,
             user_id,

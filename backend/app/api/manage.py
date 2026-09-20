@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import RequireAdmin, RequireSuperadmin
 from app.db import get_session
-from app.models import Confirmation, Film, Screening, Slot
+from app.models import Confirmation, Film, Screening, ShortlistItem, Slot
 from app.models.enums import ConfirmationState, UserRole
 from app.schemas import (
     AudienceOut,
@@ -60,6 +60,35 @@ async def create_event(
     return {"id": event.id, "starts_at": body.starts_at.isoformat()}
 
 
+def _brief(film: Film) -> FilmBrief:
+    return FilmBrief(
+        id=film.id,
+        tmdb_id=film.tmdb_id,
+        title_ru=film.title_ru,
+        title_orig=film.title_orig,
+        year=film.year,
+        poster_url=poster_url(film.poster_path),
+        genres=list(film.genres or []),
+        directors=list(film.directors or []),
+    )
+
+
+async def _shortlist(session: AsyncSession, round_id: int | None) -> list[FilmBrief]:
+    """Фильмы недели — те, за которые голосовали. Заменить показ можно только
+    на один из них, и выбирать админ должен из списка, а не угадывать."""
+    if round_id is None:
+        return []
+    rows = (
+        await session.execute(
+            sa.select(Film)
+            .join(ShortlistItem, ShortlistItem.film_id == Film.id)
+            .where(ShortlistItem.round_id == round_id)
+            .order_by(ShortlistItem.position)
+        )
+    ).scalars()
+    return [_brief(film) for film in rows]
+
+
 async def _event_out(session: AsyncSession, event: Screening) -> EventOut:
     slot = await session.get(Slot, event.slot_id)
     film = await session.get(Film, event.film_id) if event.film_id else None
@@ -76,26 +105,14 @@ async def _event_out(session: AsyncSession, event: Screening) -> EventOut:
         starts_at=slot.starts_at,
         duration_min=slot.duration_min,
         film_id=event.film_id,
-        film=(
-            FilmBrief(
-                id=film.id,
-                tmdb_id=film.tmdb_id,
-                title_ru=film.title_ru,
-                title_orig=film.title_orig,
-                year=film.year,
-                poster_url=poster_url(film.poster_path),
-                genres=list(film.genres or []),
-                directors=list(film.directors or []),
-            )
-            if film
-            else None
-        ),
+        film=_brief(film) if film else None,
         title=event.title,
         note=event.note,
         in_english=event.in_english,
         registration_url=event.registration_url,
         is_manual=event.is_manual,
         confirmed=confirmed or 0,
+        shortlist=await _shortlist(session, event.round_id),
     )
 
 

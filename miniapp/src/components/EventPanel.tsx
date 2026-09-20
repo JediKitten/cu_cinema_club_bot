@@ -71,12 +71,14 @@ function EventFields({
   draft,
   onChange,
   fromCycle = false,
+  shortlist = [],
 }: {
   draft: Draft;
   onChange(next: Draft): void;
-  /** Показ назначен голосованием: время и фильм остаются за циклом, здесь
-   *  правятся только подпись, язык и ссылка на регистрацию. */
+  /** Показ назначен голосованием: фильм выбирается не поиском по каталогу,
+   *  а из шорт-листа недели — за эти пять и голосовали. */
   fromCycle?: boolean;
+  shortlist?: FilmBrief[];
 }) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<FilmBrief[]>([]);
@@ -111,7 +113,27 @@ function EventFields({
         />
       </div>
 
-      {fromCycle ? null : draft.film ? (
+      {/* У показа из цикла фильм меняют только на соседний из шорт-листа:
+          не дали права, не нашлась копия — клуб ставит другой из тех, за
+          которые голосовали. Поиск по каталогу здесь был бы обходом цикла. */}
+      {fromCycle ? (
+        <div className="shortlist-pick">
+          <p className="hint">Фильм недели — из шорт-листа, за который голосовали:</p>
+          {shortlist.map((item) => (
+            <button
+              className={`slot-row ${draft.film?.id === item.id ? "is-on" : ""}`}
+              key={item.id}
+              onClick={() => onChange({ ...draft, film: item })}
+            >
+              <div>
+                <p className="film-row__title">{item.title_ru}</p>
+                <p className="meta">{item.year}</p>
+              </div>
+              <span>{draft.film?.id === item.id ? "✓" : ""}</span>
+            </button>
+          ))}
+        </div>
+      ) : draft.film ? (
         <div className="slot-row">
           <div>
             <p className="film-row__title">{draft.film.title_ru}</p>
@@ -203,11 +225,14 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
 
   function changes(): EventChanges {
     const patch: EventChanges = {};
-    // У показа из цикла время и фильм менять нельзя — сервер такую правку
-    // и не примет, но лучше её и не собирать.
+    // У показа из цикла фильм меняется только на другой из шорт-листа,
+    // а снять его совсем нельзя: вечер без фильма — это уже не цикл.
     if (!event.is_manual) {
       if (draft.date !== initial.date || draft.time !== initial.time) {
         patch.starts_at = startsAt(draft);
+      }
+      if ((draft.film?.id ?? null) !== event.film_id && draft.film) {
+        patch.film_id = draft.film.id;
       }
       if (draft.note.trim() !== (event.note ?? "")) patch.note = draft.note.trim() || null;
       if (draft.inEnglish !== event.in_english) patch.in_english = draft.inEnglish;
@@ -275,7 +300,12 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
   return (
     <>
       {fromCycle && <MoveToEvening event={event} onDone={onDone} />}
-      <EventFields draft={draft} onChange={setDraft} fromCycle={fromCycle} />
+      <EventFields
+        draft={draft}
+        onChange={setDraft}
+        fromCycle={fromCycle}
+        shortlist={event.shortlist}
+      />
       {(draft.date !== initial.date || draft.time !== initial.time) && (
         <label className="check">
           <input

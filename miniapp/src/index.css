@@ -395,6 +395,20 @@ h3 {
   border-radius: var(--radius);
   text-align: left;
   width: 100%;
+  border: 1px solid transparent;
+}
+
+/* Выбранный фильм недели в шорт-листе — той же рамкой, что и остальные
+   выборы в приложении: галочки в углу на тёмном фоне мало. */
+.slot-row.is-on {
+  border-color: var(--link);
+  background: color-mix(in srgb, var(--link) 12%, var(--surface));
+}
+
+.shortlist-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .film-row.choice {

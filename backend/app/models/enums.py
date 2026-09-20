@@ -135,6 +135,9 @@ class NotificationKind(StrEnum):
     REGISTRATION_LINK = "registration_link"
     # Ачивка: поздравляем один раз, в момент выдачи.
     ACHIEVEMENT_EARNED = "achievement_earned"
+    # За час до того, как автопилот решит сам: шорт-лист или фильм недели.
+    # Решение остаётся за человеком, но только пока он о нём знает.
+    ADMIN_AUTOPILOT_SOON = "admin_autopilot_soon"
     # Турниры: о старте, о каждом новом этапе и о победителе.
     TOURNAMENT_STARTED = "tournament_started"
     TOURNAMENT_ROUND_OPENED = "tournament_round_opened"

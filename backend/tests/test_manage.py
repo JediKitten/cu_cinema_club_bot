@@ -589,12 +589,14 @@ async def test_events_list_shows_the_film_of_the_week_too(session):
     assert only_manual == [by_hand.id]
 
 
-async def test_cycle_screening_moves_in_time_but_keeps_its_film(session):
-    """Время у показа цикла правится, фильм — нет.
+async def test_cycle_screening_moves_in_time_and_swaps_within_the_shortlist(session):
+    """Время у показа цикла правится, фильм — только на соседний из шорт-листа.
 
     Зал бывает занят, ведущий болеет, и переносить приходится в том числе
-    на час, которого в сетке вечеров нет. А фильм выбрало голосование:
-    подменить его здесь значило бы обойти цикл целиком.
+    на час, которого в сетке вечеров нет. С фильмом то же самое: не дали
+    права, не нашлась копия — и клуб ставит другой из тех пяти, за которые
+    голосовали. Поставить шестой нельзя: это отменило бы голосование задним
+    числом.
     """
     from app.models import Confirmation, Slot
     from app.services import schedule as sched
@@ -626,8 +628,15 @@ async def test_cycle_screening_moves_in_time_but_keeps_its_film(session):
     )
     assert left == 0
 
-    with pytest.raises(EventError, match="голосование"):
-        await events.update(session, screening.id, boss.id, {"film_id": films[1].id})
+    # Замена внутри шорт-листа разрешена.
+    swapped = await events.update(session, screening.id, boss.id, {"film_id": films[1].id})
+    assert swapped.film_id == films[1].id
+
+    # А фильм со стороны — нет: за него никто не голосовал.
+    stranger = await make_film(session, "Не из шорт-листа")
+    await session.commit()
+    with pytest.raises(EventError, match="шорт-лист"):
+        await events.update(session, screening.id, boss.id, {"film_id": stranger.id})
 
 
 async def test_feedback_works_for_an_event_without_a_film(session):
@@ -868,3 +877,65 @@ async def test_moving_onto_a_blocked_evening_says_so(session):
     await session.refresh(screening)
     assert screening.slot_id == slots[0].id
     assert (await session.get(Slot, slots[1].id)).starts_at == slots[1].starts_at
+
+
+async def test_swapping_the_film_tells_both_audiences(session):
+    """О замене узнают и те, кого звали на прежний фильм, и те, кто голосовал
+    за новый: для первых вечер отменился, для вторых — появился."""
+    from app.models import Notification
+    from app.models.enums import NotificationKind
+    from app.services import notify, voting
+    from app.services import schedule as sched
+    from tests.test_schedule import voted_round
+
+    round_, films, slots, boss, voters = await voted_round(session)
+    # Один голосовал за первый фильм, другой — за второй.
+    await voting.set_votes(session, round_, voters[1].id, [films[1].id])
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+
+    await events.update(session, screening.id, boss.id, {"film_id": films[1].id})
+
+    told = set(
+        (
+            await session.execute(
+                sa.select(Notification.user_id).where(
+                    Notification.kind == NotificationKind.SCREENING_CHANGED
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert voters[0].id in told, "звали на прежний фильм — должен узнать"
+    assert voters[1].id in told, "голосовал за новый — теперь это его вечер"
+
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(
+                Notification.kind == NotificationKind.SCREENING_CHANGED
+            )
+        )
+    ).scalar()
+    assert payload["film_changed"] is True
+    assert payload["was_film"] == films[0].title_ru
+
+    text = notify.render(
+        NotificationKind.SCREENING_CHANGED, films[1], "25.09 в 19:00", payload
+    )
+    assert text is not None
+    assert "Фильм заменён" in text and films[0].title_ru in text
+
+
+async def test_the_same_film_cannot_stand_twice_in_a_week(session):
+    """§6: один фильм за цикл один раз. Иначе замена упёрлась бы в индекс."""
+    from app.services import schedule as sched
+    from tests.test_schedule import voted_round
+
+    round_, films, slots, boss, _ = await voted_round(session)
+    first = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.assign(session, round_, films[1].id, slots[1].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+
+    with pytest.raises(EventError, match="уже стоит"):
+        await events.update(session, first.id, boss.id, {"film_id": films[1].id})

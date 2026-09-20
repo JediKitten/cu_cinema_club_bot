@@ -179,6 +179,19 @@ REGISTRY: tuple[SettingSpec, ...] = (
         help="По умолчанию воскресенье 18:00.",
     ),
     SettingSpec("schedule_publish_at", "weekday_time", "6 20:00", "cycle", "Публикация расписания"),
+    SettingSpec(
+        "autopilot_warning_minutes",
+        "int",
+        60,
+        "cycle",
+        "За сколько минут предупредить админов об автопилоте",
+        1,
+        1440,
+        help=(
+            "Автопилот соберёт шорт-лист и расставит показы сам. "
+            "Предупреждение приходит заранее — чтобы успеть решить самому."
+        ),
+    ),
     SettingSpec("autopilot_stage1_enabled", "bool", True, "cycle", "Автопилот этапа 1 включён"),
     SettingSpec("autopilot_stage2_enabled", "bool", True, "cycle", "Автопилот этапа 2 включён"),
     # --- Присутствие ---

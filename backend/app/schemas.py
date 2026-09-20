@@ -910,6 +910,10 @@ class EventOut(BaseModel):
     # Ручное событие или показ, назначенный циклом: у второго правится не всё.
     is_manual: bool = True
     confirmed: int = 0
+    # Шорт-лист недели — у показа из цикла. Заменить фильм можно только
+    # на один из них, и выбирать администратор должен из списка, а не гадать,
+    # что сервер примет.
+    shortlist: list[FilmBrief] = Field(default_factory=list)
 
 
 class CancelEventIn(BaseModel):

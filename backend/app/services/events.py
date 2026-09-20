@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AuditLog, Film, Hall, Screening, Slot
+from app.models import AuditLog, Film, Hall, Round, Screening, ShortlistItem, Slot
 from app.models.enums import NotificationKind, ScreeningStatus
 from app.services import schedule as schedule_service
 from app.services.rounds import ensure_hall
@@ -116,7 +116,35 @@ EDITABLE = (
 # в том числе на час, которого в сетке вечеров нет. Вечер при этом сдвигается
 # вместе с показом, а подтверждения сбрасываются — доступность люди отмечали
 # под конкретный вечер.
-EDITABLE_IN_ROUND = ("starts_at", "duration_min", "note", "in_english", "registration_url")
+# Что у показа из цикла правит администратор. Фильм — тоже: не любой, а другой
+# из шорт-листа этой же недели. Голосование выбирало список, автопилот взял
+# из него один по ожидаемой явке на конкретный вечер — и если у клуба есть
+# причина поставить соседний (не дали права, не нашлась копия, ведущий готов
+# говорить про другое), это не обход голосования, а выбор внутри него.
+EDITABLE_IN_ROUND = (
+    "film_id",
+    "starts_at",
+    "duration_min",
+    "note",
+    "in_english",
+    "registration_url",
+)
+
+
+async def _already_in_round(
+    session: AsyncSession, event: Screening, film_id: int
+) -> bool:
+    """Тот же фильм дважды за неделю — нарушение §6, и база его не пропустит
+    (частичный индекс). Ловим здесь, чтобы отдать причину, а не пятисотку."""
+    twin = await session.scalar(
+        sa.select(Screening.id).where(
+            Screening.round_id == event.round_id,
+            Screening.film_id == film_id,
+            Screening.id != event.id,
+            Screening.status != ScreeningStatus.CANCELLED,
+        )
+    )
+    return twin is not None
 
 
 async def _slot_for(
@@ -191,9 +219,7 @@ async def update(
     if unknown:
         if event.is_manual:
             raise EventError(f"Нельзя менять: {', '.join(sorted(unknown))}")
-        raise EventError(
-            "У показа из цикла фильм менять нельзя — его выбрало голосование"
-        )
+        raise EventError(f"У показа из цикла нельзя менять: {', '.join(sorted(unknown))}")
 
     slot = await session.get(Slot, event.slot_id)
     film_id = changes.get("film_id", event.film_id)
@@ -202,6 +228,31 @@ async def update(
         raise EventError("Укажите фильм или заголовок события")
     if film_id is not None and await session.get(Film, film_id) is None:
         raise EventError("Фильм не найден")
+
+    film_changed = "film_id" in changes and film_id != event.film_id
+    was_film_id = event.film_id
+    # Название прежнего фильма нужно сообщению о замене: «вместо чего» человеку
+    # важнее, чем «что теперь» — он шёл на конкретное кино.
+    was_title = None
+    if film_changed and was_film_id is not None:
+        was = await session.get(Film, was_film_id)
+        was_title = was.title_ru if was else None
+    if film_changed and event.round_id is not None:
+        # Показ из цикла: заменить можно только на фильм того же шорт-листа.
+        # Поставить что угодно значило бы отменить голосование задним числом —
+        # люди выбирали из пяти названий, а пришли бы на шестое.
+        shortlisted = await session.scalar(
+            sa.select(ShortlistItem.id).where(
+                ShortlistItem.round_id == event.round_id, ShortlistItem.film_id == film_id
+            )
+        )
+        if shortlisted is None:
+            raise EventError(
+                "Заменить можно только на фильм из шорт-листа этой недели — "
+                "за них и голосовали"
+            )
+        if await _already_in_round(session, event, film_id):
+            raise EventError("Этот фильм уже стоит в расписании недели")
 
     # Фильм появился там, где его не было: это анонс, а не правка. Считаем до
     # присвоения — после event.film_id уже новый.
@@ -229,9 +280,18 @@ async def update(
     event.decided_by = actor_id
     event.decided_at = datetime.now(UTC)
 
-    if time_changed or "film_id" in changes:
+    if film_changed and event.round_id is not None:
+        # Ожидаемая явка — ячейка матрицы «фильм × вечер». У нового фильма она
+        # своя, и оставлять чужое число нельзя: по нему предупреждают о недоборе.
+        round_ = await session.get(Round, event.round_id)
+        matrix = await schedule_service.build_matrix(session, round_)
+        event.expected_attendance = matrix.cell(film_id, slot.id)
+
+    if time_changed or film_changed:
         # Молча переносить или подменять фильм нельзя: люди уже собрались прийти.
         # Уведомление раньше сброса: адресатов берут из подтверждений.
+        # При замене зовём ещё и голосовавших — за прежний фильм, потому что
+        # звали их именно на него, и за новый, потому что теперь их вечер.
         await schedule_service.notify_affected(
             session,
             event,
@@ -239,9 +299,14 @@ async def update(
             {
                 "time_changed": time_changed,
                 "revealed": revealed,
+                "film_changed": film_changed,
+                "was_film": was_title,
                 "kept": keep_confirmations,
                 "starts_at": slot.starts_at.isoformat(),
             },
+            also_voters_for=(
+                [f for f in (was_film_id, film_id) if f is not None] if film_changed else ()
+            ),
         )
     if time_changed and not keep_confirmations:
         await schedule_service.reset_confirmations(session, event)

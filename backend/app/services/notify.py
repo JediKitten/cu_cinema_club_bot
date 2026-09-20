@@ -234,6 +234,18 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                     f"🔄 Показ перенесён\n\n{film_line}\nНовое время: {when}\n\n"
                     "Подтверждения сброшены — отметьтесь заново, если придёте."
                 )
+            if payload.get("film_changed"):
+                # Человек шёл на конкретное кино: «вместо чего» ему важнее,
+                # чем «что теперь». Без прежнего названия сообщение выглядит
+                # как непонятное «изменение» без содержания.
+                was = payload.get("was_film")
+                instead = f"\nВместо: {escape(str(was))}" if was else ""
+                place = (
+                    "\n\nВы записаны — если новый фильм не ваш, отмените запись в приложении."
+                    if payload.get("kept")
+                    else ""
+                )
+                return f"🔄 Фильм заменён\n\n{film_line}\n{when}{instead}{place}"
             if payload.get("revealed"):
                 # Ради этого «секретный показ» и заводят: время объявили заранее,
                 # название — сейчас. Для записавшихся это не «изменение», а тот
@@ -271,6 +283,25 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
                 "Откройте приложение — вкладка «Клуб» уже на месте.",
             ]
             return "\n\n".join(part for part in parts if part)
+        case NotificationKind.ADMIN_AUTOPILOT_SOON:
+            what = escape(str(payload.get("what", "решит сам")))
+            minutes = int(payload.get("minutes") or 60)
+            week = escape(str(payload.get("week_start", "")))
+            # Выключенный автопилот — новость важнее включённого: тогда
+            # не произойдёт вообще ничего, и неделя останется без кино.
+            if payload.get("enabled"):
+                return (
+                    f"⏳ <b>Через {minutes} мин автопилот {what}</b>\n\n"
+                    f"Неделя показов с {week}.\n"
+                    "Если хотите решить сами — сейчас самое время: после "
+                    "автопилота список уходит дальше по циклу."
+                )
+            return (
+                f"⏳ <b>Через {minutes} мин срок, к которому автопилот {what}</b>\n\n"
+                f"Неделя показов с {week}.\n"
+                "Автопилот на этом этапе выключен — если не сделать этого "
+                "руками, не произойдёт ничего."
+            )
         case NotificationKind.ADMIN_BROADCAST:
             # Текст пишет человек, а сообщения уходят с parse_mode=HTML —
             # без экранирования любая угловая скобка в письме роняла бы

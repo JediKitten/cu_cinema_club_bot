@@ -329,3 +329,108 @@ async def test_finished_week_closes_even_while_the_next_one_is_being_prepared(se
     await session.refresh(old)
     assert old.stage == RoundStage.CLOSED
     assert (await rounds_service.preparing_round(session)) is not None
+
+
+# --- Предупреждение об автопилоте -------------------------------------------
+
+
+async def autopilot_warning_setup(session, stage: RoundStage):
+    """Цикл на будущей неделе плюс админ, которому есть что сообщить."""
+    from app.services import rounds as rounds_service
+
+    boss = await admin(session)
+    round_ = await rounds_service.open_round(session, rounds_service.next_week_start(), boss.id)
+    round_.stage = stage
+    await session.commit()
+    return round_, boss
+
+
+async def deadline_of(session, round_, setting: str):
+    from app.services import rounds as rounds_service
+
+    values = await SettingsService(session).all()
+    return rounds_service.deadline_moment(
+        round_.week_start, str(values[setting]), str(values["display_timezone"])
+    )
+
+
+async def test_admin_is_warned_an_hour_before_the_shortlist_is_picked(session):
+    """Автопилот решает сам, и раньше админ узнавал об этом постфактум —
+    из «автопилот отработал». Решение остаётся за человеком только пока он
+    успевает его принять."""
+    from datetime import timedelta
+
+    import sqlalchemy as sa
+
+    from app.models import Notification
+    from app.models.enums import NotificationKind
+    from app.services import reminders
+
+    round_, boss = await autopilot_warning_setup(session, RoundStage.COLLECTING)
+    deadline = await deadline_of(session, round_, "stage1_autopilot_at")
+
+    # За два часа — рано, молчим.
+    assert await reminders.warn_before_autopilot(session, deadline - timedelta(hours=2)) == 0
+    # Уже после — поздно, автопилот отработал.
+    assert await reminders.warn_before_autopilot(session, deadline + timedelta(minutes=1)) == 0
+
+    assert await reminders.warn_before_autopilot(session, deadline - timedelta(minutes=30)) == 1
+    # Повторный проход не шлёт второго письма.
+    assert await reminders.warn_before_autopilot(session, deadline - timedelta(minutes=20)) == 0
+
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(
+                Notification.user_id == boss.id,
+                Notification.kind == NotificationKind.ADMIN_AUTOPILOT_SOON,
+            )
+        )
+    ).scalar_one()
+    assert "шорт-лист" in payload["what"] and payload["enabled"] is True
+
+
+async def test_the_warning_names_the_film_of_the_week_on_the_second_stage(session):
+    from datetime import timedelta
+
+    import sqlalchemy as sa
+
+    from app.models import Notification
+    from app.models.enums import NotificationKind
+    from app.services import reminders
+
+    round_, boss = await autopilot_warning_setup(session, RoundStage.SLOT_VOTING)
+    deadline = await deadline_of(session, round_, "stage2_autopilot_at")
+
+    assert await reminders.warn_before_autopilot(session, deadline - timedelta(minutes=10)) == 1
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload).where(
+                Notification.kind == NotificationKind.ADMIN_AUTOPILOT_SOON
+            )
+        )
+    ).scalar_one()
+    assert "фильм недели" in payload["what"]
+
+
+async def test_a_switched_off_autopilot_is_the_louder_news(session):
+    """Выключенный тумблер значит, что не произойдёт вообще ничего, —
+    и знать об этом админу важнее, чем про сработавший автопилот."""
+    from datetime import timedelta
+
+    from app.models.enums import NotificationKind
+    from app.services import notify, reminders
+
+    round_, _ = await autopilot_warning_setup(session, RoundStage.COLLECTING)
+    await SettingsService(session).set_many({"autopilot_stage1_enabled": False}, None)
+    await session.commit()
+
+    deadline = await deadline_of(session, round_, "stage1_autopilot_at")
+    assert await reminders.warn_before_autopilot(session, deadline - timedelta(minutes=5)) == 1
+
+    text = notify.render(
+        NotificationKind.ADMIN_AUTOPILOT_SOON,
+        None,
+        "",
+        {"what": "соберёт шорт-лист недели", "enabled": False, "week_start": "2026-10-05"},
+    )
+    assert text is not None and "не произойдёт ничего" in text
