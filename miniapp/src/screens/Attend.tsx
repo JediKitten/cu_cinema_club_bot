@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError, attendByCode, getFeedback, saveFeedback } from "../api";
 import { Poster } from "../components/FilmRow";
 import { StarRating } from "../components/StarRating";
-import { haptic } from "../telegram";
+import { haptic, showMessage } from "../telegram";
 import type { DiscussionSkip, FeedbackState } from "../types";
 
 /** Оценки ездят полубаллами (1..10), а показываются звёздами (0,5..5). */
@@ -20,12 +20,16 @@ export function Attend({
   screeningId,
   title,
   onBack,
+  onSaved,
   backLabel = "← Назад",
 }: {
   screeningId: number;
   /** Название на случай события без фильма: у него карточки нет. */
   title?: string;
   onBack(): void;
+  /** Куда уйти после ответа. По умолчанию — туда же, откуда пришли: стоять
+   *  на заполненной форме человеку больше незачем. */
+  onSaved?(): void;
   /** Подпись возврата. Задаётся там, где над формой уже есть чужая «назад»:
    *  две одинаковые кнопки подряд выглядят как сбой вёрстки. */
   backLabel?: string;
@@ -39,7 +43,6 @@ export function Attend({
   const [review, setReview] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     getFeedback(screeningId)
@@ -53,10 +56,6 @@ export function Attend({
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
   }, [screeningId]);
-
-  function touched() {
-    setSaved(false);
-  }
 
   async function submitCode() {
     if (busy || code.trim().length < 4) return;
@@ -88,8 +87,11 @@ export function Attend({
         review_text: review.trim() || null,
       });
       setState(next);
-      setSaved(true);
       haptic("medium");
+      // Форма заполнена — держать на ней незачем. Благодарность окном, а не
+      // строчкой под кнопкой: иначе неясно, дошло ли вообще.
+      showMessage("Спасибо! Ответы сохранены.");
+      (onSaved ?? onBack)();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Не удалось сохранить");
     } finally {
@@ -156,27 +158,13 @@ export function Attend({
           </div>
 
           <h3 className="survey__question">Насколько вам понравилось посещение в целом?</h3>
-          <StarRating
-            value={visit}
-            busy={busy}
-            onChange={(next) => {
-              setVisit(next);
-              touched();
-            }}
-          />
+          <StarRating value={visit} busy={busy} onChange={setVisit} />
 
           {askAboutFilm && (
             <>
               <h3 className="survey__question">Как бы вы оценили фильм?</h3>
               <p className="hint">Это станет вашей оценкой фильма в клубе.</p>
-              <StarRating
-                value={film}
-                busy={busy}
-                onChange={(next) => {
-                  setFilm(next);
-                  touched();
-                }}
-              />
+              <StarRating value={film} busy={busy} onChange={setFilm} />
             </>
           )}
 
@@ -188,7 +176,6 @@ export function Attend({
               setDiscussion(next);
               // Оценка и «не был» вместе не значат ничего — одно снимает другое.
               if (next !== null) setSkip(null);
-              touched();
             }}
           />
           <div className="marks">
@@ -205,7 +192,6 @@ export function Attend({
                 onClick={() => {
                   setSkip(skip === value ? null : value);
                   setDiscussion(null);
-                  touched();
                 }}
               >
                 {label}
@@ -219,14 +205,11 @@ export function Attend({
             rows={4}
             placeholder="Что стоит исправить или повторить"
             value={review}
-            onChange={(e) => {
-              setReview(e.target.value);
-              touched();
-            }}
+            onChange={(e) => setReview(e.target.value)}
           />
 
           <button className="primary" disabled={busy} onClick={submitFeedback}>
-            {saved ? "Сохранено ✓" : "Отправить"}
+            Отправить
           </button>
           <p className="hint">Ответы можно поправить — форма всегда открыта.</p>
         </>

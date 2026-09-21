@@ -152,7 +152,17 @@ export default function App() {
 
         {openSurvey !== null && openFilm === null && (
           <div className="overlay">
-            <Attend screeningId={openSurvey} onBack={closeSurvey} />
+            <Attend
+              screeningId={openSurvey}
+              onBack={closeSurvey}
+              // Пришли по кнопке из бота — приложение открылось ради опроса
+              // и больше ни за чем. Ответив, человек должен оказаться в своём
+              // профиле, а не в пустом каталоге.
+              onSaved={() => {
+                closeSurvey();
+                setTab("profile");
+              }}
+            />
           </div>
         )}
 
