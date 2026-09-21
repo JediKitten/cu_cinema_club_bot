@@ -5,6 +5,7 @@ import { Deck } from "./screens/Deck";
 import { FilmDetail } from "./screens/FilmDetail";
 import { Profile } from "./screens/Profile";
 import { ProfileTab } from "./screens/ProfileTab";
+import { Attend } from "./screens/Attend";
 import { Tournament } from "./screens/Tournament";
 import { Week } from "./screens/Week";
 import { FilmOpenerProvider } from "./filmOpener";
@@ -43,6 +44,15 @@ export default function App() {
   // Турнир — тоже наложение: в него заходят из плашки в каталоге или
   // расписании и возвращаются туда же.
   const [openTournament, setOpenTournament] = useState<number | null>(null);
+  // Опрос после показа. Кнопка под напоминанием в боте открывает приложение
+  // адресом ?survey=12 — и человек попадает сразу в форму того показа,
+  // а не в каталог, из которого её ещё надо найти.
+  const [openSurvey, setOpenSurvey] = useState<number | null>(
+    () => {
+      const requested = new URLSearchParams(location.search).get("survey");
+      return requested && /^\d+$/.test(requested) ? Number(requested) : null;
+    },
+  );
 
   // Постоянные обработчики: подписка на кнопку «назад» Telegram живёт в эффекте
   // с ними в зависимостях, и новая функция на каждый рендер App заставляла её
@@ -50,10 +60,12 @@ export default function App() {
   const closeFilm = useCallback(() => setOpenFilm(null), []);
   const closeProfile = useCallback(() => setOpenProfile(null), []);
   const closeTournament = useCallback(() => setOpenTournament(null), []);
+  const closeSurvey = useCallback(() => setOpenSurvey(null), []);
 
   // Пока открыто наложение, страница под ним не прокручивается: иначе справа
   // оказываются две полосы прокрутки сразу — его и списка под ним.
-  const overlayOpen = openFilm !== null || openProfile !== null || openTournament !== null;
+  const overlayOpen =
+    openFilm !== null || openProfile !== null || openTournament !== null || openSurvey !== null;
   useEffect(() => {
     document.body.classList.toggle("has-overlay", overlayOpen);
     return () => document.body.classList.remove("has-overlay");
@@ -138,6 +150,12 @@ export default function App() {
           </div>
         )}
 
+        {openSurvey !== null && openFilm === null && (
+          <div className="overlay">
+            <Attend screeningId={openSurvey} onBack={closeSurvey} />
+          </div>
+        )}
+
         {openFilm !== null && (
           // Карточка накрывает список, а не заменяет его: список под ней жив
           // и вернётся ровно таким, каким был.
@@ -152,7 +170,10 @@ export default function App() {
         )}
 
         {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
-        {openFilm === null && openProfile === null && openTournament === null && (
+        {openFilm === null &&
+          openProfile === null &&
+          openTournament === null &&
+          openSurvey === null && (
           <nav className="tabs">
             {TABS.map((item) => (
               <button

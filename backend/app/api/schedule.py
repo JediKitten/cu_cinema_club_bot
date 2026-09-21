@@ -10,7 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, RequireAdmin, RequireModerator
 from app.db import get_session
-from app.models import Confirmation, Film, FilmVote, Hall, Round, Screening, Slot
+from app.models import (
+    Attendance,
+    Confirmation,
+    Film,
+    FilmVote,
+    Hall,
+    Round,
+    Screening,
+    Slot,
+)
 from app.models.enums import ConfirmationState, RoundStage, ScreeningStatus
 from app.schemas import (
     AssignIn,
@@ -184,6 +193,17 @@ async def _to_out(
             )
         ).all()
     )
+    came = set(
+        (
+            await session.execute(
+                sa.select(Attendance.screening_id).where(
+                    Attendance.screening_id.in_(ids), Attendance.user_id == user_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     out = []
     for screening, film, slot in rows:
@@ -232,6 +252,7 @@ async def _to_out(
                 capacity=hall.capacity,
                 # У ручного события фильма может не быть — голосовать было не за что.
                 invited=film is not None and film.id in voted_films,
+                i_attended=screening.id in came,
             )
         )
 

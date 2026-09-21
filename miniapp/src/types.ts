@@ -211,6 +211,8 @@ export type Screening = {
   capacity: number;
   /** Голосовал за этот фильм — значит, приглашение приходило. */
   invited: boolean;
+  /** Отметился на показе. У прошедшего это единственное, что стоит сказать. */
+  i_attended: boolean;
 };
 
 export type Schedule = {

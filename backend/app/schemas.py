@@ -572,6 +572,9 @@ class ScreeningOut(BaseModel):
     capacity: int = 0
     # Голосовал за фильм — значит, показ его касается и приглашение было.
     invited: bool = False
+    # Отметился на показе. У прошедшего показа это единственное, что имеет
+    # смысл сказать человеку: «приду» там уже ничего не меняет.
+    i_attended: bool = False
 
 
 class ScheduleOut(BaseModel):

@@ -13,6 +13,15 @@ function started(screening: Screening): boolean {
   return new Date(screening.slot.starts_at).getTime() <= Date.now();
 }
 
+/** Сеанс кончился. Считаем по времени, а не по статусу «прошёл»: его
+ *  проставляет фоновая задача раз в пять минут, и всё это время расписание
+ *  предлагало бы записаться на то, что уже посмотрели. */
+function finished(screening: Screening): boolean {
+  const ends =
+    new Date(screening.slot.starts_at).getTime() + screening.slot.duration_min * 60_000;
+  return screening.status === "completed" || ends <= Date.now();
+}
+
 /** Этап 3 (§7): опубликованное расписание и подтверждения. */
 export function Screenings({
   schedule,
@@ -61,7 +70,13 @@ export function Screenings({
   }
 
   if (attending) {
-    return <Attend screening={attending} onBack={() => setAttending(null)} />;
+    return (
+      <Attend
+        screeningId={attending.id}
+        title={attending.film.title_ru}
+        onBack={() => setAttending(null)}
+      />
+    );
   }
 
   const active = schedule.screenings.filter((s) => s.status !== "cancelled");
@@ -90,12 +105,17 @@ export function Screenings({
             и собирается список, за который голосуют.
           </p>
         ))}
-      {active.length > 0 && <p className="hint">Отметьте, на какие сеансы придёте.</p>}
+      {/* Подсказка про «придёте» — только там, где ещё есть куда прийти:
+          на прошедшей неделе она звала бы в прошлое. */}
+      {active.some((item) => !finished(item)) && (
+        <p className="hint">Отметьте, на какие сеансы придёте.</p>
+      )}
 
       {active.map((screening) => {
         const going = screening.my_state === "confirmed";
         const queued = screening.my_state === "waitlist";
         const full = screening.confirmed >= screening.capacity;
+        const over = finished(screening);
 
         return (
           <div
@@ -142,17 +162,25 @@ export function Screenings({
               )}
 
               <div className="marks">
-                <button
-                  className={`mark ${going ? "mark--going is-on" : queued ? "mark--soon is-on" : ""}`}
-                  disabled={busy !== null}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void toggle(screening);
-                  }}
-                >
-                  {going ? "✓ Приду" : queued ? "В очереди" : full ? "Встать в очередь" : "Приду"}
-                </button>
-                {started(screening) && (
+                {/* Показ прошёл — «приду» там уже ничего не меняет. Остаётся
+                    сказать, чем дело кончилось: были вы или нет. */}
+                {over ? (
+                  <span className={`badge ${screening.i_attended ? "badge--came" : ""}`}>
+                    {screening.i_attended ? "✓ Вы были" : "Вы не были"}
+                  </span>
+                ) : (
+                  <button
+                    className={`mark ${going ? "mark--going is-on" : queued ? "mark--soon is-on" : ""}`}
+                    disabled={busy !== null}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void toggle(screening);
+                    }}
+                  >
+                    {going ? "✓ Приду" : queued ? "В очереди" : full ? "Встать в очередь" : "Приду"}
+                  </button>
+                )}
+                {started(screening) && !over && (
                   // Окно отметки открыто — предлагаем ввести код с экрана (§8).
                   <button
                     className="mark mark--wishlist is-on"

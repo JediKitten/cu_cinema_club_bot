@@ -191,3 +191,26 @@ async def test_a_hung_job_does_not_stop_the_loop(monkeypatch):
         pass
 
     assert started >= 2, "после зависания цикл обязан зайти на следующий круг"
+
+
+# --- Кнопка под напоминанием об опросе --------------------------------------
+
+
+def test_the_survey_reminder_leads_straight_to_the_form(monkeypatch):
+    """Сообщение звало «оценить в приложении», а приложение открывалось
+    на каталоге: форму надо было ещё найти."""
+    from app.bot import survey_keyboard
+    from app.models.enums import NotificationKind
+
+    monkeypatch.setattr("app.bot.current_miniapp_url", lambda: "https://example.org")
+    markup = _notify_keyboard(NotificationKind.FEEDBACK_REMINDER, {"screening_id": 12})
+
+    assert markup is not None
+    button = flat(markup)[0]
+    assert button.web_app is not None
+    assert button.web_app.url.endswith("?survey=12")
+
+    # Без адреса приложения кнопка была бы битой — лучше её не рисовать.
+    monkeypatch.setattr("app.bot.current_miniapp_url", lambda: "")
+    assert survey_keyboard(12) is None
+    assert survey_keyboard(None) is None

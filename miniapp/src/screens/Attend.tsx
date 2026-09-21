@@ -3,7 +3,7 @@ import { ApiError, attendByCode, getFeedback, saveFeedback } from "../api";
 import { Poster } from "../components/FilmRow";
 import { StarRating } from "../components/StarRating";
 import { haptic } from "../telegram";
-import type { DiscussionSkip, FeedbackState, Screening } from "../types";
+import type { DiscussionSkip, FeedbackState } from "../types";
 
 /** Оценки ездят полубаллами (1..10), а показываются звёздами (0,5..5). */
 const toStars = (half: number | null) => (half === null ? null : half / 2);
@@ -17,11 +17,14 @@ const toHalf = (stars: number | null) => (stars === null ? null : Math.round(sta
  * пятёрки. Обязательна по-прежнему только отметка присутствия.
  */
 export function Attend({
-  screening,
+  screeningId,
+  title,
   onBack,
   backLabel = "← Назад",
 }: {
-  screening: Screening;
+  screeningId: number;
+  /** Название на случай события без фильма: у него карточки нет. */
+  title?: string;
   onBack(): void;
   /** Подпись возврата. Задаётся там, где над формой уже есть чужая «назад»:
    *  две одинаковые кнопки подряд выглядят как сбой вёрстки. */
@@ -39,7 +42,7 @@ export function Attend({
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    getFeedback(screening.id)
+    getFeedback(screeningId)
       .then((next) => {
         setState(next);
         setVisit(toStars(next.visit_rating));
@@ -49,7 +52,7 @@ export function Attend({
         setReview(next.review_text ?? "");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
-  }, [screening.id]);
+  }, [screeningId]);
 
   function touched() {
     setSaved(false);
@@ -61,7 +64,7 @@ export function Attend({
     setError(null);
     haptic("medium");
     try {
-      setState(await attendByCode(screening.id, code.trim()));
+      setState(await attendByCode(screeningId, code.trim()));
       setCode("");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Не получилось отметиться");
@@ -75,7 +78,7 @@ export function Attend({
     setBusy(true);
     setError(null);
     try {
-      const next = await saveFeedback(screening.id, {
+      const next = await saveFeedback(screeningId, {
         visit_rating: toHalf(visit),
         // Вопрос про фильм скрыт — значит, оценка уже есть в каталоге, и
         // пересылать сюда нечего: рейтинг у фильма один.
@@ -117,7 +120,7 @@ export function Attend({
           </div>
         </div>
       ) : (
-        <h3 style={{ marginBottom: 0 }}>{screening.film.title_ru}</h3>
+        <h3 style={{ marginBottom: 0 }}>{title ?? "Показ клуба"}</h3>
       )}
 
       {error && <div className="error">{error}</div>}

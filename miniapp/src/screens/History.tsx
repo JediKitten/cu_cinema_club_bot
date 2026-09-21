@@ -3,7 +3,7 @@ import { getPastScreenings } from "../api";
 import { Poster } from "../components/FilmRow";
 import { dayLabel } from "../dates";
 import { useOpenFilmById } from "../filmOpener";
-import type { PastScreening, Screening } from "../types";
+import type { PastScreening } from "../types";
 import { Attend } from "./Attend";
 
 /** Календарь прошедших показов (§18, пункт 10).
@@ -24,21 +24,10 @@ export function History() {
   }, []);
 
   if (survey) {
-    // Опросу нужен показ в том виде, в каком его знает расписание. Из истории
-    // приходит только карточка — остального форма и не спрашивает: человек
-    // уже отмечен, ей остаётся задать четыре вопроса.
-    const asScreening = {
-      id: survey.screening_id,
-      film: {
-        id: survey.film_id,
-        title_ru: survey.title,
-        year: survey.year,
-        poster_url: survey.poster_url,
-      },
-    } as unknown as Screening;
     return (
       <Attend
-        screening={asScreening}
+        screeningId={survey.screening_id}
+        title={survey.title}
         onBack={() => setSurvey(null)}
         backLabel="← К показам"
       />
