@@ -171,6 +171,14 @@ input {
   color: var(--hint);
 }
 
+/* Язык показа — не примечание, а причина прийти или не прийти: серым
+   по серому рядом с названием зала его просто не увидят. */
+.badge--english {
+  margin: 4px 0;
+  background: color-mix(in srgb, var(--link) 18%, transparent);
+  color: var(--text);
+}
+
 .tabs {
   position: fixed;
   bottom: 0;

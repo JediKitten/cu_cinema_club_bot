@@ -199,6 +199,8 @@ export type Screening = {
   cancel_reason: string | null;
   /** Назначено вручную, в обход цикла. */
   is_manual: boolean;
+  /** Показ идёт в оригинале без дубляжа. */
+  in_english: boolean;
   /** Подпись к событию без фильма: «ждите анонса». */
   note: string | null;
   /** Своя регистрация у вуза — показываем записавшимся. */

@@ -110,6 +110,12 @@ export function Screenings({
                 {dayLabel(screening.slot.starts_at)} · {timeLabel(screening.slot.starts_at)} ·{" "}
                 {screening.slot.hall_name}
               </p>
+              {/* Язык решает, пойдёт человек или нет, не хуже самого фильма:
+                  в расписание за этим и заглядывают. Плашка, а не строчка
+                  в сером тексте рядом с залом, — иначе её не заметят. */}
+              {screening.in_english && (
+                <p className="badge badge--english">🇬🇧 На английском, без дубляжа</p>
+              )}
               {/* Подпись события без фильма — «ждите анонса»: без неё такой
                   вечер выглядит как пустая строка в расписании. */}
               {screening.note && <p className="meta">{screening.note}</p>}
