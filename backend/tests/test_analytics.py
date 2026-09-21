@@ -122,7 +122,7 @@ async def test_long_wait_films_listed(session):
 async def test_top_rated_hides_films_with_too_few_votes(session):
     """§11: при малом числе оценок рейтинг не показываем вовсе."""
     _, films, screening, boss, voters = await held_screening(session)
-    await att.save_feedback(session, screening.id, voters[0].id, 9, None, None)
+    await att.save_feedback(session, screening.id, voters[0].id, 9, None)
 
     assert await analytics.top_rated(session, min_votes=5) == []
 
@@ -238,7 +238,7 @@ async def test_came_counts_people_not_pairs_of_attendance_and_feedback(session):
     # Второй зритель тоже дошёл, и оба оставили отзыв.
     await att.mark_manually(session, screening.id, voters[1].id, boss.id)
     for voter in voters[:2]:
-        await att.save_feedback(session, screening.id, voter.id, 8, None, None)
+        await att.save_feedback(session, screening.id, voter.id, 8, None)
 
     row = next(
         r for r in await analytics.past_screenings(session) if r["screening_id"] == screening.id

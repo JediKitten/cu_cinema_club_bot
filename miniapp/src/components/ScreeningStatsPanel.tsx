@@ -86,16 +86,23 @@ export function ScreeningStatsPanel({ screeningId }: { screeningId: number }) {
         </div>
       </div>
 
-      {(stats.film_rating !== null || stats.org_rating !== null) && (
+      {(stats.film_rating !== null ||
+        stats.visit_rating !== null ||
+        stats.discussion_rating !== null) && (
         <div className="stats-grid">
           <div className="stat">
             <b>{stats.film_rating ?? "—"}</b>
             <span>фильм · {stats.film_rating_votes} оц.</span>
           </div>
-          {/* §8: оценка организации отдельным числом, в рейтинг фильма не входит. */}
+          {/* §8: впечатление от вечера и от обсуждения — отдельные числа,
+              в рейтинг фильма они не входят. */}
           <div className="stat">
-            <b>{stats.org_rating ?? "—"}</b>
-            <span>организация</span>
+            <b>{stats.visit_rating ?? "—"}</b>
+            <span>вечер · {stats.visit_rating_votes} оц.</span>
+          </div>
+          <div className="stat">
+            <b>{stats.discussion_rating ?? "—"}</b>
+            <span>обсуждение · {stats.discussion_rating_votes} оц.</span>
           </div>
         </div>
       )}

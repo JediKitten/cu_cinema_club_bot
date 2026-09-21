@@ -413,12 +413,19 @@ async def top_rated(session: AsyncSession, min_votes: int, limit: int = 10) -> l
     ]
 
 
-async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
+async def past_screenings(
+    session: AsyncSession, viewer_id: int | None = None, limit: int = 50
+) -> list[dict]:
     """Календарь прошедших показов (§18, пункт 10).
 
     Только состоявшиеся: отменённый показ никто не смотрел, и во вкладке
     «Что уже смотрели» он лишь путает. Отмены видны в аналитике отдельно.
+
+    `viewer_id` добавляет два признака про смотрящего: был ли он на показе
+    и прошёл ли опрос. Без них человек, которого просили ответить, упирается
+    в список без единой кнопки — идти ему некуда.
     """
+    mine = viewer_id or -1
     rows = await session.execute(
         sa.select(
             Screening.id,
@@ -441,6 +448,12 @@ async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
             .where(Feedback.screening_id == Screening.id, Feedback.film_rating.is_not(None))
             .scalar_subquery()
             .label("rating"),
+            sa.exists()
+            .where(Attendance.screening_id == Screening.id, Attendance.user_id == mine)
+            .label("i_attended"),
+            sa.exists()
+            .where(Feedback.screening_id == Screening.id, Feedback.user_id == mine)
+            .label("i_answered"),
         )
         .join(Film, Film.id == Screening.film_id)
         .join(Slot, Slot.id == Screening.slot_id)
@@ -460,7 +473,10 @@ async def past_screenings(session: AsyncSession, limit: int = 50) -> list[dict]:
             "expected": expected,
             "came": came,
             "rating": round(float(rating), 2) if rating is not None else None,
+            "i_attended": attended,
+            "i_answered": answered,
         }
-        for sid, film_id, title, year, poster, starts_at, status, expected, came, rating in rows
+        for sid, film_id, title, year, poster, starts_at, status, expected, came, rating,
+        attended, answered in rows
     ]
 

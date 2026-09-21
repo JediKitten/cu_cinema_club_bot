@@ -665,12 +665,12 @@ async def test_feedback_works_for_an_event_without_a_film(session):
         guest.id,
         film_rating=None,
         review_text="Было здорово",
-        org={"sound": 5, "hall": 4},
+        visit_rating=9,
     )
 
     assert saved.film_id is None
     assert saved.review_text == "Было здорово"
-    assert saved.org_sound == 5
+    assert saved.visit_rating == 9
 
 
 async def test_waitlist_works_for_manual_event(session):

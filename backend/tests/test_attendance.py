@@ -11,6 +11,7 @@ from app.services import attendance as att
 from app.services import interests as marks
 from app.services import schedule as sched
 from app.services.attendance import AttendanceError
+from tests.conftest import login
 from tests.test_schedule import voted_round
 from tests.test_weights import make_user
 
@@ -187,7 +188,7 @@ async def test_feedback_requires_attendance(session):
     _, _, screening, _, voters = await running_screening(session)
 
     with pytest.raises(AttendanceError, match="на котором были"):
-        await att.save_feedback(session, screening.id, voters[0].id, 8, None, None)
+        await att.save_feedback(session, screening.id, voters[0].id, 8, None)
 
 
 async def test_feedback_saved_and_editable(session):
@@ -197,9 +198,9 @@ async def test_feedback_saved_and_editable(session):
     await att.mark_by_code(session, screening.id, voters[0].id, code.code, ROTATION, WINDOW, now)
 
     await att.save_feedback(
-        session, screening.id, voters[0].id, 9, "Отлично", {"sound": 4, "comment": "тихо"}
+        session, screening.id, voters[0].id, 9, "Отлично", visit_rating=10
     )
-    again = await att.save_feedback(session, screening.id, voters[0].id, 7, None, None)
+    again = await att.save_feedback(session, screening.id, voters[0].id, 7, None)
 
     assert again.film_rating == 7
     assert again.review_text is None
@@ -213,22 +214,46 @@ async def test_rating_bounds_checked(session):
     await att.mark_by_code(session, screening.id, voters[0].id, code.code, ROTATION, WINDOW, now)
 
     with pytest.raises(AttendanceError, match="от 1 до 10"):
-        await att.save_feedback(session, screening.id, voters[0].id, 11, None, None)
+        await att.save_feedback(session, screening.id, voters[0].id, 11, None)
 
 
-async def test_org_rating_is_separate_from_the_film(session):
-    """Плохая проекция не должна топить хорошее кино (§8)."""
+async def test_visit_and_discussion_are_separate_from_the_film(session):
+    """Плохой вечер не должен топить хорошее кино (§8): оценки живут врозь."""
     _, _, screening, _, voters = await running_screening(session)
     now = datetime.now(UTC)
     code = await att.current_code(session, screening, ROTATION, now)
     await att.mark_by_code(session, screening.id, voters[0].id, code.code, ROTATION, WINDOW, now)
 
     feedback = await att.save_feedback(
-        session, screening.id, voters[0].id, 10, None, {"sound": 1, "picture": 2}
+        session, screening.id, voters[0].id, 10, None, visit_rating=3, discussion_rating=4
     )
     assert feedback.film_rating == 10
-    assert feedback.org_sound == 1
-    assert feedback.org_picture == 2
+    assert (feedback.visit_rating, feedback.discussion_rating) == (3, 4)
+    # В рейтинг фильма ушла только оценка фильма.
+    from app.services import ratings
+
+    assert await ratings.my_rating(session, voters[0].id, screening.film_id) == 5.0
+
+
+async def test_discussion_answer_is_one_of_three(session):
+    """Оценка, «не был» или «затрудняюсь» — но не оценка и причина разом."""
+    _, _, screening, boss, voters = await running_screening(session)
+    await att.mark_manually(session, screening.id, voters[0].id, boss.id)
+
+    skipped = await att.save_feedback(
+        session, screening.id, voters[0].id, None, None, discussion_skip="absent"
+    )
+    assert skipped.discussion_skip == "absent" and skipped.discussion_rating is None
+
+    with pytest.raises(AttendanceError, match="либо оценка"):
+        await att.save_feedback(
+            session, screening.id, voters[0].id, None, None,
+            discussion_rating=8, discussion_skip="unsure",
+        )
+    with pytest.raises(AttendanceError, match="Непонятный ответ"):
+        await att.save_feedback(
+            session, screening.id, voters[0].id, None, None, discussion_skip="пропустил"
+        )
 
 
 async def test_attendees_list_is_ordered(session):
@@ -238,3 +263,48 @@ async def test_attendees_list_is_ordered(session):
 
     listed = await att.attendees(session, screening.id)
     assert [a.user_id for a in listed] == [v.id for v in voters]
+
+
+async def test_film_question_disappears_once_the_film_is_rated(session, client):
+    """Оценка у фильма одна, откуда бы ни пришла. Поставивший её в каталоге
+    не должен объяснять то же самое второй раз — форма просто не спрашивает."""
+    from app.services import ratings
+    
+    _, _, screening, boss, voters = await running_screening(session)
+    await att.mark_manually(session, screening.id, voters[0].id, boss.id)
+    await session.commit()
+
+    auth = await login(client, voters[0].tg_id, voters[0].display_name)
+    headers = {"Authorization": f"Bearer {auth['token']}"}
+
+    before = (await client.get(f"/api/screenings/{screening.id}/feedback", headers=headers)).json()
+    assert before["film_already_rated"] is False
+
+    await ratings.set_rating(session, voters[0].id, screening.film_id, 4.5)
+    after = (await client.get(f"/api/screenings/{screening.id}/feedback", headers=headers)).json()
+    assert after["film_already_rated"] is True
+
+
+async def test_survey_answers_go_through_the_api(session, client):
+    _, _, screening, boss, voters = await running_screening(session)
+    await att.mark_manually(session, screening.id, voters[0].id, boss.id)
+    await session.commit()
+
+    auth = await login(client, voters[0].tg_id, voters[0].display_name)
+    saved = await client.put(
+        f"/api/screenings/{screening.id}/feedback",
+        json={
+            "visit_rating": 9,
+            "film_rating": 8,
+            "discussion_skip": "unsure",
+            "review_text": "Стулья жёсткие",
+        },
+        headers={"Authorization": f"Bearer {auth['token']}"},
+    )
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["visit_rating"] == 9
+    assert body["discussion_skip"] == "unsure"
+    assert body["review_text"] == "Стулья жёсткие"
+    # Оценка фильма из формы — та же, что в каталоге.
+    assert body["film_already_rated"] is True

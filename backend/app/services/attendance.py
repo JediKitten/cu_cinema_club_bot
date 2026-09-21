@@ -22,6 +22,7 @@ from app.models import Attendance, Confirmation, Feedback, Interest, Screening, 
 from app.models.enums import (
     AttendanceMethod,
     ConfirmationState,
+    DiscussionSkip,
     RevokeReason,
     ScreeningStatus,
 )
@@ -206,12 +207,20 @@ async def save_feedback(
     user_id: int,
     film_rating: int | None,
     review_text: str | None,
-    org: dict | None,
+    visit_rating: int | None = None,
+    discussion_rating: int | None = None,
+    discussion_skip: str | None = None,
 ) -> Feedback:
-    """Оценка и отзыв (§8).
+    """Опрос после показа (§8, CSAT по просьбе клуба).
 
-    Обязательна только отметка присутствия, сама форма — нет. Оценка организации
-    не входит в рейтинг фильма: плохая проекция не должна топить хорошее кино.
+    Обязательна только отметка присутствия, сама форма — нет: заполнять её
+    из-под палки значило бы собирать вежливые пятёрки вместо правды, а клуб
+    отчитывается этими цифрами перед вузом.
+
+    Оценка фильма отсюда — та же, что в каталоге: рейтинг у фильма один,
+    откуда бы оценка ни пришла. Впечатление от вечера и обсуждение живут
+    отдельно и в рейтинг фильма не входят — плохая проекция не должна
+    топить хорошее кино.
     """
     screening = await session.get(Screening, screening_id)
     if screening is None:
@@ -225,10 +234,14 @@ async def save_feedback(
     if came is None:
         raise AttendanceError("Оценить можно только тот показ, на котором были")
 
-    if film_rating is not None and not 1 <= film_rating <= 10:
-        raise AttendanceError("Оценка — от 1 до 10")
+    for value in (film_rating, visit_rating, discussion_rating):
+        if value is not None and not 1 <= value <= 10:
+            raise AttendanceError("Оценка — от 1 до 10")
+    if discussion_rating is not None and discussion_skip is not None:
+        raise AttendanceError("У обсуждения либо оценка, либо причина её отсутствия")
+    if discussion_skip is not None and discussion_skip not in set(DiscussionSkip):
+        raise AttendanceError("Непонятный ответ про обсуждение")
 
-    org = org or {}
     existing = (
         await session.execute(
             sa.select(Feedback).where(
@@ -244,12 +257,10 @@ async def save_feedback(
         session.add(existing)
 
     existing.film_rating = film_rating
+    existing.visit_rating = visit_rating
+    existing.discussion_rating = discussion_rating
+    existing.discussion_skip = DiscussionSkip(discussion_skip) if discussion_skip else None
     existing.review_text = (review_text or "").strip() or None
-    existing.org_sound = org.get("sound")
-    existing.org_picture = org.get("picture")
-    existing.org_hall = org.get("hall")
-    existing.org_time = org.get("time")
-    existing.org_comment = (org.get("comment") or "").strip() or None
 
     # Рейтинг у фильма один, откуда бы оценка ни пришла: десятибалльная шкала
     # формы — те же полубаллы, что и пять звёзд в каталоге.

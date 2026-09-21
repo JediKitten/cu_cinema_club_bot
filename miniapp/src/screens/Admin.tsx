@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOpenFilmById } from "../filmOpener";
 import { Analytics } from "../components/Analytics";
+import { SurveyPanel } from "../components/SurveyPanel";
 import { EventPanel } from "../components/EventPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { TeamPanel } from "../components/TeamPanel";
@@ -85,6 +86,7 @@ type Panel =
   | "tournament"
   | "awards"
   | "stats"
+  | "surveys"
   | "team"
   | "people"
   | "broadcast"
@@ -100,6 +102,7 @@ const PANELS: { key: Panel; label: string; minRole: keyof typeof RANK }[] = [
   { key: "tournament", label: "Турнир", minRole: "admin" },
   { key: "awards", label: "Ачивки", minRole: "admin" },
   { key: "stats", label: "Аналитика", minRole: "admin" },
+  { key: "surveys", label: "Опросы", minRole: "admin" },
   { key: "team", label: "Команда", minRole: "admin" },
   { key: "broadcast", label: "Рассылка", minRole: "admin" },
   { key: "people", label: "Люди", minRole: "superadmin" },
@@ -198,6 +201,7 @@ export function Admin({ me }: { me: User }) {
       {panel === "tournament" && <TournamentPanel />}
       {panel === "awards" && <AchievementPanel />}
       {panel === "stats" && <Analytics />}
+      {panel === "surveys" && <SurveyPanel />}
       {error && <div className="error">{error}</div>}
 
       {panel === "round" && (round === null ? (

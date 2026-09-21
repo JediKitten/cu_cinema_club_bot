@@ -132,6 +132,8 @@ WATCH_SOURCE_LABEL = {"manual": "отметил сам", "attendance": "был �
 
 RATING_SOURCE_LABEL = {"catalog": "из каталога", "screening": "после показа"}
 
+DISCUSSION_LABEL = {"absent": "не был", "unsure": "затрудняюсь ответить"}
+
 
 def label(mapping: dict[str, str], value: Any) -> str | None:
     """Подпись по значению enum. Незнакомое отдаём как есть: новый статус
@@ -728,19 +730,19 @@ async def build_screenings(session: AsyncSession) -> list[Sheet]:
 
 
 async def build_feedback(session: AsyncSession) -> list[Sheet]:
+    """Опрос после показа — тот самый CSAT, которым клуб отчитывается перед
+    вузом. Строка на человека: средние считаются по ним, а не наоборот."""
     query = (
         sa.select(
             Feedback.screening_id,
             Slot.starts_at,
             Film.title_ru,
             *_who(),
+            Feedback.visit_rating,
             Feedback.film_rating,
+            Feedback.discussion_rating,
+            Feedback.discussion_skip,
             Feedback.review_text,
-            Feedback.org_sound,
-            Feedback.org_picture,
-            Feedback.org_hall,
-            Feedback.org_time,
-            Feedback.org_comment,
             Feedback.created_at,
         )
         .join(Screening, Screening.id == Feedback.screening_id)
@@ -750,16 +752,16 @@ async def build_feedback(session: AsyncSession) -> list[Sheet]:
         .order_by(Slot.starts_at, User.id)
     )
     rows = [
-        (sid, starts, film, uid, name, nick, stars(rating), text, sound, picture, hall, time_,
-         comment, created)
-        for sid, starts, film, uid, name, nick, rating, text, sound, picture, hall, time_,
-        comment, created in (await session.execute(query)).all()
+        (sid, starts, film, uid, name, nick, stars(visit), stars(rating),
+         stars(discussion) or label(DISCUSSION_LABEL, skip), text, created)
+        for sid, starts, film, uid, name, nick, visit, rating, discussion, skip, text, created
+        in (await session.execute(query)).all()
     ]
     return [
         Sheet(
-            "Отзывы",
-            ("ID показа", "Начало", "Фильм", *WHO_HEADERS, "Оценка фильма", "Отзыв", "Звук",
-             "Картинка", "Зал", "Время", "Комментарий об организации", "Когда"),
+            "Опрос после показа",
+            ("ID показа", "Начало", "Фильм", *WHO_HEADERS, "Посещение в целом", "Оценка фильма",
+             "Обсуждение", "Предложения и критика", "Когда"),
             rows,
         )
     ]
@@ -1119,8 +1121,8 @@ DATASETS: tuple[Dataset, ...] = (
         "Показы", build_screenings,
     ),
     Dataset(
-        "feedback", "💬 Отзывы", "оценки после показа и что писали об организации",
-        "Отзывы", build_feedback,
+        "feedback", "💬 Опросы", "CSAT после каждого показа — построчно, по людям",
+        "Опрос", build_feedback,
     ),
     Dataset(
         "tournaments", "🏆 Турниры", "сетки, пары и все голоса в них",

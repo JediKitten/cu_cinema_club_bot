@@ -7,6 +7,7 @@ from app.models.base import Base, CreatedAtMixin
 from app.models.enums import (
     AttendanceMethod,
     ConfirmationState,
+    DiscussionSkip,
     RoundStage,
     ScreeningStatus,
     ShortlistSource,
@@ -241,6 +242,20 @@ class Feedback(Base, CreatedAtMixin):
             "film_rating IS NULL OR film_rating BETWEEN 1 AND 10",
             name="film_rating_range",
         ),
+        sa.CheckConstraint(
+            "visit_rating IS NULL OR visit_rating BETWEEN 1 AND 10",
+            name="visit_rating_range",
+        ),
+        sa.CheckConstraint(
+            "discussion_rating IS NULL OR discussion_rating BETWEEN 1 AND 10",
+            name="discussion_rating_range",
+        ),
+        # Либо оценка обсуждения, либо причина её отсутствия — но не оба сразу:
+        # «не был, и вот моя оценка» не значит ничего.
+        sa.CheckConstraint(
+            "discussion_rating IS NULL OR discussion_skip IS NULL",
+            name="discussion_one_answer",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -250,11 +265,16 @@ class Feedback(Base, CreatedAtMixin):
     # оценивать там нечего, а рассказать, как прошло, — есть что.
     film_id: Mapped[int | None] = mapped_column(sa.ForeignKey("films.id"), index=True)
     film_rating: Mapped[int | None]
+    # Впечатление от вечера целиком — то самое CSAT, ради которого опрос
+    # и собирают: с ним клуб отчитывается перед вузом.
+    visit_rating: Mapped[int | None]
+    # Обсуждение после фильма. Либо оценка, либо причина, по которой её нет:
+    # «не был» и «затрудняюсь ответить» — разные ответы, и оба честные.
+    discussion_rating: Mapped[int | None]
+    discussion_skip: Mapped[DiscussionSkip | None] = mapped_column(
+        enum_col(DiscussionSkip, "discussion_skip")
+    )
+    # Свободный ответ: предложения и критика. Единственное место опроса,
+    # где человек говорит своими словами, — и самое ценное в нём.
     review_text: Mapped[str | None] = mapped_column(sa.Text)
-    # Оценка организации НЕ входит в рейтинг фильма (§8) — отдельные поля.
-    org_sound: Mapped[int | None]
-    org_picture: Mapped[int | None]
-    org_hall: Mapped[int | None]
-    org_time: Mapped[int | None]
-    org_comment: Mapped[str | None] = mapped_column(sa.Text)
     reminder_sent_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))

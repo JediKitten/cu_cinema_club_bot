@@ -236,22 +236,23 @@ export type ConfirmResult = {
 
 // --- Этап 4: присутствие и оценки (§8) --------------------------------------
 
-export type OrgRating = {
-  sound: number | null;
-  picture: number | null;
-  hall: number | null;
-  time: number | null;
-  comment: string | null;
-};
+/** Почему у обсуждения нет оценки. «Не был» и «не знаю» — разные ответы. */
+export type DiscussionSkip = "absent" | "unsure";
 
+/** Опрос после показа: CSAT, которым клуб отчитывается перед вузом. */
 export type FeedbackState = {
   screening_id: number;
   /** Пусто у события без фильма: оценивать нечего, рассказать — есть что. */
   film: FilmBrief | null;
   attended: boolean;
+  /** Оценки в полубаллах, 1..10 — те же, что у фильмов. */
+  visit_rating: number | null;
   film_rating: number | null;
+  discussion_rating: number | null;
+  discussion_skip: DiscussionSkip | null;
   review_text: string | null;
-  org: OrgRating | null;
+  /** Фильм уже оценён раньше — второй раз не спрашиваем. */
+  film_already_rated: boolean;
 };
 
 export type ScreeningCode = {
@@ -321,6 +322,9 @@ export type PastScreening = {
   expected: number | null;
   came: number;
   rating: number | null;
+  /** Про смотрящего: был ли он здесь и прошёл ли опрос. */
+  i_attended: boolean;
+  i_answered: boolean;
 };
 
 // --- Управление клубом ------------------------------------------------------
@@ -428,8 +432,10 @@ export type ScreeningStats = {
   min_attendance: number;
   film_rating: number | null;
   film_rating_votes: number;
-  org_rating: number | null;
-  org_rating_votes: number;
+  visit_rating: number | null;
+  visit_rating_votes: number;
+  discussion_rating: number | null;
+  discussion_rating_votes: number;
 };
 
 export type PersonRow = {
@@ -658,4 +664,32 @@ export type CustomAchievement = {
   description: string;
   tier: AchievementTier;
   earned_at: string;
+};
+
+/** Ответ одного человека на опрос после показа. */
+export type SurveyAnswer = {
+  user_id: number;
+  display_name: string;
+  visit: number | null;
+  film: number | null;
+  discussion: number | null;
+  discussion_skip: DiscussionSkip | null;
+  comment: string | null;
+  answered_at: string;
+};
+
+/** Опрос по одному показу: цифры для отчёта и ответы поимённо. */
+export type Survey = {
+  screening_id: number;
+  starts_at: string;
+  title: string;
+  attended: number;
+  answered: number;
+  /** Средние — уже в звёздах, 0,5..5. */
+  visit_avg: number | null;
+  film_avg: number | null;
+  discussion_avg: number | null;
+  discussion_absent: number;
+  discussion_unsure: number;
+  answers: SurveyAnswer[];
 };

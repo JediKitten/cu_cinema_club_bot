@@ -18,6 +18,8 @@ from app.schemas import (
     ScreeningStatsOut,
     SettingOut,
     SettingsPatch,
+    SurveyAnswerOut,
+    SurveyOut,
 )
 from app.services import achievements, insights
 from app.services.ranking import FilmRank, rank_by_coverage, rank_by_weight
@@ -216,8 +218,10 @@ async def screening_stats(
         min_attendance=stats.min_attendance,
         film_rating=stats.film_rating,
         film_rating_votes=stats.film_rating_votes,
-        org_rating=stats.org_rating,
-        org_rating_votes=stats.org_rating_votes,
+        visit_rating=stats.visit_rating,
+        visit_rating_votes=stats.visit_rating_votes,
+        discussion_rating=stats.discussion_rating,
+        discussion_rating_votes=stats.discussion_rating_votes,
     )
 
 
@@ -300,4 +304,43 @@ async def people(
             created_at=user.created_at,
         )
         for user in rows
+    ]
+
+
+@router.get("/surveys", response_model=list[SurveyOut])
+async def surveys(
+    admin: RequireAdmin, session: Annotated[AsyncSession, Depends(get_session)]
+) -> list[SurveyOut]:
+    """Опросы после показов: средние для отчёта и ответы поимённо.
+
+    Поимённо — потому что средним отчитаться можно, а понять нельзя: одна
+    тройка с припиской «звук фонил» говорит больше самой тройки.
+    """
+    return [
+        SurveyOut(
+            screening_id=item.screening_id,
+            starts_at=item.starts_at,
+            title=item.title,
+            attended=item.attended,
+            answered=item.answered,
+            visit_avg=item.visit_avg,
+            film_avg=item.film_avg,
+            discussion_avg=item.discussion_avg,
+            discussion_absent=item.discussion_absent,
+            discussion_unsure=item.discussion_unsure,
+            answers=[
+                SurveyAnswerOut(
+                    user_id=answer.user_id,
+                    display_name=answer.display_name,
+                    visit=answer.visit,
+                    film=answer.film,
+                    discussion=answer.discussion,
+                    discussion_skip=answer.discussion_skip,
+                    comment=answer.comment,
+                    answered_at=answer.answered_at,
+                )
+                for answer in item.answers
+            ],
+        )
+        for item in await insights.surveys(session)
     ]

@@ -8,14 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, RequireModerator
 from app.db import get_session
-from app.models import Attendance, Feedback, Film, Screening, User
+from app.models import Attendance, Feedback, Film, FilmRating, Screening, User
 from app.schemas import (
     AttendeeOut,
     CodeOut,
     FeedbackIn,
     FeedbackOut,
     MarkCodeIn,
-    OrgRating,
 )
 from app.services import attendance as att
 from app.services.attendance import AttendanceError
@@ -148,9 +147,11 @@ async def put_feedback(
             session,
             screening_id,
             user.id,
-            body.film_rating,
-            body.review_text,
-            body.org.model_dump() if body.org else None,
+            film_rating=body.film_rating,
+            review_text=body.review_text,
+            visit_rating=body.visit_rating,
+            discussion_rating=body.discussion_rating,
+            discussion_skip=body.discussion_skip,
         )
     except AttendanceError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -176,6 +177,16 @@ async def _feedback_out(
         )
     ).scalar_one_or_none()
 
+    rated = (
+        await session.scalar(
+            sa.select(FilmRating.score).where(
+                FilmRating.user_id == user_id, FilmRating.film_id == screening.film_id
+            )
+        )
+        if screening.film_id is not None
+        else None
+    )
+
     from app.schemas import FilmBrief
 
     return FeedbackOut(
@@ -196,17 +207,13 @@ async def _feedback_out(
             else None
         ),
         attended=came is not None,
+        visit_rating=saved.visit_rating if saved else None,
         film_rating=saved.film_rating if saved else None,
+        discussion_rating=saved.discussion_rating if saved else None,
+        discussion_skip=saved.discussion_skip if saved else None,
         review_text=saved.review_text if saved else None,
-        org=(
-            OrgRating(
-                sound=saved.org_sound,
-                picture=saved.org_picture,
-                hall=saved.org_hall,
-                time=saved.org_time,
-                comment=saved.org_comment,
-            )
-            if saved
-            else None
-        ),
+        # Оценку фильма спрашиваем один раз: у фильма она одна, и человек,
+        # поставивший её в каталоге, не должен объяснять то же самое снова.
+        # Свою прошлую оценку при этом показываем — менять её никто не мешает.
+        film_already_rated=rated is not None,
     )

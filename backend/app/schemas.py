@@ -3,7 +3,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import FilmRequestStatus, InterestKind, RoundStage, UserRole
+from app.models.enums import (
+    DiscussionSkip,
+    FilmRequestStatus,
+    InterestKind,
+    RoundStage,
+    UserRole,
+)
 
 
 class UserOut(BaseModel):
@@ -238,8 +244,10 @@ class ScreeningStatsOut(BaseModel):
     min_attendance: int = 0
     film_rating: float | None = None
     film_rating_votes: int = 0
-    org_rating: float | None = None
-    org_rating_votes: int = 0
+    visit_rating: float | None = None
+    visit_rating_votes: int = 0
+    discussion_rating: float | None = None
+    discussion_rating_votes: int = 0
 
 
 class RankingsOut(BaseModel):
@@ -626,29 +634,59 @@ class AttendeeOut(BaseModel):
     marked_at: datetime
 
 
-class OrgRating(BaseModel):
-    sound: int | None = Field(default=None, ge=1, le=5)
-    picture: int | None = Field(default=None, ge=1, le=5)
-    hall: int | None = Field(default=None, ge=1, le=5)
-    time: int | None = Field(default=None, ge=1, le=5)
-    comment: str | None = Field(default=None, max_length=1000)
+class SurveyAnswerOut(BaseModel):
+    user_id: int
+    display_name: str
+    visit: int | None = None
+    film: int | None = None
+    discussion: int | None = None
+    discussion_skip: DiscussionSkip | None = None
+    comment: str | None = None
+    answered_at: datetime
+
+
+class SurveyOut(BaseModel):
+    """Опрос по одному показу: цифры для отчёта и ответы поимённо."""
+
+    screening_id: int
+    starts_at: datetime
+    title: str
+    attended: int
+    answered: int
+    visit_avg: float | None = None
+    film_avg: float | None = None
+    discussion_avg: float | None = None
+    discussion_absent: int = 0
+    discussion_unsure: int = 0
+    answers: list[SurveyAnswerOut] = Field(default_factory=list)
 
 
 class FeedbackIn(BaseModel):
-    # Обязательна только отметка присутствия, форма — нет (§8).
+    """Опрос после показа. Обязательна только отметка присутствия, форма — нет
+    (§8): заполненная из-под палки, она собирала бы вежливые пятёрки."""
+
+    # Оценки — те же полубаллы, что и у фильмов: 1..10 это 0,5..5 звёзд.
+    visit_rating: int | None = Field(default=None, ge=1, le=10)
     film_rating: int | None = Field(default=None, ge=1, le=10)
+    discussion_rating: int | None = Field(default=None, ge=1, le=10)
+    # «Не был» и «затрудняюсь ответить» — разные ответы, и оба честные.
+    discussion_skip: DiscussionSkip | None = None
     review_text: str | None = Field(default=None, max_length=2000)
-    org: OrgRating | None = None
 
 
 class FeedbackOut(BaseModel):
     screening_id: int
-    # Пусто у события без фильма: форма тогда спрашивает только про организацию.
+    # Пусто у события без фильма: про кино тогда не спрашиваем.
     film: FilmBrief | None = None
     attended: bool
+    visit_rating: int | None = None
     film_rating: int | None = None
+    discussion_rating: int | None = None
+    discussion_skip: DiscussionSkip | None = None
     review_text: str | None = None
-    org: OrgRating | None = None
+    # Фильм этот человек уже оценил (в каталоге, в ленте или после прошлого
+    # показа) — второй раз спрашивать незачем, оценка у фильма одна.
+    film_already_rated: bool = False
 
 
 # --- Турниры (расширение по просьбе клуба) ----------------------------------
@@ -792,6 +830,10 @@ class PastScreeningOut(BaseModel):
     film_id: int
     title: str
     year: int | None
+    # Про смотрящего: был ли он тут и ответил ли на опрос. По ним рисуется
+    # кнопка «пройти опрос» — иначе идти с напоминания было бы некуда.
+    i_attended: bool = False
+    i_answered: bool = False
     poster_url: str | None
     starts_at: datetime
     status: str

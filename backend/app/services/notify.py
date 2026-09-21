@@ -263,7 +263,15 @@ def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) 
         case NotificationKind.REMINDER_2H:
             return f"⏰ Через два часа\n\n{film_line}\n{when}\n\nДо встречи!"
         case NotificationKind.FEEDBACK_REMINDER:
-            return f"⭐️ Как вам {film_line}?\n\nОцените фильм в приложении — это займёт полминуты."
+            # Про отчётность говорим прямо: просьба «оцените честно» без
+            # объяснения, зачем это клубу, читается как вежливая формальность,
+            # и в ответ приходят вежливые пятёрки.
+            return (
+                f"⭐️ Как вам {film_line}?\n\n"
+                "Клуб отчитывается перед вузом — и отчёт складывается из ваших "
+                "ответов, а не из наших ощущений. Четыре вопроса, полминуты. "
+                "Отвечайте честно: заниженная оценка нам полезнее вежливой."
+            )
         case NotificationKind.ADMIN_LOW_ATTENDANCE:
             confirmed = payload.get("confirmed", 0)
             needed = payload.get("min_attendance", 0)

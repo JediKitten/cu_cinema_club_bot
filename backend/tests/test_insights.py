@@ -180,8 +180,8 @@ async def test_screening_history_carries_actual_attendance(session):
     assert history[0].status == ScreeningStatus.COMPLETED
 
 
-async def test_org_rating_is_separate_from_the_film(session):
-    """§8: оценка организации в рейтинг фильма не входит."""
+async def test_visit_rating_is_separate_from_the_film(session):
+    """§8: впечатление от вечера в рейтинг фильма не входит."""
     _, _, screening, _, voters = await held_screening(session)
     await att.save_feedback(
         session,
@@ -189,7 +189,8 @@ async def test_org_rating_is_separate_from_the_film(session):
         voters[0].id,
         film_rating=9,
         review_text=None,
-        org={"sound": 3, "picture": 3, "hall": 5, "time": 5},
+        visit_rating=6,
+        discussion_rating=8,
     )
 
     stats = await insights.screening_stats(
@@ -198,8 +199,8 @@ async def test_org_rating_is_separate_from_the_film(session):
 
     assert stats.film_rating == 9.0
     assert stats.film_rating_votes == 1
-    assert stats.org_rating == 4.0
-    assert stats.org_rating_votes == 4
+    assert (stats.visit_rating, stats.visit_rating_votes) == (6.0, 1)
+    assert (stats.discussion_rating, stats.discussion_rating_votes) == (8.0, 1)
 
 
 async def test_stats_of_unknown_screening_is_none(session):
@@ -237,3 +238,46 @@ async def test_confirmation_states_do_not_leak_into_each_other(session):
     assert stats.confirmed == 0
     assert stats.cancelled == 1
     assert stats.no_shows == []
+
+
+async def test_survey_gives_both_the_numbers_and_the_names(session):
+    """Средним отчитаться можно, а понять нельзя: одна тройка с припиской
+    «звук фонил» говорит больше самой тройки. Поэтому и цифры, и поимённо."""
+    _, _, screening, _, voters = await held_screening(session)
+    await att.save_feedback(
+        session, screening.id, voters[0].id,
+        film_rating=8, review_text="Звук фонил", visit_rating=6, discussion_rating=10,
+    )
+    await att.mark_manually(session, screening.id, voters[1].id, voters[1].id)
+    await att.save_feedback(
+        session, screening.id, voters[1].id,
+        film_rating=10, review_text=None, visit_rating=10, discussion_skip="absent",
+    )
+
+    result = next(
+        item for item in await insights.surveys(session) if item.screening_id == screening.id
+    )
+
+    # Средние — в звёздах, а не в полубаллах: в отчёт идут они.
+    assert result.visit_avg == 4.0
+    assert result.film_avg == 4.5
+    # Обсуждение оценил один, второй на нём не был — и это видно отдельно.
+    assert result.discussion_avg == 5.0
+    assert (result.discussion_absent, result.discussion_unsure) == (1, 0)
+    assert result.answered == 2
+
+    named = {answer.display_name: answer for answer in result.answers}
+    assert named[voters[0].display_name].comment == "Звук фонил"
+    assert named[voters[1].display_name].discussion_skip == "absent"
+
+
+async def test_survey_skips_screenings_nobody_answered(session):
+    """Показ без ответов остаётся в списке с нулями: пустая строка — тоже
+    новость, и прятать её значило бы делать вид, что опроса не было."""
+    _, _, screening, _, _ = await held_screening(session)
+
+    result = next(
+        item for item in await insights.surveys(session) if item.screening_id == screening.id
+    )
+    assert result.answered == 0
+    assert result.visit_avg is None and result.answers == []

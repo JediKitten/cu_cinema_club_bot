@@ -20,6 +20,7 @@ from app.models import (
     Confirmation,
     Feedback,
     Film,
+    FilmRating,
     Hall,
     Interest,
     Screening,
@@ -27,7 +28,12 @@ from app.models import (
     Slot,
     User,
 )
-from app.models.enums import ConfirmationState, InterestKind, ScreeningStatus
+from app.models.enums import (
+    ConfirmationState,
+    DiscussionSkip,
+    InterestKind,
+    ScreeningStatus,
+)
 from app.services import ratings
 from app.services.weights import (
     WeightParams,
@@ -100,8 +106,12 @@ class ScreeningStats:
     min_attendance: int = 0
     film_rating: float | None = None
     film_rating_votes: int = 0
-    org_rating: float | None = None
-    org_rating_votes: int = 0
+    # CSAT: как людям вечер целиком и обсуждение после. В рейтинг фильма
+    # не входят — плохая проекция не должна топить хорошее кино.
+    visit_rating: float | None = None
+    visit_rating_votes: int = 0
+    discussion_rating: float | None = None
+    discussion_rating_votes: int = 0
 
 
 async def shortlist_misses(
@@ -246,9 +256,6 @@ async def film_stats(
     )
 
 
-ORG_FIELDS = (Feedback.org_sound, Feedback.org_picture, Feedback.org_hall, Feedback.org_time)
-
-
 async def _people(session: AsyncSession, user_ids: list[int]) -> dict[int, str]:
     if not user_ids:
         return {}
@@ -313,13 +320,18 @@ async def screening_stats(
         )
     ).one()
 
-    # Оценка организации — отдельное число и в рейтинг фильма не входит (§8).
-    # Средним по четырём полям, чтобы «звук, картинка, зал, время» читались
-    # одной цифрой; пустые поля просто не участвуют.
-    org_rows = await session.execute(
-        sa.select(*ORG_FIELDS).where(Feedback.screening_id == screening_id)
-    )
-    marks = [value for row in org_rows for value in row if value is not None]
+    # Впечатление от вечера и от обсуждения — отдельные числа и в рейтинг
+    # фильма не входят (§8).
+    visit_avg, visit_votes, discussion_avg, discussion_votes = (
+        await session.execute(
+            sa.select(
+                sa.func.avg(Feedback.visit_rating),
+                sa.func.count(Feedback.visit_rating),
+                sa.func.avg(Feedback.discussion_rating),
+                sa.func.count(Feedback.discussion_rating),
+            ).where(Feedback.screening_id == screening_id)
+        )
+    ).one()
 
     return ScreeningStats(
         screening_id=screening_id,
@@ -346,6 +358,140 @@ async def screening_stats(
         min_attendance=minimum,
         film_rating=round(float(film_rating[0]), 2) if film_rating[1] else None,
         film_rating_votes=film_rating[1],
-        org_rating=round(sum(marks) / len(marks), 2) if marks else None,
-        org_rating_votes=len(marks),
+        visit_rating=round(float(visit_avg), 2) if visit_votes else None,
+        visit_rating_votes=visit_votes,
+        discussion_rating=round(float(discussion_avg), 2) if discussion_votes else None,
+        discussion_rating_votes=discussion_votes,
     )
+
+
+@dataclass(slots=True)
+class SurveyAnswer:
+    """Ответ одного человека на опрос после показа."""
+
+    user_id: int
+    display_name: str
+    visit: int | None
+    film: int | None
+    discussion: int | None
+    discussion_skip: str | None
+    comment: str | None
+    answered_at: datetime
+
+
+@dataclass(slots=True)
+class SurveyResult:
+    """Опрос по одному показу: цифры для отчёта и ответы поимённо.
+
+    Поимённо — потому что средним по десяти ответам отчитаться можно, а понять
+    нельзя: одна тройка с припиской «звук фонил» говорит больше, чем сама
+    четвёрка. Клуб маленький, и анонимности здесь никто не обещал.
+    """
+
+    screening_id: int
+    starts_at: datetime
+    title: str
+    attended: int
+    answered: int
+    visit_avg: float | None
+    film_avg: float | None
+    discussion_avg: float | None
+    # Сколько ответили «не был» и «затрудняюсь ответить»: без них средняя
+    # по обсуждению выглядит увереннее, чем есть.
+    discussion_absent: int
+    discussion_unsure: int
+    answers: list[SurveyAnswer]
+
+
+def _avg(values: list[int]) -> float | None:
+    # Полубаллы приводим к звёздам сразу: в отчёт идут они, а не внутренняя шкала.
+    return round(sum(values) / len(values) / 2, 2) if values else None
+
+
+async def surveys(session: AsyncSession, limit: int = 20) -> list[SurveyResult]:
+    """Опросы по прошедшим показам, свежие сверху."""
+    rows = (
+        await session.execute(
+            sa.select(Screening, Slot, Film)
+            .join(Slot, Slot.id == Screening.slot_id)
+            .outerjoin(Film, Film.id == Screening.film_id)
+            # По статусу, а не по времени: завершёнными показы делает та же
+            # фоновая задача, что наполняет «Что уже смотрели», и два списка
+            # должны говорить об одном и том же.
+            .where(Screening.status == ScreeningStatus.COMPLETED)
+            .order_by(Slot.starts_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    if not rows:
+        return []
+
+    ids = [screening.id for screening, _, _ in rows]
+    # Оценка фильма берётся из каталога, если в самой форме её не спрашивали:
+    # у фильма она одна, и человеку, поставившему её раньше, второй раз
+    # вопрос не показывают — но в отчёте она должна быть.
+    feedback: dict[int, list[tuple[Feedback, str, int | None]]] = {}
+    for item, name, catalogue in await session.execute(
+        sa.select(Feedback, User.display_name, FilmRating.score)
+        .join(User, User.id == Feedback.user_id)
+        .outerjoin(
+            FilmRating,
+            sa.and_(
+                FilmRating.user_id == Feedback.user_id,
+                FilmRating.film_id == Feedback.film_id,
+            ),
+        )
+        .where(Feedback.screening_id.in_(ids))
+        .order_by(Feedback.created_at)
+    ):
+        feedback.setdefault(item.screening_id, []).append((item, name, catalogue))
+
+    came = dict(
+        (
+            await session.execute(
+                sa.select(Attendance.screening_id, sa.func.count())
+                .where(Attendance.screening_id.in_(ids))
+                .group_by(Attendance.screening_id)
+            )
+        ).all()
+    )
+
+    out: list[SurveyResult] = []
+    for screening, slot, film in rows:
+        items = feedback.get(screening.id, [])
+        out.append(
+            SurveyResult(
+                screening_id=screening.id,
+                starts_at=slot.starts_at,
+                title=film.title_ru if film else (screening.title or "Событие клуба"),
+                attended=came.get(screening.id, 0),
+                answered=len(items),
+                visit_avg=_avg([i.visit_rating for i, _, _ in items if i.visit_rating]),
+                film_avg=_avg(
+                    [rating for i, _, c in items if (rating := i.film_rating or c)]
+                ),
+                discussion_avg=_avg(
+                    [i.discussion_rating for i, _, _ in items if i.discussion_rating]
+                ),
+                discussion_absent=sum(
+                    1 for i, _, _ in items if i.discussion_skip == DiscussionSkip.ABSENT
+                ),
+                discussion_unsure=sum(
+                    1 for i, _, _ in items if i.discussion_skip == DiscussionSkip.UNSURE
+                ),
+                answers=[
+                    SurveyAnswer(
+                        user_id=item.user_id,
+                        display_name=name,
+                        visit=item.visit_rating,
+                        film=item.film_rating or catalogue,
+                        discussion=item.discussion_rating,
+                        discussion_skip=item.discussion_skip,
+                        comment=item.review_text,
+                        answered_at=item.created_at,
+                    )
+                    for item, name, catalogue in items
+                ],
+            )
+        )
+    return out

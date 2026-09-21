@@ -75,7 +75,7 @@ async def test_feedback_after_the_screening_feeds_the_same_rating(session):
     """Рейтинг у фильма один, откуда бы оценка ни пришла."""
     _, films, screening, _, voters = await held_screening(session)
 
-    await att.save_feedback(session, screening.id, voters[0].id, 9, None, None)
+    await att.save_feedback(session, screening.id, voters[0].id, 9, None)
 
     club = await ratings.summary(session, films[0].id)
     assert club.average == 4.5

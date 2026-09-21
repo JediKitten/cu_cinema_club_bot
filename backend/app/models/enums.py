@@ -91,6 +91,18 @@ class ConfirmationState(StrEnum):
     CANCELLED = "cancelled"
 
 
+class DiscussionSkip(StrEnum):
+    """Почему у обсуждения нет оценки.
+
+    Два честных ответа вместо молчания: «не был» и «не знаю» — разные вещи,
+    и складывать их в один пропуск значило бы потерять единственное, что
+    отличает отсутствие мнения от отсутствия человека.
+    """
+
+    ABSENT = "absent"
+    UNSURE = "unsure"
+
+
 class AttendanceMethod(StrEnum):
     QR = "qr"
     CODE = "code"

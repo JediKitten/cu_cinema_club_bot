@@ -133,7 +133,7 @@ async def test_feed_collects_marks_ratings_and_watches(session):
     watcher = voters[0]
     await add_interest(session, watcher, films[1], InterestKind.SOON, 0)
     await att.save_feedback(
-        session, screening.id, watcher.id, film_rating=8, review_text="Хорошо", org=None
+        session, screening.id, watcher.id, film_rating=8, review_text="Хорошо"
     )
 
     items = await social.feed(session, [watcher.id])
@@ -156,7 +156,7 @@ async def test_profile_counts_what_the_person_did(session):
     watcher, viewer = voters[0], voters[1]
     await add_interest(session, watcher, films[1], InterestKind.WISHLIST, 0)
     await att.save_feedback(
-        session, screening.id, watcher.id, film_rating=9, review_text=None, org=None
+        session, screening.id, watcher.id, film_rating=9, review_text=None
     )
     await social.set_favourites(session, watcher.id, [films[0].id])
 

@@ -11,6 +11,7 @@ import type {
   Attendee,
   BroadcastTarget,
   ConfirmResult,
+  DiscussionSkip,
   FeedbackState,
   Matrix,
   PastScreening,
@@ -18,6 +19,7 @@ import type {
   Role,
   Round,
   Setting,
+  Survey,
   Schedule,
   ScreeningCode,
   Slot,
@@ -334,7 +336,13 @@ export const getFeedback = (screeningId: number) =>
 
 export const saveFeedback = (
   screeningId: number,
-  payload: { film_rating: number | null; review_text: string | null },
+  payload: {
+    visit_rating: number | null;
+    film_rating: number | null;
+    discussion_rating: number | null;
+    discussion_skip: DiscussionSkip | null;
+    review_text: string | null;
+  },
 ) =>
   request<FeedbackState>(`/api/screenings/${screeningId}/feedback`, {
     method: "PUT",
@@ -359,6 +367,9 @@ export const getScreeningStats = (screeningId: number) =>
   request<ScreeningStats>(`/api/admin/screenings/${screeningId}/stats`);
 
 export const getPastScreenings = () => request<PastScreening[]>("/api/screenings/past");
+
+// Опросы после показов: средние для отчёта перед вузом и ответы поимённо.
+export const getSurveys = () => request<Survey[]>("/api/admin/surveys");
 
 // Пароль на выгрузку в боте (/analytics). Сам пароль сюда не возвращается
 // никогда — в базе лежит хеш, и показать нечего, кроме «задан или нет».

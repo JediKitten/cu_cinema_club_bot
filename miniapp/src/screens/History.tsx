@@ -3,7 +3,8 @@ import { getPastScreenings } from "../api";
 import { Poster } from "../components/FilmRow";
 import { dayLabel } from "../dates";
 import { useOpenFilmById } from "../filmOpener";
-import type { PastScreening } from "../types";
+import type { PastScreening, Screening } from "../types";
+import { Attend } from "./Attend";
 
 /** Календарь прошедших показов (§18, пункт 10).
  *
@@ -13,6 +14,7 @@ import type { PastScreening } from "../types";
 export function History() {
   const openFilm = useOpenFilmById();
   const [rows, setRows] = useState<PastScreening[] | null>(null);
+  const [survey, setSurvey] = useState<PastScreening | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,6 +22,28 @@ export function History() {
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
   }, []);
+
+  if (survey) {
+    // Опросу нужен показ в том виде, в каком его знает расписание. Из истории
+    // приходит только карточка — остального форма и не спрашивает: человек
+    // уже отмечен, ей остаётся задать четыре вопроса.
+    const asScreening = {
+      id: survey.screening_id,
+      film: {
+        id: survey.film_id,
+        title_ru: survey.title,
+        year: survey.year,
+        poster_url: survey.poster_url,
+      },
+    } as unknown as Screening;
+    return (
+      <Attend
+        screening={asScreening}
+        onBack={() => setSurvey(null)}
+        backLabel="← К показам"
+      />
+    );
+  }
 
   if (error) return <div className="screen"><div className="error">{error}</div></div>;
   if (!rows) return <div className="center">Загрузка…</div>;
@@ -55,6 +79,23 @@ export function History() {
               {row.expected !== null && ` из ожидаемых ${row.expected}`}
               {row.rating !== null && ` · оценка ${row.rating}`}
             </p>
+
+            {/* Напоминание зовёт оценить показ — идти по нему должно быть
+                куда. Кнопка есть только у того, кто здесь был: остальным
+                отвечать не о чем. */}
+            {row.i_attended && (
+              <div className="marks">
+                <button
+                  className={`mark ${row.i_answered ? "" : "is-on mark--wishlist"}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSurvey(row);
+                  }}
+                >
+                  {row.i_answered ? "Изменить ответы" : "Пройти опрос"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       ))}

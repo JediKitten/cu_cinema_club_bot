@@ -105,7 +105,7 @@ async def past(
     user: CurrentUser, session: Annotated[AsyncSession, Depends(get_session)]
 ) -> list[PastScreeningOut]:
     """Календарь прошедших показов — виден всем участникам клуба."""
-    rows = await analytics.past_screenings(session)
+    rows = await analytics.past_screenings(session, viewer_id=user.id)
     return [
         PastScreeningOut(
             screening_id=row["screening_id"],
@@ -118,6 +118,8 @@ async def past(
             expected=row["expected"],
             came=row["came"],
             rating=row["rating"],
+            i_attended=row["i_attended"],
+            i_answered=row["i_answered"],
         )
         for row in rows
     ]
