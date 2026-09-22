@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { getScreeningStats } from "../api";
 import type { ScreeningStats } from "../types";
+import { useLoad } from "../useLoad";
 
 function People({ title, people }: { title: string; people: ScreeningStats["waitlist"] }) {
   if (people.length === 0) return null;
@@ -27,25 +28,15 @@ function People({ title, people }: { title: string; people: ScreeningStats["wait
  * список меняется на глазах.
  */
 export function ScreeningStatsPanel({ screeningId }: { screeningId: number }) {
-  const [stats, setStats] = useState<ScreeningStats | null>(null);
-  const [error, setError] = useState(false);
+  const { data: stats, error, reload } = useLoad(
+    () => getScreeningStats(screeningId),
+    [screeningId],
+  );
 
   useEffect(() => {
-    let alive = true;
-
-    function load() {
-      getScreeningStats(screeningId)
-        .then((data) => alive && setStats(data))
-        .catch(() => alive && setError(true));
-    }
-
-    load();
-    const timer = window.setInterval(load, 15000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [screeningId]);
+    const timer = window.setInterval(reload, 15000);
+    return () => window.clearInterval(timer);
+  }, [reload]);
 
   if (error) return null;
   if (!stats) return <p className="hint">Считаем…</p>;

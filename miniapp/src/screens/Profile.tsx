@@ -9,8 +9,9 @@ import { useOpenFilm } from "../filmOpener";
 import { haptic, showMessage, bindBackButton } from "../telegram";
 import { plural } from "../plural";
 import { ROLE_LABEL } from "../roles";
-import type { FilmBrief, Profile as Data } from "../types";
+import type { FilmBrief } from "../types";
 import type { ProfileDoor } from "./ProfileTab";
+import { useLoad, useSearch } from "../useLoad";
 
 const MAX_FAVOURITES = 4;
 
@@ -97,12 +98,10 @@ export function Profile({
    *  четыре вкладки, а не пять. */
   onOpenMenu?(): void;
 }) {
-  const [profile, setProfile] = useState<Data | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: profile, setData: setProfile, error } = useLoad(() => getProfile(userId), [userId]);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<FilmBrief[]>([]);
   const openFilm = useOpenFilm();
 
   useEffect(
@@ -111,31 +110,13 @@ export function Profile({
     [active, onBack],
   );
 
-  useEffect(() => {
-    let alive = true;
-    getProfile(userId)
-      .then((data) => alive && setProfile(data))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : "Не удалось загрузить"));
-    return () => {
-      alive = false;
-    };
-  }, [userId]);
-
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!editing || trimmed.length < 2) {
-      setFound([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      // Ничего не отсеиваем: фильм из TMDB тоже годится в любимые, в каталог
-      // он попадёт в момент выбора.
-      searchFilms(trimmed)
-        .then((films) => setFound(films.slice(0, 6)))
-        .catch(() => setFound([]));
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [query, editing]);
+  // Ничего не отсеиваем: фильм из TMDB тоже годится в любимые, в каталог
+  // он попадёт в момент выбора.
+  const { found } = useSearch(
+    query,
+    async (text) => (await searchFilms(text)).slice(0, 6),
+    { delay: 350, enabled: editing },
+  );
 
   async function toggleFriend() {
     if (!profile || busy) return;
@@ -165,7 +146,6 @@ export function Profile({
       const saved = await setFavourites(films);
       setProfile({ ...profile, favourites: saved });
       setQuery("");
-      setFound([]);
     } catch (e) {
       showMessage(e instanceof Error ? e.message : "Не получилось");
     } finally {

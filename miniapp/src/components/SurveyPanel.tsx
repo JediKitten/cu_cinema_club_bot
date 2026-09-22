@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment } from "react";
 import { getSurveys } from "../api";
 import { Section } from "./Section";
-import type { DiscussionSkip, Survey, SurveyAnswer } from "../types";
+import type { DiscussionSkip, SurveyAnswer } from "../types";
+import { useLoad } from "../useLoad";
 
 const SKIP_LABEL: Record<DiscussionSkip, string> = {
   absent: "не был",
@@ -25,14 +26,7 @@ function answered(answer: SurveyAnswer): string {
  * маленький, анонимности здесь никто не обещал.
  */
 export function SurveyPanel() {
-  const [rows, setRows] = useState<Survey[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getSurveys()
-      .then(setRows)
-      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
-  }, []);
+  const { data: rows, error } = useLoad(getSurveys, []);
 
   if (error) return <div className="error">{error}</div>;
   if (!rows) return <p className="hint">Загрузка опросов…</p>;

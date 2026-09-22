@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
 import { currentTournament } from "../api";
 import { timeLeft } from "../screens/Tournament";
-import type { Tournament } from "../types";
+import { useLoad } from "../useLoad";
 
 /** Плашка идущего турнира — вверху каталога и расписания.
  *
@@ -10,18 +9,9 @@ import type { Tournament } from "../types";
  * открыть, и прямо говорит, сколько пар осталось и сколько времени.
  */
 export function TournamentBanner({ onOpen }: { onOpen(id: number): void }) {
-  const [tournament, setTournament] = useState<Tournament | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    currentTournament()
-      .then((next) => alive && setTournament(next))
-      // Молча: турнир — не то, ради чего стоит показывать ошибку поверх каталога.
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
+  // Ошибку молча пропускаем: турнир — не то, ради чего стоит показывать
+  // ошибку поверх каталога.
+  const { data: tournament } = useLoad(currentTournament, []);
 
   if (!tournament) return null;
 

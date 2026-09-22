@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
 import { getFilmStats } from "../api";
 import { Bars } from "./Bars";
-import type { FilmStats } from "../types";
+import { useLoad } from "../useLoad";
 
 function day(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : "—";
@@ -14,18 +13,7 @@ function day(iso: string | null): string {
  * на отборе, — вопрос возникает не по расписанию.
  */
 export function FilmStatsPanel({ filmId }: { filmId: number }) {
-  const [stats, setStats] = useState<FilmStats | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    getFilmStats(filmId)
-      .then((data) => alive && setStats(data))
-      .catch(() => alive && setError(true));
-    return () => {
-      alive = false;
-    };
-  }, [filmId]);
+  const { data: stats, error } = useLoad(() => getFilmStats(filmId), [filmId]);
 
   // Молча: обычный участник сюда просто не имеет доступа, и это не ошибка.
   if (error) return null;

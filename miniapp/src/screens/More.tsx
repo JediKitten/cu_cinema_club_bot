@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { createFilmRequest, myFilmRequests } from "../api";
 import { haptic } from "../telegram";
 import type { FilmRequest, User } from "../types";
-import { Admin } from "./Admin";
+
+// Админка нужна единицам из полутора сотен, а весит заметную долю бандла:
+// остальные её не скачивают вовсе.
+const Admin = lazy(() => import("./Admin").then((module) => ({ default: module.Admin })));
 import { History } from "./History";
 
 const STATUS: Record<FilmRequest["status"], string> = {
@@ -14,6 +17,25 @@ const STATUS: Record<FilmRequest["status"], string> = {
 // Кнопка «Клуб» видна только тем, кому есть что там делать. Это удобство,
 // а не защита: права проверяет бэкенд на каждом запросе.
 const ADMIN_ROLES = new Set(["moderator", "admin", "superadmin"]);
+
+/** Подраздел «Ещё»: своя кнопка возврата, потому что родная «назад»
+ *  Telegram занята карточкой фильма, которая может открыться поверх.
+ *
+ *  Объявлен снаружи More нарочно. Внутри он был бы новым компонентом на
+ *  каждый рендер, и React пересоздавал бы всё под ним: открыл поверх
+ *  админки карточку фильма, закрыл — админка начинается с чистого листа. */
+function Subscreen({ onClose, children }: { onClose(): void; children: React.ReactNode }) {
+  return (
+    <>
+      <div className="screen" style={{ paddingBottom: 0 }}>
+        <button className="mark" style={{ alignSelf: "flex-start" }} onClick={onClose}>
+          ← Назад
+        </button>
+      </div>
+      {children}
+    </>
+  );
+}
 
 export function More({ user }: { user: User }) {
   const [showHistory, setShowHistory] = useState(false);
@@ -51,21 +73,6 @@ export function More({ user }: { user: User }) {
     }
   }
 
-  /** Подраздел «Ещё»: своя кнопка возврата, потому что родная «назад»
-   *  Telegram занята карточкой фильма, которая может открыться поверх. */
-  function Subscreen({ onClose, children }: { onClose(): void; children: React.ReactNode }) {
-    return (
-      <>
-        <div className="screen" style={{ paddingBottom: 0 }}>
-          <button className="mark" style={{ alignSelf: "flex-start" }} onClick={onClose}>
-            ← Назад
-          </button>
-        </div>
-        {children}
-      </>
-    );
-  }
-
   if (showHistory) {
     return (
       <Subscreen onClose={() => setShowHistory(false)}>
@@ -77,7 +84,9 @@ export function More({ user }: { user: User }) {
   if (showAdmin) {
     return (
       <Subscreen onClose={() => setShowAdmin(false)}>
-        <Admin me={user} />
+        <Suspense fallback={<div className="center">Загрузка…</div>}>
+          <Admin me={user} />
+        </Suspense>
       </Subscreen>
     );
   }

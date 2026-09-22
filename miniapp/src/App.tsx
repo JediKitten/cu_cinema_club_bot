@@ -27,6 +27,26 @@ const TABS: { key: Tab; icon: string; label: string }[] = [
 // Статистика по фильму — админам и главному: модератор ведёт показы, а не отбор.
 const STATS_ROLES = new Set(["admin", "superadmin"]);
 
+function filmFromAddress(): FilmBrief | null {
+  const requested = new URLSearchParams(location.search).get("film");
+  if (!requested || !/^\d+$/.test(requested)) return null;
+  return {
+    id: Number(requested),
+    tmdb_id: null,
+    title_ru: "",
+    title_orig: null,
+    year: null,
+    poster_url: null,
+    genres: [],
+    directors: [],
+    in_catalog: true,
+    my_interests: [],
+    can_renew_soon: false,
+    soon_expires_at: null,
+    watched: false,
+  };
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -38,7 +58,9 @@ export default function App() {
     return TABS.some((item) => item.key === requested) ? (requested as Tab) : "catalog";
   });
   // Фильм из поиска ещё не в каталоге — у него есть только tmdb_id.
-  const [openFilm, setOpenFilm] = useState<FilmBrief | null>(null);
+  // Бот открывает приложение адресом вида ?film=123 — тогда карточка
+  // открыта с первого кадра.
+  const [openFilm, setOpenFilm] = useState<FilmBrief | null>(filmFromAddress);
   // Профиль открывается поверх вкладок — как карточка фильма.
   const [openProfile, setOpenProfile] = useState<number | null>(null);
   // Турнир — тоже наложение: в него заходят из плашки в каталоге или
@@ -70,28 +92,6 @@ export default function App() {
     document.body.classList.toggle("has-overlay", overlayOpen);
     return () => document.body.classList.remove("has-overlay");
   }, [overlayOpen]);
-
-  // Бот открывает приложение адресом вида ?film=123 — сразу показываем карточку.
-  useEffect(() => {
-    const requested = new URLSearchParams(location.search).get("film");
-    if (requested && /^\d+$/.test(requested)) {
-      setOpenFilm({
-        id: Number(requested),
-        tmdb_id: null,
-        title_ru: "",
-        title_orig: null,
-        year: null,
-        poster_url: null,
-        genres: [],
-        directors: [],
-        in_catalog: true,
-        my_interests: [],
-        can_renew_soon: false,
-        soon_expires_at: null,
-        watched: false,
-      });
-    }
-  }, []);
 
   useEffect(() => {
     initTelegram();

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useLoad } from "../useLoad";
 import { getPastScreenings } from "../api";
 import { Poster } from "../components/FilmRow";
 import { dayLabel } from "../dates";
@@ -13,15 +14,8 @@ import { Attend } from "./Attend";
  */
 export function History() {
   const openFilm = useOpenFilmById();
-  const [rows, setRows] = useState<PastScreening[] | null>(null);
+  const { data: rows, error } = useLoad(getPastScreenings, []);
   const [survey, setSurvey] = useState<PastScreening | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getPastScreenings()
-      .then(setRows)
-      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
-  }, []);
 
   if (survey) {
     return (

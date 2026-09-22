@@ -4,7 +4,8 @@ import { Bars } from "./Bars";
 import { Section } from "./Section";
 import { weekLabel } from "../dates";
 import { showMessage } from "../telegram";
-import type { Analytics as Data, ExportPassword, FunnelStep } from "../types";
+import type { ExportPassword, FunnelStep } from "../types";
+import { useLoad } from "../useLoad";
 
 /** Воронка §14: важны переходы, а не абсолютные числа.
  *
@@ -134,14 +135,7 @@ function ExportAccess() {
 }
 
 export function Analytics() {
-  const [data, setData] = useState<Data | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getAnalytics()
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
-  }, []);
+  const { data, error } = useLoad(getAnalytics, []);
 
   if (error) return <div className="error">{error}</div>;
   if (!data) return <p className="hint">Загрузка аналитики…</p>;

@@ -44,19 +44,32 @@ function alreadyReloadedFor(version: string): boolean {
   }
 }
 
-async function reloadIfOutdated(): Promise<void> {
-  const version = await serverVersion();
-  if (!version || !isOutdated(version) || alreadyReloadedFor(version)) return;
+/** Перезагружается, если под эту метку ещё не перезагружались. */
+function reloadOnce(mark: string): boolean {
+  if (alreadyReloadedFor(mark)) return false;
   try {
-    sessionStorage.setItem(RELOADED_FOR, version);
+    sessionStorage.setItem(RELOADED_FOR, mark);
   } catch {
     // Без хранилища не узнаем, что уже перезагружались, — и не рискуем.
-    return;
+    return false;
   }
   location.reload();
+  return true;
+}
+
+async function reloadIfOutdated(): Promise<void> {
+  const version = await serverVersion();
+  if (version && isOutdated(version)) reloadOnce(version);
 }
 
 export function watchForUpdates(): void {
+  // Части приложения (админка) грузятся по требованию. У сборки, открытой
+  // до выката, их файлов на сервере уже нет — и нажатие «Клуб» падало бы
+  // в пустой экран. Vite сообщает о таком импорте этим событием.
+  window.addEventListener("vite:preloadError", (event) => {
+    if (reloadOnce(`chunk:${BUILT}`)) event.preventDefault();
+  });
+
   if (BUILT === "dev") return;
   void reloadIfOutdated();
 

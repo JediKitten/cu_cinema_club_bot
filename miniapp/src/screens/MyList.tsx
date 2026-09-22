@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
 import { myInterests, myWatched } from "../api";
 import { PosterGrid } from "../components/PosterGrid";
 import { Section } from "../components/Section";
 import type { FilmBrief, InterestKind, InterestState } from "../types";
 import { isSameFilm, replaceFilm } from "../films";
 import { useFilmChanges } from "../filmChanges";
+import { useLoad } from "../useLoad";
 
 type Props = { onOpen(film: FilmBrief): void };
 
@@ -31,16 +31,8 @@ function soonestHint(items: InterestState[]): string {
  * и каждое должно открывать ровно то, что обещало.
  */
 export function MyMarks({ onOpen }: Props) {
-  const [items, setItems] = useState<InterestState[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    myInterests()
-      .then(setItems)
-      .catch((e) => setError(e instanceof Error ? e.message : "Ошибка загрузки"))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data, setData: setItems, loading, error } = useLoad(myInterests, []);
+  const items: InterestState[] = data ?? [];
 
   // Отметки меняют в карточке фильма, поэтому кнопок в плитке нет. Обработчик
   // остаётся: карточка возвращает обновлённый фильм, и список надо поправить.
@@ -48,7 +40,7 @@ export function MyMarks({ onOpen }: Props) {
     setItems((current) =>
       replaceFilm(
         // Фильм без отметок в этом списке больше не место.
-        current.filter((item) => kinds.length > 0 || !isSameFilm(item.film, updated)),
+        (current ?? []).filter((item) => kinds.length > 0 || !isSameFilm(item.film, updated)),
         updated,
         (item) => item.film,
         // Сервер вернул фильм целиком — переносим и «Просмотрено», и признак
@@ -61,8 +53,8 @@ export function MyMarks({ onOpen }: Props) {
   const soon = items.filter((item) => item.kinds.includes("soon"));
   const wishlist = items.filter((item) => !item.kinds.includes("soon"));
 
-  if (loading) return <div className="center">Загрузка…</div>;
   if (error) return <div className="screen"><div className="error">{error}</div></div>;
+  if (loading && !data) return <div className="center">Загрузка…</div>;
 
   if (items.length === 0) {
     return (
@@ -98,27 +90,19 @@ export function MyMarks({ onOpen }: Props) {
 
 /** Просмотренное — тем же устройством, но своей страницей. */
 export function MyWatched({ onOpen }: Props) {
-  const [films, setFilms] = useState<FilmBrief[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    myWatched()
-      .then(setFilms)
-      .catch((e) => setError(e instanceof Error ? e.message : "Ошибка загрузки"))
-      .finally(() => setLoading(false));
-  }, []);
+  const { data, setData: setFilms, loading, error } = useLoad(myWatched, []);
+  const films: FilmBrief[] = data ?? [];
 
   // «Смотрел» жмут той же кнопкой, что и отметки, — в карточке фильма.
   useFilmChanges((_kinds: InterestKind[], updated: FilmBrief) => {
     setFilms((current) => {
-      const without = current.filter((film) => !isSameFilm(film, updated));
+      const without = (current ?? []).filter((film) => !isSameFilm(film, updated));
       return updated.watched ? [updated, ...without] : without;
     });
   });
 
-  if (loading) return <div className="center">Загрузка…</div>;
   if (error) return <div className="screen"><div className="error">{error}</div></div>;
+  if (loading && !data) return <div className="center">Загрузка…</div>;
 
   if (films.length === 0) {
     return (

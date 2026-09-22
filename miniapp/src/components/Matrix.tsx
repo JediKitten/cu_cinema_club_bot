@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
 import { getMatrix } from "../api";
 import { weekdayShort } from "../dates";
 import { useOpenFilm } from "../filmOpener";
-import type { Matrix as MatrixData } from "../types";
+import { useLoad } from "../useLoad";
 
 /** Матрица «фильм × слот» (§6).
  *
@@ -11,14 +10,7 @@ import type { Matrix as MatrixData } from "../types";
  */
 export function Matrix() {
   const openFilm = useOpenFilm();
-  const [data, setData] = useState<MatrixData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getMatrix()
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
-  }, []);
+  const { data, error } = useLoad(getMatrix, []);
 
   if (error) return <div className="error">{error}</div>;
   if (!data) return <p className="hint">Загрузка матрицы…</p>;

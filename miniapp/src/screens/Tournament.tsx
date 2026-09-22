@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ApiError, getTournament, voteInTournament } from "../api";
 import { BackLink } from "../components/BackLink";
 import { haptic, showMessage } from "../telegram";
-import type { Tournament as Data, TournamentMatch, TournamentOption } from "../types";
+import type { TournamentMatch, TournamentOption } from "../types";
+import { useLoad } from "../useLoad";
 
 /** Сколько осталось до конца этапа — словами, а не таймером.
  *
@@ -100,19 +101,8 @@ function Duel({
  * по популярности (§11).
  */
 export function Tournament({ id, onBack }: { id: number; onBack(): void }) {
-  const [data, setData] = useState<Data | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data, setData, error } = useLoad(() => getTournament(id), [id]);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    getTournament(id)
-      .then((next) => alive && setData(next))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : "Не удалось загрузить"));
-    return () => {
-      alive = false;
-    };
-  }, [id]);
 
   async function pick(matchId: number, optionId: number) {
     if (busy) return;

@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { ApiError, getSchedule } from "../api";
+import { useState } from "react";
+import { getSchedule } from "../api";
 import { shiftWeek, weekLabel } from "../dates";
 import { TournamentBanner } from "../components/TournamentBanner";
 import { haptic } from "../telegram";
-import type { Schedule } from "../types";
+import { useLoad } from "../useLoad";
 import { Screenings } from "./Screenings";
 import { Vote } from "./Vote";
 
@@ -23,31 +23,15 @@ function requestedWeek(): string | null {
 
 export function Week({ onOpenTournament }: { onOpenTournament(id: number): void }) {
   const [week, setWeek] = useState<string | null>(requestedWeek);
-  const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    getSchedule(week ?? undefined)
-      .then((next) => {
-        if (!alive) return;
-        setSchedule(next);
-        // Первый запрос приходит без недели — запоминаем ту, что выбрал сервер,
-        // иначе стрелки некуда было бы сдвигать.
-        if (week === null) setWeek(next.week_start);
-        setError(null);
-      })
-      .catch((e) => {
-        if (!alive) return;
-        setError(e instanceof ApiError ? e.message : "Не удалось загрузить");
-      })
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [week]);
+  // Первый запрос уходит без недели — её выбирает сервер. Запоминать её
+  // в `week` незачем: это вызвало бы вторую загрузку той же недели, а стрелки
+  // и так сдвигаются от `schedule.week_start`.
+  const {
+    data: schedule,
+    setData: setSchedule,
+    loading,
+    error,
+  } = useLoad(() => getSchedule(week ?? undefined), [week]);
 
   function go(delta: number) {
     if (!schedule) return;

@@ -3,6 +3,7 @@ import { ApiError, findUsers, getGrantableRoles, getTeam, setUserRole } from "..
 import { ROLE_LABEL } from "../roles";
 import { showMessage } from "../telegram";
 import type { Role, TeamMember, User } from "../types";
+import { useSearch } from "../useLoad";
 
 // Тот же порядок, что и на сервере: менять роль можно только тому, кто ниже вас.
 const RANK: Record<Role, number> = { user: 0, moderator: 1, admin: 2, superadmin: 3 };
@@ -16,7 +17,6 @@ export function TeamPanel({ me }: { me: User }) {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [grantable, setGrantable] = useState<Role[]>([]);
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<TeamMember[]>([]);
   const [busy, setBusy] = useState(false);
 
   async function reload() {
@@ -29,17 +29,7 @@ export function TeamPanel({ me }: { me: User }) {
     reload().catch(() => showMessage("Не удалось загрузить команду"));
   }, []);
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (trimmed.length < 2) {
-      setFound([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      findUsers(trimmed).then(setFound).catch(() => setFound([]));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const { found } = useSearch(query, findUsers);
 
   async function assign(user: TeamMember, role: Role) {
     if (busy) return;
@@ -48,7 +38,6 @@ export function TeamPanel({ me }: { me: User }) {
       await setUserRole(user.id, role);
       await reload();
       setQuery("");
-      setFound([]);
     } catch (error) {
       showMessage(error instanceof ApiError ? error.message : "Не получилось");
     } finally {

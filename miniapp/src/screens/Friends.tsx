@@ -6,6 +6,7 @@ import { useOpenFilmById } from "../filmOpener";
 import { haptic, showMessage } from "../telegram";
 import { Avatar } from "./Profile";
 import type { Circle, FeedItem, PersonBrief } from "../types";
+import { useSearch } from "../useLoad";
 
 const ACTION: Record<FeedItem["kind"], string> = {
   rating: "оценил",
@@ -31,7 +32,6 @@ export function Friends({ onOpenProfile }: { onOpenProfile(id: number): void }) 
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [circle, setCircle] = useState<Circle | null>(null);
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<PersonBrief[]>([]);
   const [people, setPeople] = useState<PersonBrief[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,17 +48,7 @@ export function Friends({ onOpenProfile }: { onOpenProfile(id: number): void }) 
     reload().catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
   }, []);
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (trimmed.length < 2) {
-      setFound([]);
-      return;
-    }
-    const timer = setTimeout(() => {
-      findPeople(trimmed).then(setFound).catch(() => setFound([]));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const { found, setFound } = useSearch(query, findPeople);
 
   async function toggle(person: PersonBrief) {
     if (busy) return;

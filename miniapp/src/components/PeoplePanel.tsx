@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getPeople } from "../api";
 import { ROLE_LABEL } from "../roles";
 import type { PersonRow } from "../types";
+import { useLoad } from "../useLoad";
 
 /** Все участники клуба: кто, с каким ником, с какой роли и с какого дня.
  *
@@ -9,15 +10,9 @@ import type { PersonRow } from "../types";
  * строк нельзя, а зайти сюда надо ровно затем, чтобы найти одного.
  */
 export function PeoplePanel() {
-  const [people, setPeople] = useState<PersonRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error } = useLoad(getPeople, []);
+  const people: PersonRow[] = data ?? [];
   const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    getPeople()
-      .then(setPeople)
-      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить"));
-  }, []);
 
   if (error) return <div className="error">{error}</div>;
 
