@@ -21,6 +21,10 @@ TARGET="${1:-${DEPLOY_TARGET:-}}"
 APP_DIR="${APP_DIR:-cinema-club}"
 APP_URL="${APP_URL:-https://cinema.cu3rd.ru}"
 COMPOSE="docker compose -f docker-compose.prod.yml"
+# Сборка с --quiet минутами ничего не пишет, и простаивающее соединение
+# рвётся по дороге — сама сборка на сервере при этом идёт дальше, а скрипт
+# падает посередине. Пинги держат соединение живым.
+SSH=(ssh -o ServerAliveInterval=20 -o ServerAliveCountMax=6)
 
 if [ -z "$TARGET" ]; then
   echo "Укажите сервер: $0 user@адрес (или DEPLOY_TARGET=user@адрес)" >&2
@@ -48,7 +52,7 @@ fi
 echo "→ дамп базы"
 DUMP="backups/cinema-$(date +%Y%m%d-%H%M)-before-$SHA.sql.gz"
 # shellcheck disable=SC2029 # переменные подставляются здесь намеренно
-ssh "$TARGET" "mkdir -p ~/backups && cd ~/$APP_DIR \
+"${SSH[@]}" "$TARGET" "mkdir -p ~/backups && cd ~/$APP_DIR \
   && $COMPOSE exec -T db pg_dump -U cinema cinema | gzip > ~/$DUMP \
   && gzip -t ~/$DUMP && test \$(stat -c %s ~/$DUMP) -gt 10000"
 echo "  ~/$DUMP"
@@ -58,7 +62,7 @@ echo "→ код"
 
 echo "→ сборка и подъём"
 # shellcheck disable=SC2029
-ssh "$TARGET" "cd ~/$APP_DIR && export GIT_SHA=$SHA && $COMPOSE build --quiet && $COMPOSE up -d"
+"${SSH[@]}" "$TARGET" "cd ~/$APP_DIR && export GIT_SHA=$SHA && $COMPOSE build --quiet && $COMPOSE up -d"
 
 echo "→ жду, пока ответит новая версия"
 for _ in $(seq 1 60); do
@@ -79,5 +83,5 @@ if [ -z "$bundle" ] || ! curl -fsS -o /dev/null "$APP_URL$bundle"; then
 fi
 
 # shellcheck disable=SC2029
-ssh "$TARGET" "cd ~/$APP_DIR && $COMPOSE ps --format '{{.Service}}: {{.Status}}'"
+"${SSH[@]}" "$TARGET" "cd ~/$APP_DIR && $COMPOSE ps --format '{{.Service}}: {{.Status}}'"
 echo "Готово: $SHA в бою, бандл $bundle."
