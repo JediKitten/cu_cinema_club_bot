@@ -60,9 +60,27 @@ echo "  ~/$DUMP"
 echo "→ код"
 "$ROOT/deploy/sync.sh" "$TARGET" >/dev/null
 
-echo "→ сборка и подъём"
+echo "→ сборка и подъём (на сервере, отвязано от ssh)"
+# Сборку нельзя держать на ssh-сессии: на этом хосте её рвут посреди
+# многоминутной тишины, и вместе с ней умирала сборка — ровно до `up -d`.
+# Запускаем через nohup и читаем лог, пока в нём не появится итог.
+LOG="cinema-deploy.log"
 # shellcheck disable=SC2029
-"${SSH[@]}" "$TARGET" "cd ~/$APP_DIR && export GIT_SHA=$SHA && $COMPOSE build --quiet && $COMPOSE up -d"
+"${SSH[@]}" "$TARGET" "cd ~/$APP_DIR && nohup sh -c 'export GIT_SHA=$SHA; \
+  $COMPOSE build --progress plain && $COMPOSE up -d && echo DEPLOY-DONE || echo DEPLOY-FAILED' \
+  > ~/$LOG 2>&1 < /dev/null &" || true
+
+outcome=""
+for _ in $(seq 1 120); do
+  sleep 10
+  # shellcheck disable=SC2029
+  outcome="$("${SSH[@]}" "$TARGET" "grep -oE 'DEPLOY-(DONE|FAILED)' ~/$LOG | tail -1" 2>/dev/null || true)"
+  [ -n "$outcome" ] && break
+done
+if [ "$outcome" != "DEPLOY-DONE" ]; then
+  echo "Сборка не завершилась успешно (${outcome:-нет итога за 20 минут}). Лог: ssh $TARGET 'tail -50 ~/$LOG'" >&2
+  exit 1
+fi
 
 echo "→ жду, пока ответит новая версия"
 for _ in $(seq 1 60); do
