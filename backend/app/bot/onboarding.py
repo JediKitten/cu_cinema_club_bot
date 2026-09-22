@@ -1,5 +1,7 @@
 """Первый контакт с ботом: /start, знакомство, справка, приглашения на фильм."""
 
+from html import escape
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
@@ -167,11 +169,13 @@ async def start_with_invite(message: Message, command: CommandObject) -> None:
         await referrals.record(session, referrer_id, invitee.id, film_id)
         referrer = await session.get(User, referrer_id)
 
-    who = referrer.display_name if referrer else "Кто-то из клуба"
+    # Имя берётся из Telegram как есть, а бот пишет в HTML: «<3» в имени
+    # делало разметку невалидной, и приглашённый не получал ответа вовсе.
+    who = escape(referrer.display_name) if referrer else "Кто-то из клуба"
     year = f" ({film.year})" if film.year else ""
     await message.answer(
         f"<b>{who}</b> зовёт вас на фильм\n\n"
-        f"🎬 <b>{film.title_ru}</b>{year}\n\n"
+        f"🎬 <b>{escape(film.title_ru)}</b>{year}\n\n"
         "Откройте карточку и решите сами — голос за вас никто не ставит.",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[

@@ -80,9 +80,12 @@ async def _week_bounds(session: AsyncSession, week: date) -> tuple[datetime, dat
 async def _manual_rows(session: AsyncSession, week: date):
     """Ручные события этой недели. Они вне цикла, поэтому подтягиваются отдельно."""
     start, end = await _week_bounds(session, week)
+    # Фильм — тем же запросом: у события его может не быть («ждите анонса»),
+    # поэтому внешнее соединение, а не отдельный запрос на каждую строку.
     rows = await session.execute(
-        sa.select(Screening, Slot)
+        sa.select(Screening, Film, Slot)
         .join(Slot, Slot.id == Screening.slot_id)
+        .outerjoin(Film, Film.id == Screening.film_id)
         .where(
             Screening.is_manual.is_(True),
             Screening.status != ScreeningStatus.CANCELLED,
@@ -91,11 +94,7 @@ async def _manual_rows(session: AsyncSession, week: date):
         )
         .order_by(Slot.starts_at)
     )
-    out = []
-    for event, slot in rows:
-        film = await session.get(Film, event.film_id) if event.film_id else None
-        out.append((event, film, slot))
-    return out
+    return [(event, film, slot) for event, film, slot in rows]
 
 
 async def _neighbours(session: AsyncSession, week: date) -> tuple[bool, bool]:

@@ -11,6 +11,7 @@
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from html import escape
 
@@ -84,7 +85,9 @@ def _film_line(film: Film | None) -> str:
     if film is None:
         return "фильм"
     year = f" ({film.year})" if film.year else ""
-    return f"<b>{film.title_ru}</b>{year}"
+    # Сообщения уходят с parse_mode=HTML: «&» или «<» в названии из TMDB
+    # иначе роняли бы отправку — Telegram отвергает разметку целиком.
+    return f"<b>{escape(film.title_ru)}</b>{year}"
 
 
 def _when(slot: Slot | None, tz_convert: Callable[[object], str]) -> str:
@@ -103,235 +106,304 @@ async def _context(
     return await session.get(Film, screening.film_id), await session.get(Slot, screening.slot_id)
 
 
+@dataclass(frozen=True, slots=True)
+class Message:
+    """Всё, из чего складывается текст одного уведомления."""
+
+    film_line: str
+    when: str
+    payload: dict
+
+    def text(self, key: str, default: str = "") -> str:
+        """Поле из payload, готовое к вставке в HTML.
+
+        Всё, что написал человек (причина отмены, комментарий к заявке,
+        название турнира), экранируется здесь, а не в каждом шаблоне: один
+        забытый escape — и сообщение с «<3» в тексте не уходило никому.
+        """
+        value = self.payload.get(key)
+        return escape(str(value)) if value not in (None, "") else default
+
+
+def _registration_link(m: Message) -> str:
+    # В очереди ссылка тоже нужна: место может освободиться в последний
+    # час, и регистрироваться тогда будет некогда.
+    place = (
+        "Вы в листе ожидания — место может освободиться, и регистрация понадобится сразу."
+        if m.payload.get("waitlist")
+        else "Вы записаны."
+    )
+    return (
+        f"📝 <b>Регистрация на показ</b>\n\n{m.film_line}\n{m.when}\n\n"
+        f"{place}\nОсталось отметиться у вуза — это отдельный от клуба учёт:\n"
+        f"{m.text('url')}"
+    )
+
+
+def _achievement_earned(m: Message) -> str:
+    emoji = m.payload.get("emoji", "🏅")
+    title = m.text("title", "Ачивка")
+    tier = m.text("tier")
+    hint = m.text("hint")
+
+    if m.payload.get("secret"):
+        # Про секретную важно сказать, что она секретная: человек её не искал
+        # и не знал о ней, и без этого награда выглядит обычной ступенью,
+        # которую он и так бы взял.
+        return (
+            f"🕵️ <b>Секретное достижение открыто!</b>\n\n"
+            f"{emoji} <b>{title}</b>\n{hint}\n"
+            f"{tier} — и её никто не подсказывал.\n\n"
+            "Все трофеи — в профиле."
+        )
+    if m.payload.get("custom"):
+        # Именную придумали лично для него — «следующей ступени» у неё нет
+        # и быть не может.
+        return (
+            f"{emoji} <b>{title}</b>\n"
+            f"{tier} ачивка от клуба{f' — {hint}' if hint else ''}\n\n"
+            "Её выдали вам лично. Все трофеи — в профиле."
+        )
+
+    # Что дальше — обязательная часть: без неё поздравление сообщает только
+    # о конце, а у ачивки со ступенями всегда есть продолжение. Название
+    # следующей не раскрываем — только условие: в профиле оно тоже скрыто
+    # до получения, и портить сюрприз здесь незачем.
+    #
+    # Ключа нет вовсе — запись из очереди старше этого поля: про следующую
+    # ступень она ничего не знает, и выдумывать «выше некуда» нельзя.
+    ahead = ""
+    if "next_hint" in m.payload:
+        following = m.text("next_hint")
+        ahead = (
+            f"\n\nДальше — {following[:1].lower()}{following[1:]}."
+            if following
+            else "\n\nЭто верхняя ступень — выше некуда."
+        )
+    earned = f"{tier} ачивка — {hint}" if hint else f"{tier} ачивка"
+    return f"{emoji} <b>{title}</b>\n{earned}{ahead}\n\nВсе трофеи — в профиле."
+
+
+def _tournament_started(m: Message) -> str:
+    return (
+        f"🏆 <b>{m.text('title', 'Турнир')}</b>\n\n"
+        f"Начался турнир — идёт {m.text('round', 'первый этап')}. "
+        "Выберите в каждой паре того, кто должен пройти дальше.\n"
+        "Новый этап каждый день, голосовать можно до его конца."
+    )
+
+
+def _tournament_round_opened(m: Message) -> str:
+    return (
+        f"🏆 <b>{m.text('title', 'Турнир')}</b>\n\n"
+        f"Новый этап: {m.text('round', 'следующий круг')}. "
+        "Пары обновились — загляните и проголосуйте."
+    )
+
+
+def _tournament_finished(m: Message) -> str:
+    return (
+        f"🏆 <b>{m.text('title', 'Турнир')}</b> — победитель!\n\n"
+        f"🥇 {m.text('winner', '—')}\n\n"
+        "Спасибо всем, кто голосовал."
+    )
+
+
+def _shortlist_published(m: Message) -> str:
+    # Фильм приходит словарём {id, title}: у каждого своя кнопка под
+    # сообщением. Старые записи в очереди хранят голое название — шаблон
+    # переживает и их.
+    films = m.payload.get("films") or []
+    listed = "\n".join(
+        f"• {escape(str(film.get('title') if isinstance(film, dict) else film))}"
+        for film in films
+    )
+    # Язык показа влияет на то, пойдёт ли человек, — значит, знать о нём
+    # надо до голоса, а не из расписания.
+    language = (
+        "\n\n🇬🇧 <b>Показ пройдёт на английском</b> — оригинал без дубляжа."
+        if m.payload.get("in_english")
+        else ""
+    )
+    # Напоминание — то же сообщение, но вторым заходом: в первый раз оно
+    # могло уйти без кнопок или просто утонуть в переписке. Повторять
+    # «голосование открыто» тому, кто это уже читал, незачем.
+    head = (
+        "🗳 <b>Голосование идёт</b> — отметить фильмы можно прямо здесь."
+        if m.payload.get("reminder")
+        else "🗳 <b>Голосование открыто!</b>"
+    )
+    return (
+        f"{head}\n\nФильмы недели:\n{listed}{language}\n\n"
+        "Отметьте кнопками, на какие фильмы пошли бы, — а вечера, "
+        "когда вы свободны, выберите в приложении."
+    )
+
+
+def _schedule_published(m: Message) -> str:
+    return (
+        f"🎬 Расписание готово!\n\n{m.film_line}\n{m.when}\n\n"
+        "Вы голосовали за этот фильм — отметьте в приложении, придёте ли."
+    )
+
+
+def _waitlist_promoted(m: Message) -> str:
+    return (
+        f"✅ Место освободилось!\n\n{m.film_line}\n{m.when}\n\n"
+        "Вы были в очереди, теперь вы в списке. Ждём вас."
+    )
+
+
+def _screening_cancelled(m: Message) -> str:
+    reason = m.text("reason", "без указания причины")
+    return f"❌ Показ отменён\n\n{m.film_line}\n{m.when}\n\nПричина: {reason}"
+
+
+def _screening_changed(m: Message) -> str:
+    if m.payload.get("time_changed"):
+        if m.payload.get("kept"):
+            # Записи оставили: просить отметиться заново там, где человек уже
+            # отметился, значит потерять половину зала на ровном месте.
+            return (
+                f"🔄 Показ перенесён\n\n{m.film_line}\nНовое время: {m.when}\n\n"
+                "Вы записаны — если не сможете, отмените в приложении."
+            )
+        return (
+            f"🔄 Показ перенесён\n\n{m.film_line}\nНовое время: {m.when}\n\n"
+            "Подтверждения сброшены — отметьтесь заново, если придёте."
+        )
+    if m.payload.get("film_changed"):
+        # Человек шёл на конкретное кино: «вместо чего» ему важнее, чем «что
+        # теперь». Без прежнего названия сообщение выглядит как непонятное
+        # «изменение» без содержания.
+        was = m.text("was_film")
+        instead = f"\nВместо: {was}" if was else ""
+        place = (
+            "\n\nВы записаны — если новый фильм не ваш, отмените запись в приложении."
+            if m.payload.get("kept")
+            else ""
+        )
+        return f"🔄 Фильм заменён\n\n{m.film_line}\n{m.when}{instead}{place}"
+    if m.payload.get("revealed"):
+        # Ради этого «секретный показ» и заводят: время объявили заранее,
+        # название — сейчас. Для записавшихся это не «изменение», а тот самый
+        # анонс, которого они ждали.
+        return f"🎬 Фильм объявлен!\n\n{m.film_line}\n{m.when}\n\nВы записаны — место за вами."
+    return f"🔄 Изменение\n\n{m.film_line}\n{m.when}"
+
+
+def _reminder_24h(m: Message) -> str:
+    return (
+        f"⏰ Завтра показ\n\n{m.film_line}\n{m.when}\n\n"
+        "Если планы изменились — отмените заранее."
+    )
+
+
+def _reminder_2h(m: Message) -> str:
+    return f"⏰ Через два часа\n\n{m.film_line}\n{m.when}\n\nДо встречи!"
+
+
+def _feedback_reminder(m: Message) -> str:
+    # Про отчётность говорим прямо: просьба «оцените честно» без объяснения,
+    # зачем это клубу, читается как вежливая формальность, и в ответ приходят
+    # вежливые пятёрки.
+    return (
+        f"⭐️ Как вам {m.film_line}?\n\n"
+        "Клуб отчитывается перед вузом — и отчёт складывается из ваших "
+        "ответов, а не из наших ощущений. Четыре вопроса, полминуты. "
+        "Отвечайте честно: заниженная оценка нам полезнее вежливой."
+    )
+
+
+def _admin_low_attendance(m: Message) -> str:
+    confirmed = m.payload.get("confirmed", 0)
+    needed = m.payload.get("min_attendance", 0)
+    return (
+        f"⚠️ Мало подтверждений\n\n{m.film_line}\n{m.when}\n\n"
+        f"Придут {confirmed}, кворум {needed}. Решение о проведении за вами."
+    )
+
+
+def _role_granted(m: Message) -> str:
+    # Что именно человек теперь умеет, решает вызывающий: список прав живёт
+    # в roles.py, а не размазывается по шаблонам сообщений.
+    title = m.text("role_title", "новая роль")
+    if m.payload.get("demoted"):
+        return f"Ваша роль в клубе изменена: <b>{title}</b>."
+    parts = [
+        f"🔑 Вам выдали роль: <b>{title}</b>",
+        m.text("abilities"),
+        "Откройте приложение — вкладка «Клуб» уже на месте.",
+    ]
+    return "\n\n".join(part for part in parts if part)
+
+
+def _admin_autopilot_soon(m: Message) -> str:
+    what = m.text("what", "решит сам")
+    minutes = int(m.payload.get("minutes") or 60)
+    week = m.text("week_start")
+    # Выключенный автопилот — новость важнее включённого: тогда не
+    # произойдёт вообще ничего, и неделя останется без кино.
+    if m.payload.get("enabled"):
+        return (
+            f"⏳ <b>Через {minutes} мин автопилот {what}</b>\n\n"
+            f"Неделя показов с {week}.\n"
+            "Если хотите решить сами — сейчас самое время: после "
+            "автопилота список уходит дальше по циклу."
+        )
+    return (
+        f"⏳ <b>Через {minutes} мин срок, к которому автопилот {what}</b>\n\n"
+        f"Неделя показов с {week}.\n"
+        "Автопилот на этом этапе выключен — если не сделать этого "
+        "руками, не произойдёт ничего."
+    )
+
+
+def _admin_broadcast(m: Message) -> str | None:
+    message = m.text("text")
+    if not message:
+        return None
+    # Подпись обязательна: сообщение приходит от бота, и человек должен
+    # понимать, что это клуб, а не система напоминаний ошиблась.
+    return f"📣 <b>Сообщение от клуба</b>\n\n{message}"
+
+
+def _film_request_resolved(m: Message) -> str:
+    if m.payload.get("approved"):
+        return "✅ Ваш фильм добавлен в каталог — можно отмечать."
+    return f"Заявку на фильм отклонили.\n\n{m.text('comment', 'без комментария')}"
+
+
+# Вид уведомления → шаблон. Вида нет в таблице — текста для него ещё нет,
+# и доставка пометит запись, а не будет крутить её в очереди вечно.
+TEMPLATES: dict[NotificationKind, Callable[[Message], str | None]] = {
+    NotificationKind.REGISTRATION_LINK: _registration_link,
+    NotificationKind.ACHIEVEMENT_EARNED: _achievement_earned,
+    NotificationKind.TOURNAMENT_STARTED: _tournament_started,
+    NotificationKind.TOURNAMENT_ROUND_OPENED: _tournament_round_opened,
+    NotificationKind.TOURNAMENT_FINISHED: _tournament_finished,
+    NotificationKind.SHORTLIST_PUBLISHED: _shortlist_published,
+    NotificationKind.SCHEDULE_PUBLISHED: _schedule_published,
+    NotificationKind.WAITLIST_PROMOTED: _waitlist_promoted,
+    NotificationKind.SCREENING_CANCELLED: _screening_cancelled,
+    NotificationKind.SCREENING_CHANGED: _screening_changed,
+    NotificationKind.REMINDER_24H: _reminder_24h,
+    NotificationKind.REMINDER_2H: _reminder_2h,
+    NotificationKind.FEEDBACK_REMINDER: _feedback_reminder,
+    NotificationKind.ADMIN_LOW_ATTENDANCE: _admin_low_attendance,
+    NotificationKind.ROLE_GRANTED: _role_granted,
+    NotificationKind.ADMIN_AUTOPILOT_SOON: _admin_autopilot_soon,
+    NotificationKind.ADMIN_BROADCAST: _admin_broadcast,
+    NotificationKind.FILM_REQUEST_RESOLVED: _film_request_resolved,
+}
+
+
 def render(kind: NotificationKind, film: Film | None, when: str, payload: dict) -> str | None:
     """Текст сообщения. None — значит для этого вида текста пока нет."""
-    film_line = _film_line(film)
-
-    match kind:
-        case NotificationKind.REGISTRATION_LINK:
-            url = escape(str(payload.get("url", "")))
-            # В очереди ссылка тоже нужна: место может освободиться в последний
-            # час, и регистрироваться тогда будет некогда.
-            place = (
-                "Вы в листе ожидания — место может освободиться, "
-                "и регистрация понадобится сразу."
-                if payload.get("waitlist")
-                else "Вы записаны."
-            )
-            return (
-                f"📝 <b>Регистрация на показ</b>\n\n{film_line}\n{when}\n\n"
-                f"{place}\nОсталось отметиться у вуза — это отдельный от клуба учёт:\n"
-                f"{url}"
-            )
-        case NotificationKind.ACHIEVEMENT_EARNED:
-            emoji = payload.get("emoji", "🏅")
-            title = escape(str(payload.get("title", "Ачивка")))
-            tier = escape(str(payload.get("tier", "")))
-            hint = escape(str(payload.get("hint", "")))
-
-            if payload.get("secret"):
-                # Про секретную важно сказать, что она секретная: человек её
-                # не искал и не знал о ней, и без этого награда выглядит
-                # обычной ступенью, которую он и так бы взял.
-                return (
-                    f"🕵️ <b>Секретное достижение открыто!</b>\n\n"
-                    f"{emoji} <b>{title}</b>\n{hint}\n"
-                    f"{tier} — и её никто не подсказывал.\n\n"
-                    "Все трофеи — в профиле."
-                )
-            if payload.get("custom"):
-                # Именную придумали лично для него — «следующей ступени» у неё
-                # нет и быть не может.
-                return (
-                    f"{emoji} <b>{title}</b>\n"
-                    f"{tier} ачивка от клуба{f' — {hint}' if hint else ''}\n\n"
-                    "Её выдали вам лично. Все трофеи — в профиле."
-                )
-
-            # Что дальше — обязательная часть: без неё поздравление сообщает
-            # только о конце, а у ачивки со ступенями всегда есть продолжение.
-            # Название следующей не раскрываем — только условие: в профиле оно
-            # тоже скрыто до получения, и портить сюрприз здесь незачем.
-            hint = payload.get("next_hint")
-            ahead = (
-                f"\n\nДальше — {escape(str(hint))}."
-                if hint
-                else "\n\nЭто верхняя ступень — выше некуда."
-            )
-            return (
-                f"{emoji} <b>{title}</b>\n{tier} ачивка — {hint}"
-                f"{ahead}\n\nВсе трофеи — в профиле."
-            )
-        case NotificationKind.TOURNAMENT_STARTED:
-            return (
-                f"🏆 <b>{escape(str(payload.get('title', 'Турнир')))}</b>\n\n"
-                f"Начался турнир — идёт {payload.get('round', 'первый этап')}. "
-                "Выберите в каждой паре того, кто должен пройти дальше.\n"
-                "Новый этап каждый день, голосовать можно до его конца."
-            )
-        case NotificationKind.TOURNAMENT_ROUND_OPENED:
-            return (
-                f"🏆 <b>{escape(str(payload.get('title', 'Турнир')))}</b>\n\n"
-                f"Новый этап: {payload.get('round', 'следующий круг')}. "
-                "Пары обновились — загляните и проголосуйте."
-            )
-        case NotificationKind.TOURNAMENT_FINISHED:
-            return (
-                f"🏆 <b>{escape(str(payload.get('title', 'Турнир')))}</b> — победитель!\n\n"
-                f"🥇 {escape(str(payload.get('winner', '—')))}\n\n"
-                "Спасибо всем, кто голосовал."
-            )
-        case NotificationKind.SHORTLIST_PUBLISHED:
-            # Фильм приходит словарём {id, title}: у каждого своя кнопка под
-            # сообщением. Старые записи в очереди хранят голое название —
-            # шаблон переживает и их.
-            films = payload.get("films") or []
-            listed = "\n".join(
-                f"• {escape(str(film.get('title') if isinstance(film, dict) else film))}"
-                for film in films
-            )
-            # Язык показа влияет на то, пойдёт ли человек, — значит, знать
-            # о нём надо до голоса, а не из расписания.
-            language = (
-                "\n\n🇬🇧 <b>Показ пройдёт на английском</b> — оригинал без дубляжа."
-                if payload.get("in_english")
-                else ""
-            )
-            # Напоминание — то же сообщение, но вторым заходом: в первый раз
-            # оно могло уйти без кнопок или просто утонуть в переписке.
-            # Повторять «голосование открыто» тому, кто это уже читал, незачем.
-            head = (
-                "🗳 <b>Голосование идёт</b> — отметить фильмы можно прямо здесь."
-                if payload.get("reminder")
-                else "🗳 <b>Голосование открыто!</b>"
-            )
-            return (
-                f"{head}\n\n"
-                "Фильмы недели:\n"
-                f"{listed}"
-                f"{language}\n\n"
-                "Отметьте кнопками, на какие фильмы пошли бы, — а вечера, "
-                "когда вы свободны, выберите в приложении."
-            )
-        case NotificationKind.SCHEDULE_PUBLISHED:
-            return (
-                f"🎬 Расписание готово!\n\n{film_line}\n{when}\n\n"
-                "Вы голосовали за этот фильм — отметьте в приложении, придёте ли."
-            )
-        case NotificationKind.WAITLIST_PROMOTED:
-            return (
-                f"✅ Место освободилось!\n\n{film_line}\n{when}\n\n"
-                "Вы были в очереди, теперь вы в списке. Ждём вас."
-            )
-        case NotificationKind.SCREENING_CANCELLED:
-            reason = payload.get("reason", "без указания причины")
-            return f"❌ Показ отменён\n\n{film_line}\n{when}\n\nПричина: {reason}"
-        case NotificationKind.SCREENING_CHANGED:
-            if payload.get("time_changed"):
-                if payload.get("kept"):
-                    # Записи оставили: просить отметиться заново там, где человек
-                    # уже отметился, значит потерять половину зала на ровном месте.
-                    return (
-                        f"🔄 Показ перенесён\n\n{film_line}\nНовое время: {when}\n\n"
-                        "Вы записаны — если не сможете, отмените в приложении."
-                    )
-                return (
-                    f"🔄 Показ перенесён\n\n{film_line}\nНовое время: {when}\n\n"
-                    "Подтверждения сброшены — отметьтесь заново, если придёте."
-                )
-            if payload.get("film_changed"):
-                # Человек шёл на конкретное кино: «вместо чего» ему важнее,
-                # чем «что теперь». Без прежнего названия сообщение выглядит
-                # как непонятное «изменение» без содержания.
-                was = payload.get("was_film")
-                instead = f"\nВместо: {escape(str(was))}" if was else ""
-                place = (
-                    "\n\nВы записаны — если новый фильм не ваш, отмените запись в приложении."
-                    if payload.get("kept")
-                    else ""
-                )
-                return f"🔄 Фильм заменён\n\n{film_line}\n{when}{instead}{place}"
-            if payload.get("revealed"):
-                # Ради этого «секретный показ» и заводят: время объявили заранее,
-                # название — сейчас. Для записавшихся это не «изменение», а тот
-                # самый анонс, которого они ждали.
-                return (
-                    f"🎬 Фильм объявлен!\n\n{film_line}\n{when}\n\n"
-                    "Вы записаны — место за вами."
-                )
-            return f"🔄 Изменение\n\n{film_line}\n{when}"
-        case NotificationKind.REMINDER_24H:
-            return (
-                f"⏰ Завтра показ\n\n{film_line}\n{when}\n\n"
-                "Если планы изменились — отмените заранее."
-            )
-        case NotificationKind.REMINDER_2H:
-            return f"⏰ Через два часа\n\n{film_line}\n{when}\n\nДо встречи!"
-        case NotificationKind.FEEDBACK_REMINDER:
-            # Про отчётность говорим прямо: просьба «оцените честно» без
-            # объяснения, зачем это клубу, читается как вежливая формальность,
-            # и в ответ приходят вежливые пятёрки.
-            return (
-                f"⭐️ Как вам {film_line}?\n\n"
-                "Клуб отчитывается перед вузом — и отчёт складывается из ваших "
-                "ответов, а не из наших ощущений. Четыре вопроса, полминуты. "
-                "Отвечайте честно: заниженная оценка нам полезнее вежливой."
-            )
-        case NotificationKind.ADMIN_LOW_ATTENDANCE:
-            confirmed = payload.get("confirmed", 0)
-            needed = payload.get("min_attendance", 0)
-            return (
-                f"⚠️ Мало подтверждений\n\n{film_line}\n{when}\n\n"
-                f"Придут {confirmed}, кворум {needed}. Решение о проведении за вами."
-            )
-        case NotificationKind.ROLE_GRANTED:
-            # Что именно человек теперь умеет, решает вызывающий: список прав
-            # живёт в roles.py, а не размазывается по шаблонам сообщений.
-            title = payload.get("role_title", "новая роль")
-            if payload.get("demoted"):
-                return f"Ваша роль в клубе изменена: <b>{title}</b>."
-            parts = [
-                f"🔑 Вам выдали роль: <b>{title}</b>",
-                payload.get("abilities"),
-                "Откройте приложение — вкладка «Клуб» уже на месте.",
-            ]
-            return "\n\n".join(part for part in parts if part)
-        case NotificationKind.ADMIN_AUTOPILOT_SOON:
-            what = escape(str(payload.get("what", "решит сам")))
-            minutes = int(payload.get("minutes") or 60)
-            week = escape(str(payload.get("week_start", "")))
-            # Выключенный автопилот — новость важнее включённого: тогда
-            # не произойдёт вообще ничего, и неделя останется без кино.
-            if payload.get("enabled"):
-                return (
-                    f"⏳ <b>Через {minutes} мин автопилот {what}</b>\n\n"
-                    f"Неделя показов с {week}.\n"
-                    "Если хотите решить сами — сейчас самое время: после "
-                    "автопилота список уходит дальше по циклу."
-                )
-            return (
-                f"⏳ <b>Через {minutes} мин срок, к которому автопилот {what}</b>\n\n"
-                f"Неделя показов с {week}.\n"
-                "Автопилот на этом этапе выключен — если не сделать этого "
-                "руками, не произойдёт ничего."
-            )
-        case NotificationKind.ADMIN_BROADCAST:
-            # Текст пишет человек, а сообщения уходят с parse_mode=HTML —
-            # без экранирования любая угловая скобка в письме роняла бы
-            # отправку всей рассылке.
-            message = escape(payload.get("text") or "")
-            if not message:
-                return None
-            # Подпись обязательна: сообщение приходит от бота, и человек должен
-            # понимать, что это клуб, а не система напоминаний ошиблась.
-            return f"📣 <b>Сообщение от клуба</b>\n\n{message}"
-        case NotificationKind.FILM_REQUEST_RESOLVED:
-            if payload.get("approved"):
-                return "✅ Ваш фильм добавлен в каталог — можно отмечать."
-            comment = payload.get("comment") or "без комментария"
-            return f"Заявку на фильм отклонили.\n\n{comment}"
-        case _:
-            return None
+    template = TEMPLATES.get(kind)
+    if template is None:
+        return None
+    return template(Message(film_line=_film_line(film), when=when, payload=payload or {}))
 
 
 async def pending(session: AsyncSession, limit: int = BATCH) -> list[Notification]:

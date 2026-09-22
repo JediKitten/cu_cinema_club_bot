@@ -108,19 +108,25 @@ async def warn_low_attendance(session: AsyncSession) -> int:
     if not admins:
         return 0
 
-    created = 0
-    for screening, _slot in await _upcoming(session, hours):
-        confirmed = (
-            await session.scalar(
-                sa.select(sa.func.count())
-                .select_from(Confirmation)
+    upcoming = await _upcoming(session, hours)
+    # Подтверждения по всем ближайшим показам — одним запросом, а не по запросу
+    # на показ: задача крутится каждые пять минут.
+    counts = dict(
+        (
+            await session.execute(
+                sa.select(Confirmation.screening_id, sa.func.count())
                 .where(
-                    Confirmation.screening_id == screening.id,
+                    Confirmation.screening_id.in_([screening.id for screening, _ in upcoming]),
                     Confirmation.state == ConfirmationState.CONFIRMED,
                 )
+                .group_by(Confirmation.screening_id)
             )
-            or 0
-        )
+        ).all()
+    )
+
+    created = 0
+    for screening, _slot in upcoming:
+        confirmed = counts.get(screening.id, 0)
         if confirmed >= minimum:
             continue
 

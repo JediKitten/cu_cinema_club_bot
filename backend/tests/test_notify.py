@@ -453,3 +453,68 @@ def test_the_vote_reminder_does_not_repeat_the_opening():
     assert text is not None
     assert "Голосование идёт" in text and "Голосование открыто" not in text
     assert "Начало" in text
+
+
+# --- Шаблоны ------------------------------------------------------------------
+
+
+def test_top_step_does_not_print_none():
+    """У верхней ступени следующей нет — и в тексте было буквальное «None»."""
+    text = notify.render(
+        NotificationKind.ACHIEVEMENT_EARNED,
+        None,
+        "",
+        {"emoji": "🏆", "tier": "платиновая", "title": "Киноман", "hint": "500 оценок",
+         "next_hint": None},
+    )
+    assert "None" not in text
+    assert "ачивка — 500 оценок" in text
+    assert "верхняя ступень" in text
+
+
+def test_old_payload_does_not_invent_the_top_step():
+    """Запись старше поля next_hint о следующей ступени не знает ничего."""
+    text = notify.render(
+        NotificationKind.ACHIEVEMENT_EARNED,
+        None,
+        "",
+        {"emoji": "🥉", "tier": "бронзовая", "title": "Смотрел", "hint": "5 фильмов"},
+    )
+    assert "верхняя ступень" not in text and "Дальше" not in text
+
+
+def test_human_text_cannot_break_the_markup():
+    """Сообщения уходят с parse_mode=HTML. «<3» в причине отмены или «&»
+    в названии фильма делали разметку невалидной — Telegram отвергал
+    сообщение, и оно не доходило никому."""
+    from app.models import Film
+
+    film = Film(title_ru="Форсаж & Ко", year=2001)
+    cancelled = notify.render(
+        NotificationKind.SCREENING_CANCELLED, film, "—", {"reason": "проектор <сломан>"}
+    )
+    assert "Форсаж &amp; Ко" in cancelled
+    assert "&lt;сломан&gt;" in cancelled
+
+    declined = notify.render(
+        NotificationKind.FILM_REQUEST_RESOLVED, None, "—", {"comment": "уже есть <3"}
+    )
+    assert "&lt;3" in declined
+
+
+def test_every_kind_has_a_template_or_is_known_silent():
+    """Вид без шаблона тихо помечается «нет шаблона» — новый вид, забытый
+    в таблице, не дошёл бы ни до кого. Молчащие виды перечислены явно."""
+    # Заделы из спека: вид заведён, но в очередь его не ставит ни один сервис.
+    # Появится отправитель — появится и шаблон, и строчка отсюда уйдёт.
+    silent = {
+        NotificationKind.SOON_EXPIRED,
+        NotificationKind.NO_SHOW,
+        NotificationKind.LATE_CANCEL,
+        NotificationKind.ADMIN_SHORTLIST_READY,
+        NotificationKind.ADMIN_MATRIX_READY,
+        NotificationKind.ADMIN_AUTOPILOT_RAN,
+        NotificationKind.ADMIN_CANCEL_REQUEST,
+        NotificationKind.ADMIN_FILM_REQUEST,
+    }
+    assert {kind for kind in NotificationKind if kind not in notify.TEMPLATES} == silent

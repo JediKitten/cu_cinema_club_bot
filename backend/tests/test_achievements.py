@@ -371,7 +371,11 @@ async def test_congratulation_says_what_is_next_without_naming_it(session):
 
     text = notify.render(NotificationKind.ACHIEVEMENT_EARNED, None, "", payload)
     assert text is not None
-    assert "Оценить 25 фильмов" in text and "Готов высказаться" not in text
+    assert "оценить 25 фильмов" in text.lower() and "Готов высказаться" not in text
+    # За что дали — условие полученной ступени, а не следующей. Раньше
+    # шаблон затирал одно другим, и 142 поздравления в бою сообщили
+    # «бронзовая ачивка — Оценить 25 фильмов» за пять оценок.
+    assert "ачивка — Оценить 5 фильмов" in text
 
 
 async def test_top_tier_has_nothing_ahead(session):
