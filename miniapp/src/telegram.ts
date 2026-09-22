@@ -35,6 +35,8 @@ type WebApp = {
   setBackgroundColor?(color: string): void;
   showAlert(message: string): void;
   openTelegramLink?(url: string): void;
+  openLink?(url: string): void;
+  downloadFile?(params: { url: string; file_name: string }, callback?: (ok: boolean) => void): void;
 };
 
 declare global {
@@ -161,4 +163,22 @@ export function shareLink(url: string): boolean {
   if (!app?.openTelegramLink) return false;
   app.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}`);
   return true;
+}
+
+/** Отдать файл человеку — например, показ в календарь.
+ *
+ * В Telegram ссылка на файл из Mini App никуда не ведёт: webview не умеет
+ * скачивать. С Bot API 8.0 есть downloadFile — Telegram сам спросит, сохранить
+ * ли файл, и откроет его штатным приложением (для .ics — календарём). В старых
+ * клиентах отдаём адрес браузеру телефона: он предложит добавить событие сам.
+ */
+export function downloadFile(url: string, fileName: string): void {
+  const app = webApp();
+  if (app?.downloadFile && app.isVersionAtLeast?.("8.0")) {
+    app.downloadFile({ url, file_name: fileName });
+  } else if (app?.openLink && app.platform !== "unknown") {
+    app.openLink(url);
+  } else {
+    window.location.href = url;
+  }
 }

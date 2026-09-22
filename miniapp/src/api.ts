@@ -123,6 +123,13 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
 
 const AUTH_PATH = "/api/auth/telegram";
 
+/** Адрес файла .ics показа. Полный, с доменом: скачивает его сам Telegram
+ *  или браузер телефона, а не fetch приложения. */
+export function calendarUrl(screeningId: number): string {
+  return new URL(`${BASE}/api/schedule/screenings/${screeningId}/calendar.ics`, location.href)
+    .href;
+}
+
 export async function login(): Promise<User> {
   const initData = getInitData();
   if (!initData) {

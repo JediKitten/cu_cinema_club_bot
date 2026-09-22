@@ -5,9 +5,10 @@ from typing import Annotated
 from zoneinfo import ZoneInfo
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_config
 from app.core.auth import CurrentUser, RequireAdmin, RequireModerator
 from app.db import get_session
 from app.models import (
@@ -31,6 +32,7 @@ from app.schemas import (
     ScreeningOut,
     SlotOut,
 )
+from app.services import calendar
 from app.services import rounds as rounds_service
 from app.services import schedule as schedule_service
 from app.services.schedule import ScheduleError
@@ -358,6 +360,73 @@ async def _voting_week(session: AsyncSession) -> date | None:
     if round_ is not None and round_.stage == RoundStage.SLOT_VOTING:
         return round_.week_start
     return None
+
+
+@router.get(
+    "/screenings/{screening_id}/calendar.ics",
+    response_class=Response,
+    responses={200: {"content": {"text/calendar": {}}}},
+)
+async def calendar_file(
+    screening_id: int, session: Annotated[AsyncSession, Depends(get_session)]
+) -> Response:
+    """Показ файлом .ics — поставить вечер в календарь телефона.
+
+    Без входа, и это нарочно: файл скачивает сам Telegram (или браузер
+    телефона), и заголовка нашей сессии у него нет. Отдаём только то, что
+    и так видит в расписании любой участник: название, время, зал. Людей
+    в файле нет. Показ цикла до публикации расписания — «не найден»: его
+    ещё не видит никто, кроме тех, кто его составляет.
+    """
+    row = (
+        await session.execute(
+            sa.select(Screening, Slot, Hall, Film, Round)
+            .join(Slot, Slot.id == Screening.slot_id)
+            .join(Hall, Hall.id == Slot.hall_id)
+            .outerjoin(Film, Film.id == Screening.film_id)
+            .outerjoin(Round, Round.id == Screening.round_id)
+            .where(Screening.id == screening_id)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Показ не найден")
+    screening, slot, hall, film, round_ = row
+    announced = screening.is_manual or (round_ is not None and round_.published_at is not None)
+    if screening.status == ScreeningStatus.CANCELLED or not announced:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Показ не найден")
+
+    title = film.title_ru if film else screening.title or "Событие клуба"
+    lines = []
+    if screening.in_english:
+        lines.append("Показ на английском — оригинал без дубляжа.")
+    if screening.note:
+        lines.append(screening.note)
+    if screening.registration_url:
+        lines.append(f"Регистрация у вуза: {screening.registration_url}")
+    lines.append("Если планы изменятся — отмените запись в приложении клуба.")
+
+    app_url = get_config().miniapp_url
+    body = calendar.render(
+        calendar.CalendarEvent(
+            uid=f"screening-{screening.id}@cinema-club",
+            title=f"Киноклуб: {title}" + (" (на английском)" if screening.in_english else ""),
+            starts_at=slot.starts_at,
+            ends_at=slot.starts_at + timedelta(minutes=slot.duration_min),
+            location=hall.name,
+            description="\n".join(lines),
+            url=app_url or None,
+        )
+    )
+    return Response(
+        content=body,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            # Имя латиницей: заголовок с кириллицей часть клиентов режет.
+            "Content-Disposition": f'attachment; filename="kinoklub-{screening.id}.ics"',
+            # Время показа могут перенести — старый файл из кэша был бы враньём.
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 # --- Расстановка (модератор и выше) ----------------------------------------

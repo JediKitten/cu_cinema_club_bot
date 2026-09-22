@@ -790,6 +790,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schedule/screenings/{screening_id}/calendar.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar File
+         * @description Показ файлом .ics — поставить вечер в календарь телефона.
+         *
+         *     Без входа, и это нарочно: файл скачивает сам Telegram (или браузер
+         *     телефона), и заголовка нашей сессии у него нет. Отдаём только то, что
+         *     и так видит в расписании любой участник: название, время, зал. Людей
+         *     в файле нет. Показ цикла до публикации расписания — «не найден»: его
+         *     ещё не видит никто, кроме тех, кто его составляет.
+         */
+        get: operations["calendar_file_api_schedule_screenings__screening_id__calendar_ics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/schedule/assign": {
         parameters: {
             query?: never;
@@ -4958,6 +4984,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_file_api_schedule_screenings__screening_id__calendar_ics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                screening_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": unknown;
                 };
             };
             /** @description Validation Error */

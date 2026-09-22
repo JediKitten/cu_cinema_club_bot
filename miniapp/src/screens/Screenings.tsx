@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { ApiError, confirmScreening, declineScreening } from "../api";
+import { ApiError, calendarUrl, confirmScreening, declineScreening } from "../api";
 import { Poster } from "../components/FilmRow";
 import { dayLabel, timeLabel } from "../dates";
 import { useOpenFilm } from "../filmOpener";
-import { haptic, showMessage } from "../telegram";
+import { downloadFile, haptic, showMessage } from "../telegram";
 import type { Schedule, Screening } from "../types";
 import { Attend } from "./Attend";
 
@@ -190,6 +190,20 @@ export function Screenings({
                     }}
                   >
                     Я на месте
+                  </button>
+                )}
+                {!over && !started(screening) && (
+                  // Напоминания бота приходят за сутки и за два часа, но вечер
+                  // всё равно забывают: его нет там, где планируют неделю.
+                  <button
+                    className="mark"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      haptic();
+                      downloadFile(calendarUrl(screening.id), `kinoklub-${screening.id}.ics`);
+                    }}
+                  >
+                    📅 В календарь
                   </button>
                 )}
                 {(going || queued) && !started(screening) && (
