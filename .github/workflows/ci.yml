@@ -45,6 +45,10 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: ruff check app tests
       - run: pytest -q
+      # Типы Mini App генерируются из схемы API. Поменяли схему и забыли
+      # перегенерировать — фронт собрался бы против устаревшего контракта.
+      - name: Типы Mini App совпадают со схемой API
+        run: PYTHON=python ../scripts/gen-api.sh --check
 
   miniapp:
     runs-on: ubuntu-latest

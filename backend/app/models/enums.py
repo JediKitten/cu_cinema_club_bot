@@ -109,6 +109,15 @@ class AttendanceMethod(StrEnum):
     MANUAL = "manual"
 
 
+class AchievementTier(StrEnum):
+    """Ступень ачивки. Порядок — по возрастанию редкости."""
+
+    BRONZE = "bronze"
+    SILVER = "silver"
+    GOLD = "gold"
+    PLATINUM = "platinum"
+
+
 class TournamentStatus(StrEnum):
     DRAFT = "draft"
     RUNNING = "running"

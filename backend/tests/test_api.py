@@ -19,7 +19,11 @@ from tests.conftest import (
 
 
 async def test_health(client):
-    assert (await client.get("/health")).json() == {"status": "ok"}
+    response = await client.get("/health")
+    # Версия — коммит сборки: по ней выкат сверяет, что приехало, а Mini App —
+    # что она не устарела. Кэшировать такой ответ нельзя.
+    assert response.json() == {"status": "ok", "version": "dev"}
+    assert response.headers["cache-control"] == "no-store"
 
 
 async def test_forged_init_data_rejected(client):

@@ -22,7 +22,6 @@ import logging
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
@@ -46,17 +45,14 @@ from app.models import (
     User,
     Watch,
 )
-from app.models.enums import FilmStatus, NotificationKind, TournamentStatus
+from app.models.enums import AchievementTier, FilmStatus, NotificationKind, TournamentStatus
 from app.services import notify
 
 logger = logging.getLogger(__name__)
 
 
-class Tier(StrEnum):
-    BRONZE = "bronze"
-    SILVER = "silver"
-    GOLD = "gold"
-    PLATINUM = "platinum"
+# Живёт в enums: по нему же типизирован ответ API, а оттуда — типы Mini App.
+Tier = AchievementTier
 
 
 # Порядок важен: по нему решается, какая ступень выше и что кого заменяет.

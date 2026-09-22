@@ -1,18 +1,37 @@
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import (
+    AchievementTier,
+    AttendanceMethod,
+    ConfirmationState,
     DiscussionSkip,
     FilmRequestStatus,
     InterestKind,
     RoundStage,
+    ScreeningStatus,
+    TournamentStatus,
     UserRole,
 )
+from app.services.settings import SettingType
 
 
-class UserOut(BaseModel):
+class Schema(BaseModel):
+    """Общий предок схем API.
+
+    Поле с умолчанием в ответе сервер присылает всегда — а схема OpenAPI по
+    умолчанию помечала его необязательным. Из схемы генерируются типы Mini App
+    (scripts/gen-api.sh), и каждое такое поле превращалось бы там в
+    «может не прийти». Для входящих запросов умолчание по-прежнему значит
+    «можно не присылать».
+    """
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+
+class UserOut(Schema):
     id: int
     display_name: str
     role: UserRole
@@ -26,16 +45,16 @@ class UserOut(BaseModel):
     access: bool = True
 
 
-class AuthOut(BaseModel):
+class AuthOut(Schema):
     token: str
     user: UserOut
 
 
-class TelegramAuthIn(BaseModel):
+class TelegramAuthIn(Schema):
     init_data: str
 
 
-class PersonRowOut(BaseModel):
+class PersonRowOut(Schema):
     """Строка вкладки «Люди» у главного админа."""
 
     id: int
@@ -45,7 +64,7 @@ class PersonRowOut(BaseModel):
     created_at: datetime
 
 
-class FilmBrief(BaseModel):
+class FilmBrief(Schema):
     """Карточка в списке. tmdb_id отдаём, чтобы фронт мог отметить фильм,
     которого ещё нет в базе: id будет присвоен при первой отметке."""
 
@@ -91,14 +110,14 @@ class FilmCard(FilmBrief):
     reviews: list["ReviewOut"] = Field(default_factory=list)
 
 
-class ReviewOut(BaseModel):
+class ReviewOut(Schema):
     author: str
     rating: int | None
     text: str | None
     created_at: datetime
 
 
-class DeckCard(BaseModel):
+class DeckCard(Schema):
     """Карточка ленты: всё, что нужно решить за секунду."""
 
     id: int
@@ -118,31 +137,31 @@ class DeckCard(BaseModel):
     reason: str | None = None
 
 
-class DeckOut(BaseModel):
+class DeckOut(Schema):
     cards: list[DeckCard] = Field(default_factory=list)
     # Сколько ещё не размечено: лента должна уметь кончиться.
     left: int = 0
 
 
-class RatingIn(BaseModel):
+class RatingIn(Schema):
     """Оценка в звёздах: 0.5..5 с шагом в половину. None снимает оценку."""
 
     stars: float | None = Field(default=None, ge=0.5, le=5)
 
 
-class RatingOut(BaseModel):
+class RatingOut(Schema):
     film_id: int
     my_rating: float | None = None
     internal_rating: float | None = None
     internal_votes: int = 0
 
 
-class InterestIn(BaseModel):
+class InterestIn(Schema):
     kind: InterestKind
     tmdb_id: int | None = None
 
 
-class InterestOut(BaseModel):
+class InterestOut(Schema):
     film: FilmBrief
     # Не больше одного элемента: состояния взаимоисключающие.
     kinds: list[InterestKind] = Field(default_factory=list)
@@ -151,13 +170,13 @@ class InterestOut(BaseModel):
     watched: bool = False
 
 
-class FilmRequestIn(BaseModel):
+class FilmRequestIn(Schema):
     raw_title: str = Field(min_length=1, max_length=512)
     raw_year: int | None = Field(default=None, ge=1874, le=2100)
     note: str | None = Field(default=None, max_length=2000)
 
 
-class FilmRequestOut(BaseModel):
+class FilmRequestOut(Schema):
     id: int
     raw_title: str
     raw_year: int | None
@@ -167,10 +186,10 @@ class FilmRequestOut(BaseModel):
     created_at: datetime
 
 
-class SettingOut(BaseModel):
+class SettingOut(Schema):
     key: str
     value: Any
-    type: str
+    type: SettingType
     group: str
     label: str
     help: str | None = None
@@ -179,11 +198,28 @@ class SettingOut(BaseModel):
     affects_weights: bool = False
 
 
-class SettingsPatch(BaseModel):
+class SettingsPatch(Schema):
     values: dict[str, Any]
 
 
-class RankRow(BaseModel):
+class ScreeningRecord(Schema):
+    """Один показ фильма в его истории: был ли, сколько пришло, как оценили."""
+
+    screening_id: int
+    starts_at: datetime | None
+    status: ScreeningStatus
+    expected: int | None
+    came: int
+    rating: float | None
+
+
+class InterestWeek(Schema):
+    week_start: date
+    wishlist: int
+    soon: int
+
+
+class RankRow(Schema):
     film_id: int
     title_ru: str
     title_orig: str | None
@@ -200,10 +236,10 @@ class RankRow(BaseModel):
     # Сколько раз фильм попадал в шорт-лист и не был назначен (§14).
     shortlist_misses: int = 0
     marginal_weight: float | None = None
-    screening_history: list[dict] = Field(default_factory=list)
+    screening_history: list["ScreeningRecord"] = Field(default_factory=list)
 
 
-class FilmStatsOut(BaseModel):
+class FilmStatsOut(Schema):
     """Разрез по фильму для админа (§14)."""
 
     film_id: int
@@ -216,17 +252,17 @@ class FilmStatsOut(BaseModel):
     shortlist_hits: int
     internal_rating: float | None = None
     internal_votes: int = 0
-    dynamics: list[dict] = Field(default_factory=list)
-    history: list[dict] = Field(default_factory=list)
+    dynamics: list["InterestWeek"] = Field(default_factory=list)
+    history: list["ScreeningRecord"] = Field(default_factory=list)
 
 
-class PersonOut(BaseModel):
+class PersonOut(Schema):
     user_id: int
     display_name: str
     detail: str | None = None
 
 
-class ScreeningStatsOut(BaseModel):
+class ScreeningStatsOut(Schema):
     """Разрез по сеансу (§14): до показа — кто придёт, после — кто пришёл."""
 
     screening_id: int
@@ -250,12 +286,12 @@ class ScreeningStatsOut(BaseModel):
     discussion_rating_votes: int = 0
 
 
-class RankingsOut(BaseModel):
+class RankingsOut(Schema):
     by_weight: list[RankRow]
     by_coverage: list[RankRow]
 
 
-class SandboxIn(BaseModel):
+class SandboxIn(Schema):
     """Песочница весов (§13): пересчитать рейтинг с этими коэффициентами,
     ничего не сохраняя."""
 
@@ -273,7 +309,7 @@ FilmCard.model_rebuild()
 # --- Профили, друзья и лента -------------------------------------------------
 
 
-class PersonBrief(BaseModel):
+class PersonBrief(Schema):
     id: int
     display_name: str
     tg_username: str | None = None
@@ -284,10 +320,10 @@ class PersonBrief(BaseModel):
     follower: bool = False
 
 
-class FeedItemOut(BaseModel):
+class FeedItemOut(Schema):
     """Событие ленты: оценка, отзыв, отметка или просмотр."""
 
-    kind: str
+    kind: Literal["rating", "review", "wishlist", "soon", "watched"]
     at: datetime
     user_id: int
     user_name: str
@@ -301,7 +337,7 @@ class FeedItemOut(BaseModel):
     text: str | None = None
 
 
-class AttendanceStats(BaseModel):
+class AttendanceStats(Schema):
     """Посещаемость показов клуба (блок в профиле)."""
 
     came: int = 0
@@ -312,29 +348,29 @@ class AttendanceStats(BaseModel):
     last_film: str | None = None
 
 
-class CustomAchievementIn(BaseModel):
+class CustomAchievementIn(Schema):
     """Именная ачивка: админ придумывает её под конкретного человека."""
 
     user_id: int
     title: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=200)
-    tier: Literal["bronze", "silver", "gold", "platinum"] = "gold"
+    tier: AchievementTier = AchievementTier.GOLD
 
 
-class CustomAchievementOut(BaseModel):
+class CustomAchievementOut(Schema):
     id: int
     user_id: int
     user_name: str
     title: str
     description: str
-    tier: str
+    tier: AchievementTier
     earned_at: datetime
 
 
-class AchievementStepOut(BaseModel):
+class AchievementStepOut(Schema):
     """Ступень цели — строка во вкладке своей редкости."""
 
-    tier: str
+    tier: AchievementTier
     title: str
     description: str
     target: int
@@ -342,7 +378,7 @@ class AchievementStepOut(BaseModel):
     earned_at: datetime | None = None
 
 
-class AchievementGroupOut(BaseModel):
+class AchievementGroupOut(Schema):
     """Одна цель со ступенями: держится высшая достигнутая.
 
     Без «осталось три до серебра» бейдж выглядит случайной наградой, а не целью,
@@ -358,7 +394,7 @@ class AchievementGroupOut(BaseModel):
     # трофей виден.
     hidden: bool = False
     # Что уже получено: bronze | silver | gold | platinum. Пусто — ещё ничего.
-    tier: str | None = None
+    tier: AchievementTier | None = None
     emoji: str = ""
     title: str = ""
     description: str = ""
@@ -366,7 +402,7 @@ class AchievementGroupOut(BaseModel):
     # Куда расти. Пусто, если взята платина.
     next_title: str | None = None
     next_description: str | None = None
-    next_tier: str | None = None
+    next_tier: AchievementTier | None = None
     progress: int = 0
     target: int = 0
     # Вся лестница: вкладка уровня показывает все его ступени, а не только
@@ -374,7 +410,7 @@ class AchievementGroupOut(BaseModel):
     steps: list[AchievementStepOut] = Field(default_factory=list)
 
 
-class AchievementsOut(BaseModel):
+class AchievementsOut(Schema):
     """Четыре числа для профиля и разбор по целям."""
 
     bronze: int = 0
@@ -383,11 +419,11 @@ class AchievementsOut(BaseModel):
     platinum: int = 0
     # Сколько секретных ещё не найдено, по уровням: у каждой вкладки свой
     # счётчик. Названия и условия не раскрываем — в этом весь их смысл.
-    secrets_left: dict[str, int] = Field(default_factory=dict)
+    secrets_left: dict[AchievementTier, int] = Field(default_factory=dict)
     groups: list[AchievementGroupOut] = Field(default_factory=list)
 
 
-class ProfileOut(BaseModel):
+class ProfileOut(Schema):
     id: int
     display_name: str
     tg_username: str | None = None
@@ -411,13 +447,13 @@ class ProfileOut(BaseModel):
     recent: list[FeedItemOut] = Field(default_factory=list)
 
 
-class CircleOut(BaseModel):
+class CircleOut(Schema):
     friends: list[PersonBrief] = Field(default_factory=list)
     following: list[PersonBrief] = Field(default_factory=list)
     followers: list[PersonBrief] = Field(default_factory=list)
 
 
-class FavouriteRef(BaseModel):
+class FavouriteRef(Schema):
     """Фильм из каталога — по id, найденный в TMDB — по tmdb_id.
 
     Двумя полями, а не одним списком id: фильма из TMDB в каталоге ещё нет,
@@ -428,7 +464,7 @@ class FavouriteRef(BaseModel):
     tmdb_id: int | None = None
 
 
-class FavouritesIn(BaseModel):
+class FavouritesIn(Schema):
     films: list[FavouriteRef] = Field(default_factory=list, max_length=4)
 
 
@@ -436,7 +472,7 @@ class FavouritesIn(BaseModel):
 # --- Цикл и шорт-лист (§2, §5) ---------------------------------------------
 
 
-class SlotOut(BaseModel):
+class SlotOut(Schema):
     id: int
     starts_at: datetime
     duration_min: int
@@ -446,14 +482,14 @@ class SlotOut(BaseModel):
     hall_capacity: int
 
 
-class ShortlistItemOut(BaseModel):
+class ShortlistItemOut(Schema):
     film_id: int
     position: int
     source: str
     film: FilmBrief
 
 
-class RoundOut(BaseModel):
+class RoundOut(Schema):
     id: int
     week_start: date
     stage: RoundStage
@@ -475,19 +511,19 @@ class RoundOut(BaseModel):
     shortlist_window_open: bool = False
 
 
-class OpenRoundIn(BaseModel):
+class OpenRoundIn(Schema):
     week_start: date | None = None
 
 
-class RoundLanguageIn(BaseModel):
+class RoundLanguageIn(Schema):
     in_english: bool
 
 
-class ShortlistIn(BaseModel):
+class ShortlistIn(Schema):
     film_ids: list[int] = Field(min_length=1)
 
 
-class BlockSlotIn(BaseModel):
+class BlockSlotIn(Schema):
     blocked: bool
     reason: str | None = Field(default=None, max_length=500)
 
@@ -495,7 +531,7 @@ class BlockSlotIn(BaseModel):
 # --- Этап 2: голосование (§6) ----------------------------------------------
 
 
-class BallotOut(BaseModel):
+class BallotOut(Schema):
     """То, что видит пользователь на этапе 2: шорт-лист, вечера и свой выбор."""
 
     round_id: int
@@ -509,27 +545,27 @@ class BallotOut(BaseModel):
     in_english: bool = False
 
 
-class VotesIn(BaseModel):
+class VotesIn(Schema):
     film_ids: list[int] = Field(default_factory=list)
 
 
-class AvailabilityIn(BaseModel):
+class AvailabilityIn(Schema):
     slot_ids: list[int] = Field(default_factory=list)
 
 
-class MatrixCell(BaseModel):
+class MatrixCell(Schema):
     film_id: int
     slot_id: int
     count: int
 
 
-class Assignment(BaseModel):
+class Assignment(Schema):
     film_id: int
     slot_id: int
     expected: int
 
 
-class MatrixOut(BaseModel):
+class MatrixOut(Schema):
     films: list[FilmBrief]
     slots: list[SlotOut]
     cells: list[MatrixCell]
@@ -550,11 +586,11 @@ class MatrixOut(BaseModel):
 # --- Этап 3: расписание и подтверждения (§7) --------------------------------
 
 
-class ScreeningOut(BaseModel):
+class ScreeningOut(Schema):
     id: int
     film: FilmBrief
     slot: SlotOut
-    status: str
+    status: ScreeningStatus
     expected_attendance: int | None = None
     cancel_reason: str | None = None
     # Назначено вручную, вне алгоритма.
@@ -566,7 +602,7 @@ class ScreeningOut(BaseModel):
     # Подпись к событию без фильма: «ждите анонса».
     note: str | None = None
     # Состояние текущего пользователя по этому показу.
-    my_state: str | None = None
+    my_state: ConfirmationState | None = None
     my_place_in_queue: int | None = None
     confirmed: int = 0
     capacity: int = 0
@@ -577,7 +613,7 @@ class ScreeningOut(BaseModel):
     i_attended: bool = False
 
 
-class ScheduleOut(BaseModel):
+class ScheduleOut(Schema):
     round_id: int
     week_start: date
     stage: str
@@ -590,23 +626,23 @@ class ScheduleOut(BaseModel):
     voting_week: date | None = None
 
 
-class AssignIn(BaseModel):
+class AssignIn(Schema):
     film_id: int
     slot_id: int
 
 
-class MoveIn(BaseModel):
+class MoveIn(Schema):
     slot_id: int
 
 
-class CancelIn(BaseModel):
+class CancelIn(Schema):
     # Комментарий обязателен: он уходит всем, кто собирался прийти (§7).
     reason: str = Field(min_length=3, max_length=500)
 
 
-class ConfirmOut(BaseModel):
+class ConfirmOut(Schema):
     screening_id: int
-    state: str
+    state: ConfirmationState
     place_in_queue: int | None = None
     confirmed: int
     capacity: int
@@ -615,7 +651,7 @@ class ConfirmOut(BaseModel):
 # --- Этап 4: присутствие и обратная связь (§8) ------------------------------
 
 
-class CodeOut(BaseModel):
+class CodeOut(Schema):
     """Код для экрана в зале. Живёт секунды, поэтому отдаём и остаток."""
 
     screening_id: int
@@ -626,18 +662,18 @@ class CodeOut(BaseModel):
     attendees: int
 
 
-class MarkCodeIn(BaseModel):
+class MarkCodeIn(Schema):
     code: str = Field(min_length=4, max_length=12)
 
 
-class AttendeeOut(BaseModel):
+class AttendeeOut(Schema):
     user_id: int
     display_name: str
-    method: str
+    method: AttendanceMethod
     marked_at: datetime
 
 
-class SurveyAnswerOut(BaseModel):
+class SurveyAnswerOut(Schema):
     user_id: int
     display_name: str
     visit: int | None = None
@@ -648,7 +684,7 @@ class SurveyAnswerOut(BaseModel):
     answered_at: datetime
 
 
-class SurveyOut(BaseModel):
+class SurveyOut(Schema):
     """Опрос по одному показу: цифры для отчёта и ответы поимённо."""
 
     screening_id: int
@@ -664,7 +700,7 @@ class SurveyOut(BaseModel):
     answers: list[SurveyAnswerOut] = Field(default_factory=list)
 
 
-class FeedbackIn(BaseModel):
+class FeedbackIn(Schema):
     """Опрос после показа. Обязательна только отметка присутствия, форма — нет
     (§8): заполненная из-под палки, она собирала бы вежливые пятёрки."""
 
@@ -677,7 +713,7 @@ class FeedbackIn(BaseModel):
     review_text: str | None = Field(default=None, max_length=2000)
 
 
-class FeedbackOut(BaseModel):
+class FeedbackOut(Schema):
     screening_id: int
     # Пусто у события без фильма: про кино тогда не спрашиваем.
     film: FilmBrief | None = None
@@ -695,7 +731,7 @@ class FeedbackOut(BaseModel):
 # --- Турниры (расширение по просьбе клуба) ----------------------------------
 
 
-class TournamentOptionOut(BaseModel):
+class TournamentOptionOut(Schema):
     id: int
     seed: int
     title: str
@@ -704,7 +740,7 @@ class TournamentOptionOut(BaseModel):
     film_id: int | None = None
 
 
-class TournamentMatchOut(BaseModel):
+class TournamentMatchOut(Schema):
     id: int
     round_no: int
     position: int
@@ -720,18 +756,18 @@ class TournamentMatchOut(BaseModel):
     winner_option_id: int | None = None
 
 
-class TournamentRoundOut(BaseModel):
+class TournamentRoundOut(Schema):
     round_no: int
     name: str
     closed: bool
     matches: list[TournamentMatchOut] = Field(default_factory=list)
 
 
-class TournamentOut(BaseModel):
+class TournamentOut(Schema):
     id: int
     title: str
     description: str | None = None
-    status: str
+    status: TournamentStatus
     current_round: int
     stage_hours: int
     options_count: int
@@ -743,22 +779,22 @@ class TournamentOut(BaseModel):
     closes_at: datetime | None = None
 
 
-class TournamentBrief(BaseModel):
+class TournamentBrief(Schema):
     """Строка архива и содержимое плашки: без сетки целиком."""
 
     id: int
     title: str
-    status: str
+    status: TournamentStatus
     started_at: datetime | None = None
     finished_at: datetime | None = None
 
 
-class TournamentIn(BaseModel):
+class TournamentIn(Schema):
     title: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
 
 
-class TournamentOptionIn(BaseModel):
+class TournamentOptionIn(Schema):
     """Либо фильм из каталога, либо своя карточка."""
 
     title: str = Field(default="", max_length=120)
@@ -767,11 +803,11 @@ class TournamentOptionIn(BaseModel):
     film_id: int | None = None
 
 
-class TournamentOptionsIn(BaseModel):
+class TournamentOptionsIn(Schema):
     options: list[TournamentOptionIn] = Field(default_factory=list, max_length=32)
 
 
-class TournamentVoteIn(BaseModel):
+class TournamentVoteIn(Schema):
     match_id: int
     option_id: int
 
@@ -779,7 +815,7 @@ class TournamentVoteIn(BaseModel):
 # --- Аналитика (§14) --------------------------------------------------------
 
 
-class FunnelStep(BaseModel):
+class FunnelStep(Schema):
     week_start: date
     stage: str
     interested: int
@@ -788,7 +824,42 @@ class FunnelStep(BaseModel):
     attended: int
 
 
-class OverviewOut(BaseModel):
+class LongWaitFilm(Schema):
+    title: str
+    year: int | None
+    waiting: int
+    days: int
+
+
+class AudienceWeek(Schema):
+    week_start: date
+    people: int
+
+
+class NoShowUser(Schema):
+    user_id: int
+    display_name: str
+    misses: int
+
+
+class SoonChurn(Schema):
+    """Отток на истечении «Ближайшего»: сколько отметок сгорело, у скольких
+    людей и сколько из них после этого пропали."""
+
+    expired_marks: int = 0
+    people: int = 0
+    lapsed: int = 0
+
+
+class TopRatedFilm(Schema):
+    title: str
+    year: int | None
+    # В звёздах, 0,5..5.
+    rating: float
+    votes: int
+
+
+class OverviewOut(Schema):
     rounds: int
     screenings_held: int
     screenings_cancelled: int
@@ -801,20 +872,19 @@ class OverviewOut(BaseModel):
     # Доля отменённых сеансов от всех назначенных.
     cancelled_share: float = 0.0
     by_weekday: dict[str, float] = Field(default_factory=dict)
-    long_wait_films: list[dict] = Field(default_factory=list)
-    audience_by_week: list[dict] = Field(default_factory=list)
-    no_show_users: list[dict] = Field(default_factory=list)
-    # Отток на истечении «Ближайшего»: {expired_marks, people, lapsed}.
-    soon_churn: dict = Field(default_factory=dict)
+    long_wait_films: list[LongWaitFilm] = Field(default_factory=list)
+    audience_by_week: list[AudienceWeek] = Field(default_factory=list)
+    no_show_users: list[NoShowUser] = Field(default_factory=list)
+    soon_churn: SoonChurn = Field(default_factory=lambda: SoonChurn())
 
 
-class AnalyticsOut(BaseModel):
+class AnalyticsOut(Schema):
     funnel: list[FunnelStep] = Field(default_factory=list)
     overview: OverviewOut
-    top_rated: list[dict] = Field(default_factory=list)
+    top_rated: list[TopRatedFilm] = Field(default_factory=list)
 
 
-class ExportPasswordOut(BaseModel):
+class ExportPasswordOut(Schema):
     """Состояние пароля на /analytics. Самого пароля тут нет и быть не может —
     в базе лежит только хеш."""
 
@@ -823,12 +893,12 @@ class ExportPasswordOut(BaseModel):
     updated_by: str | None = None
 
 
-class ExportPasswordIn(BaseModel):
+class ExportPasswordIn(Schema):
     # Пустая строка снимает пароль и выключает выгрузку в боте.
     password: str = ""
 
 
-class PastScreeningOut(BaseModel):
+class PastScreeningOut(Schema):
     screening_id: int
     film_id: int
     title: str
@@ -839,7 +909,7 @@ class PastScreeningOut(BaseModel):
     i_answered: bool = False
     poster_url: str | None
     starts_at: datetime
-    status: str
+    status: ScreeningStatus
     expected: int | None
     came: int
     rating: float | None
@@ -848,7 +918,7 @@ class PastScreeningOut(BaseModel):
 # --- Ручные события и роли --------------------------------------------------
 
 
-class EventIn(BaseModel):
+class EventIn(Schema):
     """Событие вне цикла: фильм необязателен, время любое."""
 
     starts_at: datetime
@@ -862,7 +932,7 @@ class EventIn(BaseModel):
     registration_url: str | None = Field(default=None, max_length=500)
 
 
-class EventPatch(BaseModel):
+class EventPatch(Schema):
     """Правка события. Присланы только изменённые поля: отсутствие ключа и None
     здесь значат разное — снять фильм с анонса и не трогать его."""
 
@@ -877,7 +947,7 @@ class EventPatch(BaseModel):
     keep_confirmations: bool = False
 
 
-class BroadcastIn(BaseModel):
+class BroadcastIn(Schema):
     """Рассылка от лица бота: текст и кому."""
 
     text: str = Field(min_length=1, max_length=3500)
@@ -885,13 +955,13 @@ class BroadcastIn(BaseModel):
     screening_id: int | None = None
 
 
-class BroadcastOut(BaseModel):
+class BroadcastOut(Schema):
     recipients: int
     audience: str
     screening_id: int | None = None
 
 
-class BroadcastTarget(BaseModel):
+class BroadcastTarget(Schema):
     """Показ, которому можно написать."""
 
     id: int
@@ -900,13 +970,13 @@ class BroadcastTarget(BaseModel):
     signed_up: int
 
 
-class AudienceOut(BaseModel):
+class AudienceOut(Schema):
     """Сколько человек получат сообщение — до того, как его отправят."""
 
     recipients: int
 
 
-class EventOut(BaseModel):
+class EventOut(Schema):
     id: int
     starts_at: datetime
     duration_min: int
@@ -925,29 +995,29 @@ class EventOut(BaseModel):
     shortlist: list[FilmBrief] = Field(default_factory=list)
 
 
-class CancelEventIn(BaseModel):
+class CancelEventIn(Schema):
     reason: str = Field(min_length=1, max_length=500)
 
 
-class RevealIn(BaseModel):
+class RevealIn(Schema):
     film_id: int
 
 
-class TeamMember(BaseModel):
+class TeamMember(Schema):
     id: int
     display_name: str
     tg_username: str | None = None
     role: UserRole
 
 
-class RoleIn(BaseModel):
+class RoleIn(Schema):
     role: UserRole
 
 
 # --- Пригласительные ссылки -------------------------------------------------
 
 
-class InviteOut(BaseModel):
+class InviteOut(Schema):
     """Ссылка на фильм и то, что уже принесли прежние приглашения."""
 
     link: str
