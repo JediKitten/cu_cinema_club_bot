@@ -297,3 +297,52 @@ async def test_cancelled_share_is_a_percentage(session):
     await session.commit()
 
     assert (await summary(session)).cancelled_share == 100.0
+
+
+async def test_csat_by_week_combines_evening_and_discussion(session):
+    """Общий CSAT — из вечера и обсуждения, не из фильма. Кто на обсуждении
+    не был, у того общий — это вечер: пропуск не тянет цифру ни вверх, ни вниз."""
+    from zoneinfo import ZoneInfo
+
+    _, _, screening, _, voters = await held_screening(session)
+    await att.mark_manually(session, screening.id, voters[1].id, voters[1].id)
+    await att.save_feedback(
+        session, screening.id, voters[0].id,
+        film_rating=2, review_text=None, visit_rating=8, discussion_rating=10,
+    )
+    await att.save_feedback(
+        session, screening.id, voters[1].id,
+        film_rating=2, review_text=None, visit_rating=6, discussion_skip="absent",
+    )
+
+    weeks = await analytics.csat_by_week(session)
+
+    assert len(weeks) == 1
+    week = weeks[0]
+    slot = await session.get(Slot, screening.slot_id)
+    local = slot.starts_at.astimezone(ZoneInfo("Europe/Moscow")).date()
+    # Неделя — по дате показа, в часовом поясе клуба.
+    assert week.week_start == local - timedelta(days=local.weekday())
+    # Первый: (4 + 5) / 2 = 4,5 звезды; второй: только вечер — 3. Среднее — 3,75.
+    # Фильм на единицу не влияет ни на что.
+    assert week.overall == 3.75 and week.overall_votes == 2
+    assert week.visit == 3.5 and week.visit_votes == 2
+    assert week.discussion == 5.0 and week.discussion_votes == 1
+
+
+async def test_csat_by_week_is_in_the_analytics_response(client, session):
+    from tests.conftest import SUPERADMIN_TG_ID, login
+
+    _, _, screening, _, voters = await held_screening(session)
+    await att.save_feedback(
+        session, screening.id, voters[0].id,
+        film_rating=None, review_text=None, visit_rating=10, discussion_rating=None,
+    )
+    auth = await login(client, SUPERADMIN_TG_ID, "Главный")
+    response = await client.get(
+        "/api/admin/analytics", headers={"Authorization": f"Bearer {auth['token']}"}
+    )
+
+    assert response.status_code == 200, response.text
+    [week] = response.json()["overview"]["csat_by_week"]
+    assert week["overall"] == 5.0 and week["discussion"] is None

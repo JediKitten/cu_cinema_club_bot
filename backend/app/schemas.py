@@ -859,6 +859,19 @@ class TopRatedFilm(Schema):
     votes: int
 
 
+class CsatWeek(Schema):
+    """Опрос после показов одной недели. Средние — в звёздах, 0,5..5;
+    число ответов рядом, чтобы 5,0 от двоих не выглядело как 5,0 от тридцати."""
+
+    week_start: date
+    overall: float | None
+    overall_votes: int
+    visit: float | None
+    visit_votes: int
+    discussion: float | None
+    discussion_votes: int
+
+
 class OverviewOut(Schema):
     rounds: int
     screenings_held: int
@@ -876,6 +889,7 @@ class OverviewOut(Schema):
     audience_by_week: list[AudienceWeek] = Field(default_factory=list)
     no_show_users: list[NoShowUser] = Field(default_factory=list)
     soon_churn: SoonChurn = Field(default_factory=lambda: SoonChurn())
+    csat_by_week: list[CsatWeek] = Field(default_factory=list)
 
 
 class AnalyticsOut(Schema):

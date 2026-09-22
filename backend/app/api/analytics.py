@@ -10,6 +10,7 @@ from app.db import get_session
 from app.models import AuditLog
 from app.schemas import (
     AnalyticsOut,
+    CsatWeek,
     ExportPasswordIn,
     ExportPasswordOut,
     FunnelStep,
@@ -53,6 +54,10 @@ async def full_analytics(
             audience_by_week=overview.audience_by_week,
             no_show_users=overview.no_show_users,
             soon_churn=overview.soon_churn,
+            csat_by_week=[
+                CsatWeek.model_validate(week, from_attributes=True)
+                for week in overview.csat_by_week
+            ],
         ),
         top_rated=await analytics.top_rated(
             session, int(values["internal_rating_min_votes"])

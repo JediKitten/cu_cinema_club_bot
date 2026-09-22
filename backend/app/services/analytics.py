@@ -28,6 +28,7 @@ from app.models import (
     User,
 )
 from app.models.enums import ConfirmationState, InterestKind, ScreeningStatus
+from app.services.settings import SettingsService
 from app.services.weights import WeightParams, active_interest_clause, age_days_expr
 
 WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
@@ -72,6 +73,23 @@ class Overview:
     no_show_users: list[dict] = field(default_factory=list)
     # Отток на истечении «Ближайшего»: отметка стала «Желаемым», человек не вернулся.
     soon_churn: dict = field(default_factory=dict)
+    # Опрос после показа по неделям: общий CSAT, вечер и обсуждение.
+    csat_by_week: list["CsatWeek"] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class CsatWeek:
+    """Опрос после показов одной недели. Средние — в звёздах, 0,5..5."""
+
+    week_start: date
+    # Общий CSAT: у каждого ответа — среднее из «вечера» и «обсуждения»
+    # (из того, что есть), потом среднее по неделе.
+    overall: float | None
+    overall_votes: int
+    visit: float | None
+    visit_votes: int
+    discussion: float | None
+    discussion_votes: int
 
 
 async def funnel(session: AsyncSession, limit: int = 8) -> list[Funnel]:
@@ -254,6 +272,7 @@ async def overview(session: AsyncSession, long_wait_days: int, params: WeightPar
         audience_by_week=await audience_by_week(session),
         no_show_users=await no_show_users(session),
         soon_churn=await soon_churn(session, params),
+        csat_by_week=await csat_by_week(session),
     )
 
 
@@ -284,6 +303,65 @@ async def audience_by_week(session: AsyncSession, weeks: int = 12) -> list[dict]
     return [
         {"week_start": week.isoformat(), "people": len(users)}
         for week, users in sorted(people.items())
+    ]
+
+
+def _stars(values: list[float]) -> float | None:
+    """Среднее полубаллов 1..10 — в звёздах 0,5..5."""
+    return round(sum(values) / len(values) / 2, 2) if values else None
+
+
+async def csat_by_week(session: AsyncSession, weeks: int = 12) -> list[CsatWeek]:
+    """Опрос после показа по неделям — для отчёта перед вузом.
+
+    Неделя — по дате показа в часовом поясе клуба, а не по дате ответа:
+    ответивший через три дня должен попасть к своему вечеру, а не
+    в следующую неделю.
+
+    Общий CSAT складывается из «вечера» и «обсуждения», но не из фильма:
+    фильм клуб не снимал, а вечер и разговор после — его работа. У ответа
+    без оценки обсуждения («не был», «затрудняюсь») общий — это вечер:
+    отсутствие ответа не должно тянуть цифру ни вверх, ни вниз.
+    """
+    tz = str(await SettingsService(session).get("display_timezone"))
+    local = sa.func.timezone(tz, Slot.starts_at)
+    week = sa.func.date_trunc("week", local)
+    since = datetime.now(UTC) - timedelta(weeks=weeks)
+
+    rows = await session.execute(
+        sa.select(week, Feedback.visit_rating, Feedback.discussion_rating)
+        .join(Screening, Screening.id == Feedback.screening_id)
+        .join(Slot, Slot.id == Screening.slot_id)
+        .where(
+            Slot.starts_at >= since,
+            Screening.status != ScreeningStatus.CANCELLED,
+            sa.or_(
+                Feedback.visit_rating.is_not(None), Feedback.discussion_rating.is_not(None)
+            ),
+        )
+    )
+
+    by_week: dict[date, tuple[list[float], list[float], list[float]]] = {}
+    for start, visit, discussion in rows:
+        overall, visits, talks = by_week.setdefault(start.date(), ([], [], []))
+        given = [value for value in (visit, discussion) if value is not None]
+        overall.append(sum(given) / len(given))
+        if visit is not None:
+            visits.append(visit)
+        if discussion is not None:
+            talks.append(discussion)
+
+    return [
+        CsatWeek(
+            week_start=start,
+            overall=_stars(overall),
+            overall_votes=len(overall),
+            visit=_stars(visits),
+            visit_votes=len(visits),
+            discussion=_stars(talks),
+            discussion_votes=len(talks),
+        )
+        for start, (overall, visits, talks) in sorted(by_week.items())
     ]
 
 

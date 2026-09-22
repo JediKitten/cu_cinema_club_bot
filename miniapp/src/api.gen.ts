@@ -1971,6 +1971,30 @@ export interface components {
          */
         ConfirmationState: "confirmed" | "waitlist" | "cancelled";
         /**
+         * CsatWeek
+         * @description Опрос после показов одной недели. Средние — в звёздах, 0,5..5;
+         *     число ответов рядом, чтобы 5,0 от двоих не выглядело как 5,0 от тридцати.
+         */
+        CsatWeek: {
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+            /** Overall */
+            overall: number | null;
+            /** Overall Votes */
+            overall_votes: number;
+            /** Visit */
+            visit: number | null;
+            /** Visit Votes */
+            visit_votes: number;
+            /** Discussion */
+            discussion: number | null;
+            /** Discussion Votes */
+            discussion_votes: number;
+        };
+        /**
          * CustomAchievementIn
          * @description Именная ачивка: админ придумывает её под конкретного человека.
          */
@@ -2645,6 +2669,8 @@ export interface components {
             /** No Show Users */
             no_show_users: components["schemas"]["NoShowUser"][];
             soon_churn: components["schemas"]["SoonChurn"];
+            /** Csat By Week */
+            csat_by_week: components["schemas"]["CsatWeek"][];
         };
         /** PastScreeningOut */
         PastScreeningOut: {

@@ -22,6 +22,7 @@ from app.models import (
     Attendance,
     Confirmation,
     Favourite,
+    Feedback,
     Film,
     Hall,
     Screening,
@@ -37,7 +38,7 @@ from app.models.enums import (
     ScreeningStatus,
     UserRole,
 )
-from app.services import achievements, events, interests, ratings, tournaments
+from app.services import achievements, attendance, events, interests, ratings, tournaments
 from app.services.settings import SettingsService
 
 logger = logging.getLogger("preview_seed")
@@ -169,6 +170,43 @@ async def ensure_past_screenings(
     await session.commit()
 
 
+async def ensure_survey_answers(session) -> int:
+    """Ответы на опрос после прошедших показов — ради опросов и графиков CSAT
+    в аналитике: пустой опрос не показывает ни таблицу, ни столбики.
+
+    Оценки разные у разных людей и показов, а один честно не был на
+    обсуждении: одинаковые пятёрки не проверили бы ни средние, ни прочерки.
+    """
+    rows = await session.execute(
+        sa.select(Attendance.screening_id, Attendance.user_id)
+        .join(Screening, Screening.id == Attendance.screening_id)
+        .outerjoin(
+            Feedback,
+            sa.and_(
+                Feedback.screening_id == Attendance.screening_id,
+                Feedback.user_id == Attendance.user_id,
+            ),
+        )
+        .where(Screening.status == ScreeningStatus.COMPLETED, Feedback.id.is_(None))
+        .order_by(Attendance.screening_id, Attendance.user_id)
+    )
+    added = 0
+    for index, (screening_id, user_id) in enumerate(rows.all()):
+        skip = "absent" if index % 4 == 3 else None
+        await attendance.save_feedback(
+            session,
+            screening_id,
+            user_id,
+            film_rating=None,
+            review_text="Хотелось бы начинать на полчаса раньше" if index == 1 else None,
+            visit_rating=7 + (index * 3) % 4,
+            discussion_rating=None if skip else 6 + (index * 5) % 5,
+            discussion_skip=skip,
+        )
+        added += 1
+    return added
+
+
 async def ensure_marks(session, people: dict[UserRole, User], films: list[Film]) -> None:
     """Отметки, оценки и любимое — чтобы каталог, профиль и лента не были пустыми."""
     if not films:
@@ -268,6 +306,7 @@ async def run() -> None:
         people = await ensure_personas(session)
         await ensure_marks(session, people, films)
         await ensure_past_screenings(session, people, films)
+        await ensure_survey_answers(session)
         await ensure_tournament(session, people)
         event_id = await ensure_event(session, people, films)
         # Ачивки считаются по уже созданным данным — последним шагом, когда

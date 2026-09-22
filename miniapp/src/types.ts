@@ -67,6 +67,7 @@ export type Survey = S["SurveyOut"];
 
 export type FunnelStep = S["FunnelStep"];
 export type Overview = S["OverviewOut"];
+export type CsatWeek = S["CsatWeek"];
 export type Analytics = S["AnalyticsOut"];
 export type ExportPassword = S["ExportPasswordOut"];
 export type TeamMember = S["TeamMember"];

@@ -4,7 +4,7 @@ import { Bars } from "./Bars";
 import { Section } from "./Section";
 import { weekLabel } from "../dates";
 import { showMessage } from "../telegram";
-import type { ExportPassword, FunnelStep } from "../types";
+import type { CsatWeek, ExportPassword, FunnelStep } from "../types";
 import { useLoad } from "../useLoad";
 
 /** Воронка §14: важны переходы, а не абсолютные числа.
@@ -134,6 +134,43 @@ function ExportAccess() {
   );
 }
 
+const STARS = (value: number) => value.toFixed(1).replace(".", ",");
+
+/** Опрос после показов по неделям — то, чем клуб отчитывается перед вузом.
+ *
+ *  Три графика, а не один: общий CSAT говорит «стало хуже», а вечер и
+ *  обсуждение по отдельности — что именно. Шкала у всех одна, до пяти звёзд,
+ *  иначе 3,8 выглядело бы полным столбиком. Под датой — сколько ответили:
+ *  5,0 от двоих и 5,0 от тридцати — разные новости. */
+function CsatByWeek({ weeks }: { weeks: CsatWeek[] }) {
+  const chart = (pick: (week: CsatWeek) => [number | null, number]) =>
+    weeks.map((week) => {
+      const [value, votes] = pick(week);
+      return { label: shortDay(week.week_start), value, note: votes ? `${votes} отв.` : "" };
+    });
+
+  return (
+    <>
+      <h3>CSAT по неделям</h3>
+      <Bars
+        data={chart((week) => [week.overall, week.overall_votes])}
+        max={5}
+        format={STARS}
+        hint="Общий: у каждого ответа — среднее из «вечера» и «обсуждения», затем среднее за неделю. Фильм сюда не входит. Неделя — по дате показа."
+      />
+      <h4 className="chart-title">Вечер в целом</h4>
+      <Bars data={chart((week) => [week.visit, week.visit_votes])} max={5} format={STARS} />
+      <h4 className="chart-title">Обсуждение после фильма</h4>
+      <Bars
+        data={chart((week) => [week.discussion, week.discussion_votes])}
+        max={5}
+        format={STARS}
+        hint="Ответы «не был» и «затрудняюсь» в обсуждение не входят."
+      />
+    </>
+  );
+}
+
 export function Analytics() {
   const { data, error } = useLoad(getAnalytics, []);
 
@@ -204,6 +241,8 @@ export function Analytics() {
           />
         </>
       )}
+
+      {overview.csat_by_week.length > 0 && <CsatByWeek weeks={overview.csat_by_week} />}
 
       {(overview.soon_churn.people ?? 0) > 0 && (
         <>

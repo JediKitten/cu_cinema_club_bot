@@ -828,6 +828,45 @@ h3 {
   letter-spacing: -0.2px;
 }
 
+/* Столбики с числом над каждым — для оценок: высота без числа не отличает
+   4,2 от 4,4, а в отчёт идёт именно число. */
+/* Подзаголовок графика внутри раздела: тише h3, чтобы три графика одного
+   опроса читались как один блок, а не три раздела. */
+.chart-title {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hint);
+}
+
+.bars--valued {
+  height: 132px;
+}
+
+/* Недель в начале семестра мало, и три столбика во всю ширину читаются
+   как плиты, а не как график. */
+.bars--valued .bars__item {
+  max-width: 52px;
+}
+
+.bars__stack {
+  min-height: 0;
+}
+
+.bars__value {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bars__note {
+  color: var(--hint);
+  font-size: 9px;
+  white-space: nowrap;
+  margin-top: -3px;
+}
+
 .back-link {
   align-self: flex-start;
 }
