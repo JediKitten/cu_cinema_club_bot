@@ -366,7 +366,8 @@ attendance         id, screening_id, user_id, method, marked_at, marked_by
                    method ∈ {qr, code, manual}
 
 feedback           id, screening_id, user_id, film_rating, review_text,
-                   org_rating, org_comment, created_at
+                   visit_rating, discussion_rating, discussion_skip, created_at
+                   discussion_skip ∈ {absent, unsure}  — опрос CSAT после показа
 
 settings           key, value, updated_by, updated_at
 audit_log          id, actor_id, entity, entity_id, action, payload, created_at
@@ -397,7 +398,7 @@ notifications      id, user_id, kind, payload, sent_at, read_at
 
 - **Backend:** Python + FastAPI, Postgres, SQLAlchemy + Alembic.
 - **Бот:** aiogram 3, Telegram Mini App для интерфейса выбора слотов и карточек.
-- **Планировщик:** APScheduler или Celery beat. Задачи: срез этапа 1, автопилот 1, срез этапа 2, автопилот 2, публикация, напоминания 24ч/2ч, истечение `soon`, напоминание об обратной связи, ночной импорт TMDB.
+- **Планировщик:** APScheduler или Celery beat (в итоге — ни то, ни другое: фоновые циклы бота, см. `backend/app/bot/loops.py`). Задачи: срез этапа 1, автопилот 1, срез этапа 2, автопилот 2, публикация, напоминания 24ч/2ч, истечение `soon`, напоминание об обратной связи, ночной импорт TMDB.
 - **Веб:** любой SPA-фреймворк, авторизация через SSO вуза + обязательная привязка TG.
 - **Назначения:** `scipy.optimize.linear_sum_assignment`.
 

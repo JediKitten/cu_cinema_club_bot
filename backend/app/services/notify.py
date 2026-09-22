@@ -38,6 +38,11 @@ SEND_INTERVAL_SECONDS = 0.04
 RETRY_DELAYS_SECONDS = (60, 300, 900, 3600)
 MAX_ATTEMPTS = len(RETRY_DELAYS_SECONDS) + 1
 
+# Разблокировать бота можно и молча, без /start, — тогда пометка сама себя
+# не снимет. Раз в месяц пробуем снова: один отказ в месяц дешевле, чем
+# навсегда потерянный человек.
+RECHECK_BLOCKED_AFTER = timedelta(days=30)
+
 # Ошибки, после которых повторять бессмысленно: человек заблокировал бота,
 # удалил аккаунт или чата просто нет. Опознаём по имени класса и тексту, а не
 # по типу: aiogram — деталь бота, и сервис о нём знать не должен.
@@ -408,6 +413,14 @@ async def deliver(
             notification.failed_reason = "нет привязки Telegram"
             await session.commit()
             continue
+        if (
+            user.bot_blocked_at is not None
+            and user.bot_blocked_at > datetime.now(UTC) - RECHECK_BLOCKED_AFTER
+        ):
+            # Заведомый отказ — не тратим на него ни запрос, ни паузу в очереди.
+            notification.failed_reason = "заблокировал бота"
+            await session.commit()
+            continue
 
         film, slot = await _context(session, notification)
         text = render(
@@ -437,6 +450,9 @@ async def deliver(
             if _is_permanent(exc):
                 # Заблокировал бота, удалил аккаунт — повторять нечего.
                 notification.failed_reason = f"{type(exc).__name__}: {exc}"[:500]
+                # Время — питоновское, не now() базы: в этой же пачке человеку
+                # может идти ещё одно сообщение, и проверка выше сравнивает его.
+                user.bot_blocked_at = datetime.now(UTC)
                 logger.warning("Не доставлено пользователю %s: %s", user.id, exc)
             else:
                 # Сеть моргнула, Telegram ответил 429 или 500 — это про момент,

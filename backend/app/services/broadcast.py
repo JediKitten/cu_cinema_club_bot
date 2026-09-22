@@ -45,7 +45,11 @@ class Delivery:
 
 
 def _everyone():
-    return sa.select(User.id).where(User.is_active, User.tg_id.is_not(None))
+    # Заблокировавшие бота не в счёт: админ видит число тех, кому сообщение
+    # правда дойдёт, а не тех, кому оно гарантированно не дойдёт.
+    return sa.select(User.id).where(
+        User.is_active, User.tg_id.is_not(None), User.bot_blocked_at.is_(None)
+    )
 
 
 def _signed_up(screening_id: int):

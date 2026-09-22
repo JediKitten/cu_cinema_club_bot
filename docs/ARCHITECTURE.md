@@ -413,7 +413,7 @@ Alembic; ORM-модели — в [backend/app/models](../backend/app/models).
 
 ```
 main.py            сборка FastAPI, статика Mini App
-bot.py             aiogram: команды, тур, доставка уведомлений, фоновые задачи
+bot/               aiogram: роутеры по темам, рассылка, фоновые задачи, копии базы, сторож
 config.py          чтение .env (pydantic-settings)
 db.py              движок и сессии SQLAlchemy
 core/              auth.py (сессии и роли), telegram_auth.py (подпись initData)

@@ -2,19 +2,32 @@
 # он не попадает. Хосту не приходится ставить ни Node, ни Python 3.12.
 
 FROM node:20-alpine AS frontend
+# Коммит, из которого собрано. Попадает и в Mini App, и в /health: так
+# приложение видит, что сервер уже новее, а выкат — что приехало нужное.
+ARG GIT_SHA=dev
 WORKDIR /build
 COPY miniapp/package.json miniapp/package-lock.json ./
 RUN npm ci --silent
 COPY miniapp/ ./
-RUN npm run build
+RUN VITE_APP_VERSION=$GIT_SHA npm run build
 
 
-FROM python:3.12-slim AS runtime
+# Debian закреплён явно: pg_dump из его репозитория должен быть не старше
+# сервера базы (postgres:16). В trixie — 17-й, он снимает дампы и с 16-го;
+# плавающий тег однажды мог бы переехать на дистрибутив со старым клиентом.
+FROM python:3.12-slim-trixie AS runtime
 
+ARG GIT_SHA=dev
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    FRONTEND_DIR=/app/frontend
+    FRONTEND_DIR=/app/frontend \
+    GIT_SHA=$GIT_SHA
+
+# pg_dump — для ночной копии базы, которую снимает бот.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/backend
 
@@ -27,7 +40,12 @@ COPY backend/ ./
 COPY --from=frontend /build/dist /app/frontend
 
 # Приложение не должно работать от root даже внутри контейнера.
-RUN useradd --system --uid 10001 cinema && chown -R cinema:cinema /app
+# Каталог копий создаётся заранее и отдаётся пользователю приложения: пустой
+# том Docker при первом подключении наследует владельца отсюда, иначе он
+# достался бы root и бот не смог бы в него писать.
+RUN useradd --system --uid 10001 cinema \
+    && mkdir -p /backups \
+    && chown -R cinema:cinema /app /backups
 USER cinema
 
 EXPOSE 8000

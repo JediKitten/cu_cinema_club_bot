@@ -41,6 +41,12 @@ class Config(BaseSettings):
     # Каталог собранного Mini App. В проде статику отдаёт само приложение,
     # в разработке её отдаёт dev-сервер Vite и каталога здесь нет.
     frontend_dir: str = "../miniapp/dist"
+    # Куда бот складывает ночные копии базы. Пусто — копии не снимаются:
+    # в разработке они не нужны, в бою каталог задаёт docker-compose.prod.yml.
+    backup_dir: str = ""
+    # Коммит, из которого собран образ. Отдаётся в /health: по нему видно,
+    # что именно сейчас в бою, а Mini App понимает, что устарела.
+    git_sha: str = "dev"
 
     @property
     def is_production(self) -> bool:

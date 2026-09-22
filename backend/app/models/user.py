@@ -30,6 +30,10 @@ class User(Base, CreatedAtMixin):
     # аккаунт может завестись до первого /start — например, по чужой ссылке.
     onboarded_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(default=True, server_default=sa.true())
+    # Когда Telegram ответил «бот заблокирован». Пока пометка свежая, рассылки
+    # обходят человека стороной: каждое сообщение ему — заведомый отказ.
+    # Снимается, как только он снова пишет боту.
+    bot_blocked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User {self.id} {self.display_name!r} {self.role}>"

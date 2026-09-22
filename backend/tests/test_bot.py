@@ -4,16 +4,11 @@
 Сами обработчики — тонкая обвязка над этими функциями.
 """
 
-from app.bot import (
-    TOUR,
-    _notify_keyboard,
-    analytics_keyboard,
-    analytics_menu_text,
-    shortlist_keyboard,
-    tour_keyboard,
-    tour_text,
-    vote_keyboard,
-)
+from app.bot.export import analytics_keyboard, analytics_menu_text
+from app.bot.notices import notify_keyboard as _notify_keyboard
+from app.bot.notices import survey_keyboard
+from app.bot.onboarding import TOUR, tour_keyboard, tour_text
+from app.bot.votes import shortlist_keyboard, vote_keyboard
 from app.services import exports
 
 # Предел Telegram на текст сообщения.
@@ -117,7 +112,7 @@ def test_nothing_chosen_means_no_app_button():
 
 
 def test_first_choice_brings_the_app_button(monkeypatch):
-    monkeypatch.setattr("app.bot.current_miniapp_url", lambda: "https://example.org")
+    monkeypatch.setattr("app.bot.common.current_miniapp_url", lambda: "https://example.org")
     rows = vote_keyboard(
         7, [(1, "Интерстеллар"), (2, "Начало")], {1}, "2026-09-21"
     ).inline_keyboard
@@ -148,7 +143,7 @@ def test_the_announcement_goes_out_with_its_buttons(monkeypatch):
     этой ветки сообщение ушло бы голым текстом, как раньше."""
     from app.models.enums import NotificationKind
 
-    monkeypatch.setattr("app.bot.current_miniapp_url", lambda: "https://example.org")
+    monkeypatch.setattr("app.bot.common.current_miniapp_url", lambda: "https://example.org")
     markup = _notify_keyboard(NotificationKind.SHORTLIST_PUBLISHED, SHORTLIST_PAYLOAD)
 
     assert markup is not None
@@ -168,7 +163,7 @@ async def test_a_hung_job_does_not_stop_the_loop(monkeypatch):
     """
     import asyncio
 
-    from app import bot as botmod
+    from app.bot import loops as botmod
 
     monkeypatch.setattr(botmod, "JOB_TIMEOUT_SECONDS", 0.05)
     monkeypatch.setattr(botmod, "JOBS_INTERVAL_SECONDS", 0.01)
@@ -199,10 +194,9 @@ async def test_a_hung_job_does_not_stop_the_loop(monkeypatch):
 def test_the_survey_reminder_leads_straight_to_the_form(monkeypatch):
     """Сообщение звало «оценить в приложении», а приложение открывалось
     на каталоге: форму надо было ещё найти."""
-    from app.bot import survey_keyboard
     from app.models.enums import NotificationKind
 
-    monkeypatch.setattr("app.bot.current_miniapp_url", lambda: "https://example.org")
+    monkeypatch.setattr("app.bot.common.current_miniapp_url", lambda: "https://example.org")
     markup = _notify_keyboard(NotificationKind.FEEDBACK_REMINDER, {"screening_id": 12})
 
     assert markup is not None
@@ -211,6 +205,6 @@ def test_the_survey_reminder_leads_straight_to_the_form(monkeypatch):
     assert button.web_app.url.endswith("?survey=12")
 
     # Без адреса приложения кнопка была бы битой — лучше её не рисовать.
-    monkeypatch.setattr("app.bot.current_miniapp_url", lambda: "")
+    monkeypatch.setattr("app.bot.common.current_miniapp_url", lambda: "")
     assert survey_keyboard(12) is None
     assert survey_keyboard(None) is None

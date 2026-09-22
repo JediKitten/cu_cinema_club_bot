@@ -66,8 +66,15 @@ app.include_router(tournaments.router)
 
 
 @app.get("/health", tags=["ops"])
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health(response: Response) -> dict[str, str]:
+    """Жив ли сервер и из какого коммита он собран.
+
+    По `version` сверяется выкат (deploy/release.sh), а Mini App узнаёт, что
+    сервер новее её самой, и перезагружается — иначе человек так и сидел бы
+    в сборке, которую Telegram держит в кэше.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    return {"status": "ok", "version": get_config().git_sha}
 
 
 # --- Статика Mini App ------------------------------------------------------
