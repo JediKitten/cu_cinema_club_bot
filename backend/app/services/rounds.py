@@ -12,7 +12,17 @@ from zoneinfo import ZoneInfo
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AuditLog, Film, Hall, Round, Screening, ShortlistItem, Slot, User
+from app.models import (
+    AuditLog,
+    Film,
+    FilmVote,
+    Hall,
+    Round,
+    Screening,
+    ShortlistItem,
+    Slot,
+    User,
+)
 from app.models.enums import NotificationKind, RoundStage, ShortlistSource
 from app.services import notify
 from app.services.settings import SettingsService
@@ -241,27 +251,57 @@ async def set_shortlist(
 ) -> list[ShortlistItem]:
     """Заменяет шорт-лист целиком.
 
-    Правка списка после публикации меняла бы условия голосования на ходу,
-    поэтому разрешена только до неё — и только внутри окна сборки
-    (см. shortlist_window).
+    До публикации — только внутри окна сборки (см. shortlist_window): до среза
+    веса ещё набираются. После публикации, пока идёт голосование, список
+    тоже можно поправить (решение клуба): бывает, что автопилот взял не то
+    или фильм выяснился недоступным. Голоса за убранные фильмы при этом
+    снимаются — за фильм, которого нет в списке, голосовать нельзя, и
+    матрица не должна его учитывать. Голоса за оставшиеся и отмеченные
+    вечера остаются. Когда расписание уже собирается, список не трогаем:
+    на нём стоят назначенные показы, и менять надо фильм самого показа.
     """
-    if round_.stage not in (RoundStage.COLLECTING, RoundStage.SHORTLIST_REVIEW):
-        raise RoundError("Шорт-лист уже опубликован, править его нельзя")
-
-    values = await SettingsService(session).all()
-    window = shortlist_window(round_.week_start, values, now)
-    if not window.is_open:
-        tz = ZoneInfo(str(values["display_timezone"]))
+    voting = round_.stage == RoundStage.SLOT_VOTING
+    if not voting and round_.stage not in (RoundStage.COLLECTING, RoundStage.SHORTLIST_REVIEW):
         raise RoundError(
-            "Шорт-лист собирают после среза интереса — "
-            f"{window.opens_at.astimezone(tz):%d.%m в %H:%M}. "
-            "До него веса ещё набираются, и список вышел бы преждевременным."
+            "Расписание недели уже собирается — шорт-лист больше не правится. "
+            "Фильм конкретного показа меняют в «Событиях»."
         )
+
+    if not voting:
+        values = await SettingsService(session).all()
+        window = shortlist_window(round_.week_start, values, now)
+        if not window.is_open:
+            tz = ZoneInfo(str(values["display_timezone"]))
+            raise RoundError(
+                "Шорт-лист собирают после среза интереса — "
+                f"{window.opens_at.astimezone(tz):%d.%m в %H:%M}. "
+                "До него веса ещё набираются, и список вышел бы преждевременным."
+            )
 
     if not film_ids:
         raise RoundError("Шорт-лист не может быть пустым")
     if len(set(film_ids)) != len(film_ids):
         raise RoundError("В шорт-листе повторяются фильмы")
+
+    previous = {
+        item.film_id: item
+        for item in (
+            await session.execute(
+                sa.select(ShortlistItem).where(ShortlistItem.round_id == round_.id)
+            )
+        ).scalars()
+    }
+    removed = [film_id for film_id in previous if film_id not in film_ids]
+
+    dropped_votes = 0
+    if voting and removed:
+        dropped_votes = (
+            await session.execute(
+                sa.delete(FilmVote).where(
+                    FilmVote.round_id == round_.id, FilmVote.film_id.in_(removed)
+                )
+            )
+        ).rowcount or 0
 
     await session.execute(sa.delete(ShortlistItem).where(ShortlistItem.round_id == round_.id))
 
@@ -269,24 +309,124 @@ async def set_shortlist(
         ShortlistItem(
             round_id=round_.id,
             film_id=film_id,
-            source=ShortlistSource.ADMIN,
+            # Оставшийся фильм помнит, кто его выбрал: «выбор автопилота»
+            # не должен превращаться в ручной оттого, что рядом что-то поменяли.
+            source=previous[film_id].source if film_id in previous else ShortlistSource.ADMIN,
             position=position,
+            weight_snapshot=previous[film_id].weight_snapshot if film_id in previous else None,
         )
         for position, film_id in enumerate(film_ids)
     ]
     session.add_all(items)
-    round_.stage = RoundStage.SHORTLIST_REVIEW
+    if not voting:
+        round_.stage = RoundStage.SHORTLIST_REVIEW
     session.add(
         AuditLog(
             actor_id=actor_id,
             entity="round",
             entity_id=round_.id,
             action="set_shortlist",
-            payload={"film_ids": film_ids},
+            payload={
+                "film_ids": film_ids,
+                "during_voting": voting,
+                "removed": removed,
+                "added": [film_id for film_id in film_ids if film_id not in previous],
+                "dropped_votes": dropped_votes,
+            },
         )
     )
     await session.commit()
     return items
+
+
+async def announce_shortlist_update(
+    session: AsyncSession, round_: Round, actor_id: int
+) -> int:
+    """Рассылает поправленный шорт-лист всем, кому шло объявление.
+
+    Отдельным действием, а не при каждом сохранении: правка бывает в
+    несколько заходов, и три сообщения подряд — это спам. Админ жмёт
+    «разослать», когда список окончательный.
+
+    У каждого в сообщении уже отмечены его текущие голоса: кнопка под
+    фильмом переключает голос, и без галочек нажатие на уже выбранный
+    фильм снимало бы его, а человек думал бы, что голосует.
+    """
+    if round_.stage != RoundStage.SLOT_VOTING:
+        raise RoundError("Обновление рассылают, пока идёт голосование")
+
+    listed = await _listed_films(session, round_)
+    if not listed:
+        raise RoundError("Шорт-лист пуст")
+
+    chosen: dict[int, list[int]] = {}
+    for user_id, film_id in (
+        await session.execute(
+            sa.select(FilmVote.user_id, FilmVote.film_id).where(FilmVote.round_id == round_.id)
+        )
+    ).all():
+        chosen.setdefault(user_id, []).append(film_id)
+
+    # Метка времени в ключе: вторая правка за неделю — это второе
+    # обновление, и дедупликация не должна его проглотить.
+    stamp = int(datetime.now(UTC).timestamp())
+    queued = 0
+    for user_id in await _audience(session):
+        if await notify.queue(
+            session,
+            user_id,
+            NotificationKind.SHORTLIST_PUBLISHED,
+            dedup_key=f"shortlist-update:{round_.id}:{user_id}:{stamp}",
+            payload={
+                "round_id": round_.id,
+                "week_start": round_.week_start.isoformat(),
+                "films": listed,
+                "in_english": round_.in_english,
+                "updated": True,
+                "chosen": chosen.get(user_id, []),
+            },
+        ):
+            queued += 1
+
+    session.add(
+        AuditLog(
+            actor_id=actor_id,
+            entity="round",
+            entity_id=round_.id,
+            action="announce_shortlist_update",
+            payload={"recipients": queued},
+        )
+    )
+    await session.commit()
+    return queued
+
+
+async def _listed_films(session: AsyncSession, round_: Round) -> list[dict]:
+    """Фильмы шорт-листа для сообщения: у каждого своя кнопка, и ей нужен id."""
+    return [
+        {"id": film_id, "title": title}
+        for film_id, title in (
+            await session.execute(
+                sa.select(Film.id, Film.title_ru)
+                .join(ShortlistItem, ShortlistItem.film_id == Film.id)
+                .where(ShortlistItem.round_id == round_.id)
+                .order_by(ShortlistItem.position)
+            )
+        ).all()
+    ]
+
+
+async def _audience(session: AsyncSession) -> list[int]:
+    """Кому идёт объявление о голосовании: все, кто слышит бота."""
+    return list(
+        (
+            await session.execute(
+                sa.select(User.id).where(
+                    User.is_active, User.tg_id.is_not(None), User.bot_blocked_at.is_(None)
+                )
+            )
+        ).scalars()
+    )
 
 
 async def set_in_english(
@@ -352,27 +492,8 @@ async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int)
     # узнавал о нём, только если случайно открывал приложение в эти три дня.
     # Не только названия: в сообщении у каждого фильма своя кнопка, и ей
     # нужен id, чтобы нажатие стало голосом, не открывая приложение.
-    listed = [
-        {"id": film_id, "title": title}
-        for film_id, title in (
-            await session.execute(
-                sa.select(Film.id, Film.title_ru)
-                .join(ShortlistItem, ShortlistItem.film_id == Film.id)
-                .where(ShortlistItem.round_id == round_.id)
-                .order_by(ShortlistItem.position)
-            )
-        ).all()
-    ]
-    audience = (
-        (
-            await session.execute(
-                sa.select(User.id).where(User.is_active, User.tg_id.is_not(None))
-            )
-        )
-        .scalars()
-        .all()
-    )
-    for user_id in audience:
+    listed = await _listed_films(session, round_)
+    for user_id in await _audience(session):
         await notify.queue(
             session,
             user_id,

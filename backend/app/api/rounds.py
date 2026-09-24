@@ -8,13 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import RequireAdmin, RequireModerator
 from app.db import get_session
-from app.models import AutopilotProposal, Film, Hall, Round, ShortlistItem, Slot
+from app.models import AutopilotProposal, Film, FilmVote, Hall, Round, ShortlistItem, Slot
 from app.schemas import (
     BlockSlotIn,
     FilmBrief,
     OpenRoundIn,
     RoundLanguageIn,
     RoundOut,
+    ShortlistAnnounceOut,
     ShortlistIn,
     ShortlistItemOut,
     SlotOut,
@@ -51,6 +52,16 @@ async def _serialize(session: AsyncSession, round_: Round) -> RoundOut:
         )
     ).all()
 
+    votes = dict(
+        (
+            await session.execute(
+                sa.select(FilmVote.film_id, sa.func.count())
+                .where(FilmVote.round_id == round_.id)
+                .group_by(FilmVote.film_id)
+            )
+        ).all()
+    )
+
     slots = (
         await session.execute(
             sa.select(Slot, Hall)
@@ -81,7 +92,11 @@ async def _serialize(session: AsyncSession, round_: Round) -> RoundOut:
         published_at=round_.published_at,
         shortlist=[
             ShortlistItemOut(
-                film_id=item.film_id, position=item.position, source=item.source, film=_brief(film)
+                film_id=item.film_id,
+                position=item.position,
+                source=item.source,
+                film=_brief(film),
+                votes=votes.get(item.film_id, 0),
             )
             for item, film in items
         ],
@@ -186,6 +201,21 @@ async def publish_shortlist(
     except RoundError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return await _serialize(session, round_)
+
+
+@router.post("/shortlist/announce", response_model=ShortlistAnnounceOut)
+async def announce_shortlist(
+    admin: RequireModerator, session: Annotated[AsyncSession, Depends(get_session)]
+) -> ShortlistAnnounceOut:
+    """Разослать поправленный шорт-лист всем, кому шло объявление о голосовании."""
+    round_ = await rounds_service.active_round(session)
+    if round_ is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Активного цикла нет")
+    try:
+        recipients = await rounds_service.announce_shortlist_update(session, round_, admin.id)
+    except RoundError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return ShortlistAnnounceOut(recipients=recipients)
 
 
 @router.post("/slots/{slot_id}/block", response_model=RoundOut)

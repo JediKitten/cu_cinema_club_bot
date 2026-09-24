@@ -74,7 +74,7 @@ def vote_keyboard(
 
 
 def shortlist_keyboard(payload: dict) -> InlineKeyboardMarkup | None:
-    """Клавиатура к свежему уведомлению: отмечено ещё ничего.
+    """Клавиатура к уведомлению о шорт-листе.
 
     Старые записи в очереди хранят голые названия без id — кнопок к ним
     не собрать, и сообщение уйдёт как раньше, просто текстом.
@@ -87,7 +87,11 @@ def shortlist_keyboard(payload: dict) -> InlineKeyboardMarkup | None:
     ]
     if not round_id or not films:
         return None
-    return vote_keyboard(int(round_id), films, set(), payload.get("week_start"))
+    # В рассылке обновлённого списка у каждого свои галочки: кнопка
+    # переключает голос, и без них нажатие на уже выбранный фильм снимало бы
+    # голос, хотя человек думал, что голосует.
+    chosen = {int(film_id) for film_id in payload.get("chosen") or []}
+    return vote_keyboard(int(round_id), films, chosen, payload.get("week_start"))
 
 
 router = Router(name="votes")
@@ -117,6 +121,13 @@ async def vote_button(callback: CallbackQuery) -> None:
             try:
                 voting.ensure_open(round_)
                 now_on, chosen = await voting.toggle_vote(session, round_, user.id, film_id)
+                gone = False
+            except voting.FilmNotInShortlist:
+                # Фильм убрали из шорт-листа после публикации, а кнопка
+                # осталась в старом сообщении. Мало сказать «нет в списке» —
+                # клавиатуру надо обновить, иначе следующее нажатие упрётся
+                # в ту же стену.
+                now_on, chosen, gone = False, await voting.my_votes(session, round_, user.id), True
             except voting.VotingError as exc:
                 await callback.answer(str(exc), show_alert=True)
                 return
@@ -137,7 +148,11 @@ async def vote_button(callback: CallbackQuery) -> None:
             # Клавиатура уже такая же — для человека ничего не произошло.
             pass
 
-    if not now_on:
+    if gone:
+        await callback.answer(
+            "Этот фильм убрали из шорт-листа. Список под сообщением обновлён.", show_alert=True
+        )
+    elif not now_on:
         await callback.answer("Убрал из выбранных")
     elif len(chosen) == 1:
         # Первая галочка — тот момент, когда про вечера уместно сказать

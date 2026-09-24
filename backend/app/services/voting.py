@@ -19,6 +19,11 @@ class VotingError(ValueError):
     """Голосование сейчас невозможно — показываем причину пользователю."""
 
 
+class FilmNotInShortlist(VotingError):
+    """Фильма нет в шорт-листе — например, его убрали после публикации,
+    а кнопка осталась в старом сообщении."""
+
+
 def ensure_open(round_: Round | None) -> Round:
     if round_ is None:
         raise VotingError("Сейчас голосования нет")
@@ -83,7 +88,7 @@ async def toggle_vote(
 
     allowed = {film.id for film in await shortlist_films(session, round_)}
     if film_id not in allowed:
-        raise VotingError("Этого фильма нет в шорт-листе")
+        raise FilmNotInShortlist("Этого фильма нет в шорт-листе")
 
     removed = await session.execute(
         sa.delete(FilmVote).where(

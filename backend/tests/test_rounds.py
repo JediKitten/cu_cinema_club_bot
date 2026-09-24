@@ -7,7 +7,7 @@ import pytest
 import sqlalchemy as sa
 
 from app.models import Round, ShortlistItem, Slot, User
-from app.models.enums import InterestKind, RoundStage, UserRole
+from app.models.enums import InterestKind, NotificationKind, RoundStage, UserRole
 from app.services import autopilot
 from app.services import rounds as rounds_service
 from app.services.rounds import RoundError, next_week_start, week_start_for
@@ -132,11 +132,11 @@ async def test_missing_the_autopilot_hour_does_not_lock_the_admin_out(session):
     items = await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=late)
     assert [item.film_id for item in items] == [film.id]
 
-    # А вот опубликованный список правке не подлежит — это и есть настоящий
-    # запрет, ради которого окно заводили.
+    # Окно — про сборку до публикации. Опубликованный список правят во время
+    # голосования в любой час: ошибку автопилота надо исправлять сразу.
     await rounds_service.publish_shortlist(session, round_, boss.id)
-    with pytest.raises(RoundError, match="уже опубликован"):
-        await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=late)
+    await rounds_service.set_shortlist(session, round_, [film.id], boss.id, now=late)
+    assert round_.stage == RoundStage.SLOT_VOTING
 
 
 async def test_shortlist_rejects_duplicates(session):
@@ -168,9 +168,10 @@ async def test_publish_opens_voting_and_locks_shortlist(session):
     assert round_.stage == RoundStage.SLOT_VOTING
     assert round_.shortlist_locked_at is not None
 
-    # После публикации список менять нельзя: это меняло бы условия голосования.
-    with pytest.raises(RoundError, match="опубликован"):
-        await set_shortlist(session, round_, [film.id], boss.id)
+    # Список можно поправить и после публикации — голосование при этом не
+    # откатывается на сборку.
+    await set_shortlist(session, round_, [film.id], boss.id)
+    assert round_.stage == RoundStage.SLOT_VOTING
 
 
 async def test_publish_refused_when_every_evening_blocked(session):
@@ -284,3 +285,117 @@ async def test_ordinary_week_says_nothing_about_language(session):
         NotificationKind.SHORTLIST_PUBLISHED, None, "", {"films": ["Фильм"], "in_english": False}
     )
     assert text is not None and "английск" not in text
+
+
+# --- Правка опубликованного шорт-листа ----------------------------------------
+
+
+async def _voting_round(session):
+    """Голосование идёт: три фильма, двое проголосовали, у одного есть вечер."""
+    from app.services import voting
+
+    boss = await admin(session)
+    round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
+    kept, dropped, other = [await make_film(session, t) for t in ("Остаётся", "Уходит", "Ещё")]
+    alice, bob = await make_user(session, "Алиса"), await make_user(session, "Боб")
+    await session.commit()
+    await set_shortlist(session, round_, [kept.id, dropped.id], boss.id)
+    await rounds_service.publish_shortlist(session, round_, boss.id)
+
+    slot = await session.scalar(sa.select(Slot).where(Slot.round_id == round_.id).limit(1))
+    await voting.set_votes(session, round_, alice.id, [kept.id, dropped.id])
+    await voting.set_votes(session, round_, bob.id, [dropped.id])
+    await voting.set_availability(session, round_, bob.id, [slot.id])
+    return boss, round_, (kept, dropped, other), (alice, bob), slot
+
+
+async def test_editing_during_voting_drops_only_votes_for_removed_films(session):
+    """Голос за фильм, которого больше нет в списке, матрице не нужен. Всё
+    остальное — голоса за оставшиеся фильмы и отмеченные вечера — цело."""
+    from app.services import voting
+
+    boss, round_, (kept, dropped, other), (alice, bob), slot = await _voting_round(session)
+
+    await rounds_service.set_shortlist(session, round_, [kept.id, other.id], boss.id)
+
+    assert round_.stage == RoundStage.SLOT_VOTING
+    assert await voting.my_votes(session, round_, alice.id) == [kept.id]
+    assert await voting.my_votes(session, round_, bob.id) == []
+    assert await voting.my_availability(session, round_, bob.id) == [slot.id]
+    films = [film.id for film in await voting.shortlist_films(session, round_)]
+    assert films == [kept.id, other.id]
+
+
+async def test_stale_button_for_a_removed_film_is_recognised(session):
+    """Кнопка убранного фильма осталась в старом сообщении. Бот должен понять,
+    что именно случилось, чтобы обновить клавиатуру, а не просто отказать."""
+    from app.services import voting
+
+    boss, round_, (kept, dropped, _), (alice, _), _ = await _voting_round(session)
+    await rounds_service.set_shortlist(session, round_, [kept.id], boss.id)
+
+    with pytest.raises(voting.FilmNotInShortlist):
+        await voting.toggle_vote(session, round_, alice.id, dropped.id)
+
+
+async def test_shortlist_is_locked_once_the_schedule_is_being_built(session):
+    """На собранном расписании стоят показы: менять надо фильм самого показа."""
+    boss, round_, (kept, _, other), _, _ = await _voting_round(session)
+    round_.stage = RoundStage.SCHEDULE_REVIEW
+    await session.commit()
+
+    with pytest.raises(RoundError, match="«Событиях»"):
+        await rounds_service.set_shortlist(session, round_, [kept.id, other.id], boss.id)
+
+
+async def test_update_is_announced_with_each_persons_votes_checked(session):
+    """В рассылке обновлённого списка у каждого отмечены его голоса: кнопка
+    переключает голос, и без галочки нажатие снимало бы уже поставленный."""
+    from app.bot.votes import shortlist_keyboard
+    from app.models import Notification
+    from app.services import notify
+
+    boss, round_, (kept, _, other), (alice, bob), _ = await _voting_round(session)
+    await rounds_service.set_shortlist(session, round_, [kept.id, other.id], boss.id)
+
+    sent = await rounds_service.announce_shortlist_update(session, round_, boss.id)
+    assert sent >= 2
+
+    payloads = {
+        user_id: payload
+        for user_id, payload in await session.execute(
+            sa.select(Notification.user_id, Notification.payload).where(
+                Notification.dedup_key.like(f"shortlist-update:{round_.id}:%")
+            )
+        )
+    }
+    assert payloads[alice.id]["chosen"] == [kept.id]
+    assert payloads[bob.id]["chosen"] == []
+    assert [film["id"] for film in payloads[alice.id]["films"]] == [kept.id, other.id]
+
+    buttons = [row[0].text for row in shortlist_keyboard(payloads[alice.id]).inline_keyboard[:2]]
+    assert buttons[0].startswith("✅") and buttons[1].startswith("▫️")
+
+    text = notify.render(
+        NotificationKind.SHORTLIST_PUBLISHED, None, "", payloads[alice.id]
+    )
+    assert "обновился" in text and "сняты" in text
+
+
+async def test_second_update_is_not_swallowed_as_a_duplicate(session):
+    """Две правки за неделю — два обновления, и второе обязано дойти."""
+    import asyncio
+
+    boss, round_, (kept, _, other), _, _ = await _voting_round(session)
+    first = await rounds_service.announce_shortlist_update(session, round_, boss.id)
+    await asyncio.sleep(1.1)
+    second = await rounds_service.announce_shortlist_update(session, round_, boss.id)
+    assert first == second > 0
+
+
+async def test_update_is_only_announced_while_voting(session):
+    boss = await admin(session)
+    round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
+
+    with pytest.raises(RoundError, match="пока идёт голосование"):
+        await rounds_service.announce_shortlist_update(session, round_, boss.id)

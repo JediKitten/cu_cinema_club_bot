@@ -487,6 +487,13 @@ class ShortlistItemOut(Schema):
     position: int
     source: str
     film: FilmBrief
+    # Сколько человек уже отметили фильм в голосовании. Админу видно, чем
+    # обойдётся убрать фильм из опубликованного списка: эти голоса снимутся.
+    votes: int = 0
+
+
+class ShortlistAnnounceOut(Schema):
+    recipients: int
 
 
 class RoundOut(Schema):

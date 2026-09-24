@@ -14,6 +14,7 @@ import { Section } from "../components/Section";
 import { ScheduleBuilder } from "../components/ScheduleBuilder";
 import {
   ApiError,
+  announceShortlist,
   blockSlot,
   getRankings,
   getRound,
@@ -23,7 +24,8 @@ import {
   setRoundLanguage,
 } from "../api";
 import { Poster } from "../components/FilmRow";
-import { haptic } from "../telegram";
+import { askConfirm, haptic, showMessage } from "../telegram";
+import { plural } from "../plural";
 import type { RankRow, Rankings, Round, ScreeningRecord, Slot, User } from "../types";
 
 type Tab = "weight" | "coverage";
@@ -110,6 +112,21 @@ const PANELS: { key: Panel; label: string; minRole: keyof typeof RANK }[] = [
   { key: "settings", label: "Параметры", minRole: "superadmin" },
 ];
 
+/** Подтверждение правки опубликованного списка: что уберётся и сколько
+ *  голосов при этом снимется. Без чисел «убрать фильм» выглядит безобидно,
+ *  а за ним могут стоять десятки голосов. */
+function confirmVotingEdit(round: Round, picked: number[]): Promise<boolean> {
+  const removed = round.shortlist.filter((item) => !picked.includes(item.film_id));
+  if (removed.length === 0) return Promise.resolve(true);
+  const lines = removed.map(
+    (item) =>
+      `• ${item.film.title_ru} — ${item.votes} ${plural(item.votes, ["голос", "голоса", "голосов"])}`,
+  );
+  return askConfirm(
+    `Убрать из идущего голосования:\n${lines.join("\n")}\n\nГолоса за эти фильмы снимутся. Сохранить?`,
+  );
+}
+
 export function Admin({ me }: { me: User }) {
   const role = me.role;
   const [panel, setPanel] = useState<Panel>("round");
@@ -171,12 +188,21 @@ export function Admin({ me }: { me: User }) {
 
   if (loading) return <div className="center">Загрузка…</div>;
 
+  // Идёт голосование: список опубликован, но поправить его можно (решение
+  // клуба) — голоса за убранные фильмы при этом снимаются. Когда расписание
+  // уже собирается, список закрыт: на нём стоят показы.
+  const voting = round?.stage === "slot_voting";
   const stageLocked =
-    round !== null && round.stage !== "collecting" && round.stage !== "shortlist_review";
-  // Собирать шорт-лист руками можно только в окне (решение клуба): до среды
-  // веса ещё набираются, после четверга список уходит в голосование.
+    round !== null &&
+    round.stage !== "collecting" &&
+    round.stage !== "shortlist_review" &&
+    !voting;
+  // Собирать шорт-лист до публикации можно только в окне (решение клуба):
+  // до среды веса ещё набираются. К правке во время голосования это не
+  // относится — ошибку автопилота исправляют сразу.
   const windowOpen = round?.shortlist_window_open ?? false;
-  const locked = stageLocked || !windowOpen;
+  const locked = stageLocked || (!voting && !windowOpen);
+  const votesFor = new Map(round?.shortlist.map((item) => [item.film_id, item.votes]) ?? []);
   const rows: RankRow[] = (tab === "weight" ? rankings?.by_weight : rankings?.by_coverage) ?? [];
   const autopilot = new Set(round?.autopilot_film_ids ?? []);
   const dirty =
@@ -270,7 +296,7 @@ export function Admin({ me }: { me: User }) {
               : "Простая сумма весов отметок."}
           </p>
 
-          {!stageLocked && !windowOpen && round.shortlist_window_opens_at && (
+          {!stageLocked && !voting && !windowOpen && round.shortlist_window_opens_at && (
             <p className="badge">{windowNotice(round)}</p>
           )}
 
@@ -305,6 +331,12 @@ export function Admin({ me }: { me: User }) {
                       ` · клуб ${row.internal_rating} (${row.internal_votes})`}
                     {row.shortlist_misses > 0 && ` · без вечера: ${row.shortlist_misses}`}
                   </p>
+                  {voting && votesFor.has(row.film_id) && (
+                    <p className="meta">
+                      в голосовании: {votesFor.get(row.film_id)}{" "}
+                      {plural(votesFor.get(row.film_id) ?? 0, ["голос", "голоса", "голосов"])}
+                    </p>
+                  )}
                   {row.screening_history.length > 0 && (
                     <p className="meta">
                       уже показывали:{" "}
@@ -335,22 +367,62 @@ export function Admin({ me }: { me: User }) {
 
           {!locked && (
             <>
+              {voting && (
+                <p className="hint">
+                  Голосование уже идёт, но список можно поправить. Голоса за убранные
+                  фильмы снимутся, остальные голоса и отмеченные вечера останутся.
+                </p>
+              )}
+
               {picked.length > 0 && (
                 <button
                   className="primary"
                   disabled={busy || !dirty}
-                  onClick={() =>
+                  onClick={async () => {
+                    if (voting && !(await confirmVotingEdit(round, picked))) return;
                     act(
                       () => saveShortlist(picked),
                       (updated) => setRound(updated),
-                    )
-                  }
+                    );
+                  }}
                 >
                   {dirty ? `Сохранить шорт-лист (${picked.length})` : "Шорт-лист сохранён"}
                 </button>
               )}
 
-              {round.shortlist.length > 0 && (
+              {voting && (
+                <>
+                  <button
+                    className="primary"
+                    disabled={busy || dirty}
+                    onClick={async () => {
+                      const ok = await askConfirm(
+                        "Разослать обновлённый шорт-лист всем участникам? У каждого в " +
+                          "сообщении будут отмечены его текущие голоса.",
+                      );
+                      if (!ok) return;
+                      act(announceShortlist, ({ recipients }) =>
+                        showMessage(
+                          `Обновлённый список уходит ${recipients} ${plural(recipients, [
+                            "участнику",
+                            "участникам",
+                            "участникам",
+                          ])}.`,
+                        ),
+                      );
+                    }}
+                  >
+                    📣 Разослать обновлённый шорт-лист
+                  </button>
+                  <p className="hint">
+                    {dirty
+                      ? "Сначала сохраните изменения."
+                      : "Отдельно от сохранения: правьте сколько нужно, а сообщение отправьте одно, когда список окончательный."}
+                  </p>
+                </>
+              )}
+
+              {!voting && round.shortlist.length > 0 && (
                 <>
                   <button
                     className="primary"

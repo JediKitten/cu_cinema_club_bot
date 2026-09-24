@@ -675,6 +675,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/round/shortlist/announce": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Announce Shortlist
+         * @description Разослать поправленный шорт-лист всем, кому шло объявление о голосовании.
+         */
+        post: operations["announce_shortlist_api_admin_round_shortlist_announce_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/round/slots/{slot_id}/block": {
         parameters: {
             query?: never;
@@ -3223,6 +3243,11 @@ export interface components {
             /** Values */
             values: Record<string, never>;
         };
+        /** ShortlistAnnounceOut */
+        ShortlistAnnounceOut: {
+            /** Recipients */
+            recipients: number;
+        };
         /** ShortlistIn */
         ShortlistIn: {
             /** Film Ids */
@@ -3237,6 +3262,11 @@ export interface components {
             /** Source */
             source: string;
             film: components["schemas"]["FilmBrief"];
+            /**
+             * Votes
+             * @default 0
+             */
+            votes: number;
         };
         /** SlotOut */
         SlotOut: {
@@ -4782,6 +4812,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoundOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    announce_shortlist_api_admin_round_shortlist_announce_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortlistAnnounceOut"];
                 };
             };
             /** @description Validation Error */
