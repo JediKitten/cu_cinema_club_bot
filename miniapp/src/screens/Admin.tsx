@@ -13,6 +13,7 @@ import { Matrix } from "../components/Matrix";
 import { Section } from "../components/Section";
 import { ScheduleBuilder } from "../components/ScheduleBuilder";
 import {
+  ApiError,
   blockSlot,
   getRankings,
   getRound,
@@ -124,11 +125,16 @@ export function Admin({ me }: { me: User }) {
   useEffect(() => {
     (async () => {
       try {
-        // Рейтинги — админские, цикл видит и модератор: одна недоступная
-        // ручка не должна оставлять его с пустым экраном.
+        // Рейтинги — админские, цикл видит и модератор: отказ в доступе
+        // не должен оставлять его с пустым экраном. Но только отказ: любой
+        // другой сбой, проглоченный молча, выглядел как «Фильмы · 0» —
+        // будто пропала сама сборка шорт-листа.
         const [currentRound, ranks] = await Promise.all([
           getRound(),
-          getRankings().catch(() => null),
+          getRankings().catch((e) => {
+            if (e instanceof ApiError && e.status === 403) return null;
+            throw e;
+          }),
         ]);
         setRound(currentRound);
         setRankings(ranks);

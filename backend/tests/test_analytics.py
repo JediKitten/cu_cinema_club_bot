@@ -346,3 +346,37 @@ async def test_csat_by_week_is_in_the_analytics_response(client, session):
     assert response.status_code == 200, response.text
     [week] = response.json()["overview"]["csat_by_week"]
     assert week["overall"] == 5.0 and week["discussion"] is None
+
+
+async def test_rankings_survive_a_film_with_past_screenings(client, session):
+    """У фильма в рейтинге есть прошедший показ — рейтинги обязаны отдаться.
+
+    История показов шла словарём с ключом `expected_attendance`, а схема
+    ответа ждёт `expected`: после ужесточения схем рейтинги падали с 500,
+    и админка молча показывала «Фильмы · 0» — шорт-лист было не собрать.
+    """
+    from tests.conftest import SUPERADMIN_TG_ID, login
+    from tests.test_weights import add_interest
+
+    _, films, screening, _, voters = await held_screening(session)
+    await add_interest(session, voters[2], films[0], InterestKind.WISHLIST)
+    await session.commit()
+
+    auth = await login(client, SUPERADMIN_TG_ID, "Главный")
+    response = await client.get(
+        "/api/admin/rankings", headers={"Authorization": f"Bearer {auth['token']}"}
+    )
+
+    assert response.status_code == 200, response.text
+    row = next(r for r in response.json()["by_weight"] if r["film_id"] == films[0].id)
+    [record] = row["screening_history"]
+    assert record["screening_id"] == screening.id
+    assert record["expected"] == screening.expected_attendance
+
+    # Та же история в разрезе по фильму — второй путь к той же схеме.
+    stats = await client.get(
+        f"/api/admin/films/{films[0].id}/stats",
+        headers={"Authorization": f"Bearer {auth['token']}"},
+    )
+    assert stats.status_code == 200, stats.text
+    assert stats.json()["history"][0]["expected"] == screening.expected_attendance

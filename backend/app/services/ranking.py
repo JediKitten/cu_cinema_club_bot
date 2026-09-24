@@ -121,7 +121,7 @@ async def _film_facts(
                     "screening_id": record.screening_id,
                     "starts_at": record.starts_at.isoformat() if record.starts_at else None,
                     "status": record.status,
-                    "expected_attendance": record.expected,
+                    "expected": record.expected,
                     "came": record.came,
                     "rating": record.rating,
                 }
