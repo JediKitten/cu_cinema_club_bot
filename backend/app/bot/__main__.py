@@ -8,7 +8,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import MenuButtonWebApp, WebAppInfo
 
-from app.bot import common, export, loops, onboarding, votes
+from app.bot import common, export, loops, onboarding, polls, votes
 from app.config import get_config
 
 logger = logging.getLogger("app.bot")
@@ -22,7 +22,11 @@ def build_dispatcher() -> Dispatcher:
     # Порядок — это приоритет: ответ «на всё остальное» обязан стоять последним,
     # иначе он перехватил бы и команды, и ввод пароля.
     dispatcher.include_routers(
-        onboarding.router, votes.router, export.router, onboarding.fallback_router
+        onboarding.router,
+        votes.router,
+        polls.router,
+        export.router,
+        onboarding.fallback_router,
     )
     return dispatcher
 

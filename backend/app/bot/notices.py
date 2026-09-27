@@ -5,7 +5,7 @@
 
 from aiogram.types import InlineKeyboardMarkup
 
-from app.bot import common
+from app.bot import common, polls
 from app.bot.votes import shortlist_keyboard
 from app.models.enums import NotificationKind
 
@@ -30,4 +30,7 @@ def notify_keyboard(kind: NotificationKind, payload: dict) -> InlineKeyboardMark
         return shortlist_keyboard(payload)
     if kind == NotificationKind.FEEDBACK_REMINDER:
         return survey_keyboard(payload.get("screening_id"))
+    if kind == NotificationKind.ADMIN_BROADCAST and payload.get("poll"):
+        # Рассылка с опросом: варианты — кнопками под сообщением.
+        return polls.poll_keyboard(str(payload["poll"]))
     return None
