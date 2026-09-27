@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { getSurveys } from "../api";
+import { BotPolls } from "./BotPolls";
 import { Section } from "./Section";
 import type { DiscussionSkip, SurveyAnswer } from "../types";
 import { useLoad } from "../useLoad";
@@ -30,10 +31,13 @@ export function SurveyPanel() {
 
   if (error) return <div className="error">{error}</div>;
   if (!rows) return <p className="hint">Загрузка опросов…</p>;
-  if (rows.length === 0) return <p className="hint">Показов ещё не было.</p>;
 
   return (
     <>
+      <BotPolls />
+
+      <h3>После показов</h3>
+      {rows.length === 0 && <p className="hint">Показов ещё не было.</p>}
       <p className="hint">
         Опрос после каждого показа: этими цифрами клуб отчитывается перед вузом.
         Ответы — поимённо: одна тройка с припиской объясняет больше, чем средняя

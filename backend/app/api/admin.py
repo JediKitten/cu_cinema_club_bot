@@ -12,6 +12,7 @@ from app.schemas import (
     CustomAchievementOut,
     FilmStatsOut,
     PersonRowOut,
+    PollOut,
     RankingsOut,
     RankRow,
     SandboxIn,
@@ -21,7 +22,7 @@ from app.schemas import (
     SurveyAnswerOut,
     SurveyOut,
 )
-from app.services import achievements, insights
+from app.services import achievements, insights, polls
 from app.services.ranking import FilmRank, rank_by_coverage, rank_by_weight
 from app.services.settings import REGISTRY, SettingsError, SettingsService
 from app.services.tmdb import poster_url
@@ -304,6 +305,17 @@ async def people(
             created_at=user.created_at,
         )
         for user in rows
+    ]
+
+
+@router.get("/polls", response_model=list[PollOut])
+async def polls_summary(
+    admin: RequireAdmin, session: Annotated[AsyncSession, Depends(get_session)]
+) -> list[PollOut]:
+    """Итоги опросов, разосланных ботом кнопками, — свежие сверху."""
+    return [
+        PollOut.model_validate(item, from_attributes=True)
+        for item in await polls.summary(session)
     ]
 
 

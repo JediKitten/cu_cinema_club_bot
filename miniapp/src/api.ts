@@ -20,6 +20,7 @@ import type {
   Round,
   Setting,
   Survey,
+  BotPoll,
   Schedule,
   ScreeningCode,
   Slot,
@@ -382,6 +383,9 @@ export const getPastScreenings = () => request<PastScreening[]>("/api/screenings
 
 // Опросы после показов: средние для отчёта перед вузом и ответы поимённо.
 export const getSurveys = () => request<Survey[]>("/api/admin/surveys");
+
+// Итоги опросов, разосланных ботом кнопками.
+export const getPolls = () => request<BotPoll[]>("/api/admin/polls");
 
 // Пароль на выгрузку в боте (/analytics). Сам пароль сюда не возвращается
 // никогда — в базе лежит хеш, и показать нечего, кроме «задан или нет».

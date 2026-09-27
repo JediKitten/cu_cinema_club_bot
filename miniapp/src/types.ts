@@ -62,6 +62,7 @@ export type Attendee = S["AttendeeOut"];
 export type PastScreening = S["PastScreeningOut"];
 export type SurveyAnswer = S["SurveyAnswerOut"];
 export type Survey = S["SurveyOut"];
+export type BotPoll = S["PollOut"];
 
 // --- Аналитика и управление -------------------------------------------------
 

@@ -577,6 +577,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/polls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Polls Summary
+         * @description Итоги опросов, разосланных ботом кнопками, — свежие сверху.
+         */
+        get: operations["polls_summary_api_admin_polls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/surveys": {
         parameters: {
             query?: never;
@@ -2806,6 +2826,47 @@ export interface components {
              */
             created_at: string;
         };
+        /** PollOptionOut */
+        PollOptionOut: {
+            /** Label */
+            label: string;
+            /** Votes */
+            votes: number;
+            /** Voters */
+            voters: components["schemas"]["PollVoterOut"][];
+        };
+        /**
+         * PollOut
+         * @description Итог опроса кнопками в боте: цифры и кто за что.
+         */
+        PollOut: {
+            /** Key */
+            key: string;
+            /** Question */
+            question: string;
+            /** Options */
+            options: components["schemas"]["PollOptionOut"][];
+            /** Delivered */
+            delivered: number;
+            /** Answered */
+            answered: number;
+            /** Sent At */
+            sent_at: string | null;
+        };
+        /** PollVoterOut */
+        PollVoterOut: {
+            /** User Id */
+            user_id: number;
+            /** Display Name */
+            display_name: string;
+            /** Tg Username */
+            tg_username: string | null;
+            /**
+             * Answered At
+             * Format: date-time
+             */
+            answered_at: string;
+        };
         /** ProfileOut */
         ProfileOut: {
             /** Id */
@@ -4614,6 +4675,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonRowOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    polls_summary_api_admin_polls_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PollOut"][];
                 };
             };
             /** @description Validation Error */

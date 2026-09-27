@@ -1686,3 +1686,50 @@ body.is-locked .app {
   color: #16a34a;
   font-weight: 700;
 }
+
+/* --- Опросы в боте ---------------------------------------------------------- */
+
+.poll-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.poll-option__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.poll-option__head b {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.poll-option__track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.poll-option__bar {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--hint);
+  min-width: 2px;
+}
+
+/* Лидер — цветом: какой вариант побеждает, видно, не читая чисел. */
+.poll-option__bar--leader {
+  background: var(--link);
+}
+
+.poll-option__voters summary {
+  color: var(--link);
+  font-size: 13px;
+  cursor: pointer;
+}

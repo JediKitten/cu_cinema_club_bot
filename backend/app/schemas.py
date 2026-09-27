@@ -1046,3 +1046,27 @@ class InviteOut(Schema):
     invited: int = 0
     accepted: int = 0
 
+
+
+class PollVoterOut(Schema):
+    user_id: int
+    display_name: str
+    tg_username: str | None
+    answered_at: datetime
+
+
+class PollOptionOut(Schema):
+    label: str
+    votes: int
+    voters: list[PollVoterOut]
+
+
+class PollOut(Schema):
+    """Итог опроса кнопками в боте: цифры и кто за что."""
+
+    key: str
+    question: str
+    options: list[PollOptionOut]
+    delivered: int
+    answered: int
+    sent_at: datetime | None
