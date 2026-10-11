@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from
 import { Icon } from './components/Icon'
 import { ErrorPlate, Loading, ScreenHeader, TabBar } from './components/ui'
 import * as server from './legacy/api'
-import { Achievements } from './legacy/components/Achievements'
 import { TournamentBanner } from './legacy/components/TournamentBanner'
 import { FilmOpenerProvider } from './legacy/filmOpener'
 import { Friends } from './legacy/screens/Friends'
@@ -243,7 +242,6 @@ const SECTION_TITLE: Record<ProfileSection, string> = {
   seen: 'Просмотренное',
   friends: 'Друзья',
   favorites: 'Любимое',
-  achievements: 'Ачивки',
   club: 'Управление клубом',
   history: 'Что уже смотрели',
   request: 'Не нашёл фильм',
@@ -284,8 +282,6 @@ function ProfileSectionView({
   else if (section === 'seen') body = <MyWatched onOpen={onOpenFilm} />
   else if (section === 'friends') body = <Friends onOpenProfile={onOpenProfile} />
   else if (section === 'history') body = <History onSurvey={onSurvey} />
-  else if (section === 'achievements')
-    body = profile ? <div className="screen"><Achievements data={profile.raw.achievements} isMe /></div> : <Loading />
   else if (section === 'club')
     body = (
       <Suspense fallback={<Loading />}>

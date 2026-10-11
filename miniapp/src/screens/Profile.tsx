@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Icon, type IconName } from '../components/Icon'
+import { AchievementTierList } from '../legacy/components/Achievements'
 import { Poster } from '../components/film'
 import { ErrorPlate, Loading } from '../components/ui'
 import * as api from '../lib/api'
@@ -8,13 +9,21 @@ import { haptic } from '../lib/tg'
 import { useLoad } from '../lib/useLoad'
 import type { Role } from '../lib/types'
 
-export type ProfileSection = 'marked' | 'seen' | 'friends' | 'favorites' | 'achievements' | 'club' | 'history' | 'request' | 'requests'
+export type ProfileSection = 'marked' | 'seen' | 'friends' | 'favorites' | 'club' | 'history' | 'request' | 'requests'
 
 const ROLE_LABEL: Record<Role, string> = {
   user: 'участник клуба',
   moderator: 'модератор',
   admin: 'админ',
   superadmin: 'главный администратор',
+}
+
+const ACTION: Record<string, string> = {
+  rating: 'оценил',
+  review: 'написал отзыв',
+  wishlist: 'хочет посмотреть',
+  soon: 'готов пойти в ближайшее время',
+  watched: 'посмотрел',
 }
 
 const AXIS = ['0,5', '1', '1,5', '2', '2,5', '3', '3,5', '4', '4,5', '5']
@@ -37,6 +46,8 @@ export function Profile({
 }) {
   const { data: p, error, reload } = useLoad(() => api.getProfile(userId), [userId, refreshKey])
   const [busy, setBusy] = useState(false)
+  // Медали — вкладки: нажатие раскрывает список своей редкости, повторное сворачивает
+  const [tier, setTier] = useState<'bronze' | 'silver' | 'gold' | 'platinum' | null>(null)
 
   if (error && !p) return <div className="screen"><ErrorPlate message={error} onRetry={reload} /></div>
   if (!p) return <Loading />
@@ -183,7 +194,17 @@ export function Profile({
           {medals.map((m) => {
             const n = p.achievements[m.key]
             return (
-              <button key={m.key} type="button" className="cup" onClick={() => onOpen('achievements')} style={n ? undefined : { color: 'var(--c-text-3)' }}>
+              <button
+                key={m.key}
+                type="button"
+                className="cup"
+                aria-pressed={tier === m.key}
+                onClick={() => {
+                  haptic.select()
+                  setTier((t) => (t === m.key ? null : m.key))
+                }}
+                style={n ? undefined : { color: 'var(--c-text-3)' }}
+              >
                 <span className={`cup__medal${n ? '' : ' cup__medal--empty'}`} style={n ? { background: m.color } : undefined} />
                 <span className="num" style={{ fontSize: 18 }}>{n}</span>
                 <span className="xsmall" style={{ color: n ? 'var(--c-text-2)' : undefined, fontSize: 11 }}>{m.label}</span>
@@ -191,6 +212,17 @@ export function Profile({
             )
           })}
         </div>
+        {tier ? (
+          <div className="legacy stack" style={{ gap: 8, background: 'transparent' }}>
+            <AchievementTierList data={p.raw.achievements} tier={tier} />
+          </div>
+        ) : (
+          p.achievements.total === 0 && (
+            <p className="small muted">
+              {p.isMe ? 'Пока ни одной. Отметьте фильм просмотренным, поставьте оценку или придите на показ.' : 'Пока ни одной.'}
+            </p>
+          )
+        )}
       </section>
 
       {p.attendance && (
@@ -211,6 +243,25 @@ export function Profile({
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {p.raw.recent.length > 0 && (
+        <section className="stack" style={{ gap: 12 }}>
+          <h2 className="h-section">Недавнее</h2>
+          {p.raw.recent.map((item, i) => (
+            <div key={i} className="film-row">
+              <Poster film={{ title: item.film_title, posterUrl: item.film_poster ?? undefined }} width={48} height={72} onClick={() => onOpenFilm(item.film_id)} />
+              <button type="button" className="film-row__title" style={{ flex: 1 }} onClick={() => onOpenFilm(item.film_id)}>
+                <span className="film-row__name">{item.film_title}</span>
+                <span className="film-row__meta">
+                  {ACTION[item.kind] ?? item.kind}
+                  {item.rating != null && ` · ${num(item.rating)} ★`}
+                </span>
+                {item.text && <span className="film-row__meta">{item.text}</span>}
+              </button>
+            </div>
+          ))}
         </section>
       )}
 

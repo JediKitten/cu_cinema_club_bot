@@ -61,17 +61,43 @@ function Row({ step, hidden = false }: { step: AchievementStep; hidden?: boolean
  * не показываются вовсе: ни названия, ни условия, только счётчик на своём
  * уровне. Найти их должно быть сюрпризом.
  */
+/** Список ступеней одной редкости: что уже взято и что ещё можно взять. */
+export function AchievementTierList({ data, tier }: { data: Data; tier: AchievementTier }) {
+  const steps = data.groups.flatMap((item) =>
+    item.steps.filter((step) => step.tier === tier).map((step) => ({ step, hidden: item.hidden })),
+  );
+  const secrets = data.secrets_left[tier] ?? 0;
+  return (
+    <>
+      <div className="profile__row">
+        <h4 className="achievements__title">{TIER_NAME[tier]}</h4>
+        <span className="hint">
+          {data[tier]} из {steps.length + secrets}
+        </span>
+      </div>
+
+      {steps.map(({ step, hidden }, index) => (
+        <Row key={`${step.description}-${index}`} step={step} hidden={hidden} />
+      ))}
+
+      {secrets > 0 && (
+        <div className="achievement achievement--secret">
+          <span className="achievement__emoji">❓</span>
+          <span className="achievement__text">
+            <b>{secretsLine(secrets)}</b>
+            <span className="meta">Условия не подскажем — в этом и смысл.</span>
+          </span>
+        </div>
+      )}
+
+      {steps.length === 0 && !secrets && <p className="hint">На этом уровне ачивок нет.</p>}
+    </>
+  );
+}
+
 export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
   const [tab, setTab] = useState<AchievementTier | null>(null);
   const total = ORDER.reduce((sum, tier) => sum + data[tier], 0);
-
-  // Все ступени этой редкости, в порядке целей из таблицы клуба. Показываем
-  // и недостижимые пока: вкладка «золото» у новичка иначе выглядит пустой,
-  // хотя посмотреть там есть на что.
-  const steps = (tier: AchievementTier) =>
-    data.groups.flatMap((item) =>
-      item.steps.filter((step) => step.tier === tier).map((step) => ({ step, hidden: item.hidden })),
-    );
 
   return (
     <>
@@ -108,34 +134,7 @@ export function Achievements({ data, isMe }: { data: Data; isMe: boolean }) {
         </p>
       )}
 
-      {tab !== null && (
-        <>
-          <div className="profile__row">
-            <h4 className="achievements__title">{TIER_NAME[tab]}</h4>
-            <span className="hint">
-              {data[tab]} из {steps(tab).length + (data.secrets_left[tab] ?? 0)}
-            </span>
-          </div>
-
-          {steps(tab).map(({ step, hidden }, index) => (
-            <Row key={`${step.description}-${index}`} step={step} hidden={hidden} />
-          ))}
-
-          {(data.secrets_left[tab] ?? 0) > 0 && (
-            <div className="achievement achievement--secret">
-              <span className="achievement__emoji">❓</span>
-              <span className="achievement__text">
-                <b>{secretsLine(data.secrets_left[tab] ?? 0)}</b>
-                <span className="meta">Условия не подскажем — в этом и смысл.</span>
-              </span>
-            </div>
-          )}
-
-          {steps(tab).length === 0 && !(data.secrets_left[tab] ?? 0) && (
-            <p className="hint">На этом уровне ачивок нет.</p>
-          )}
-        </>
-      )}
+      {tab !== null && <AchievementTierList data={data} tier={tab} />}
     </>
   );
 }
