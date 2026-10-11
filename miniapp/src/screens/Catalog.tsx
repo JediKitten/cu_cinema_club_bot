@@ -1,176 +1,191 @@
-import { useEffect, useRef, useState } from "react";
-import { browseFilms, CATALOG_PAGE, searchFilms } from "../api";
-import { FilmRow } from "../components/FilmRow";
-import { TournamentBanner } from "../components/TournamentBanner";
-import { PosterGrid } from "../components/PosterGrid";
-import {
-  LayoutSwitch,
-  rememberedLayout,
-  rememberLayout,
-  type Layout,
-} from "../components/LayoutSwitch";
-import type { FilmBrief, InterestKind } from "../types";
-import { replaceFilm } from "../films";
-import { useFilmChanges } from "../filmChanges";
+import { useEffect, useState, type ReactNode } from 'react'
+import { Icon } from '../components/Icon'
+import { Logo } from '../components/Logo'
+import { FilmRow, MarkLegend, Poster } from '../components/film'
+import { Empty, ErrorPlate, Loading, ScreenHeader } from '../components/ui'
+import * as api from '../lib/api'
+import { weekRange } from '../lib/format'
+import { useLoad } from '../lib/useLoad'
+import type { Film, Mark, SortKey } from '../lib/types'
 
-type Props = { onOpen(film: FilmBrief): void; onOpenTournament(id: number): void };
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: 'kp', label: 'Топ Кинопоиска' },
+  { key: 'tmdb', label: 'По оценкам TMDB' },
+  { key: 'club', label: 'По оценкам клуба' },
+  { key: 'want', label: 'Хотят в клубе' },
+  { key: 'year', label: 'По году' },
+]
 
-type Sort = "kp" | "tmdb" | "club" | "wanted" | "year";
+const VIEW_KEY = 'kinoclub.catalogView'
 
-// Первым — курируемый топ Кинопоиска. Голоса толпы (сортировка по числу
-// оценок) усиливали эффект присоединения к большинству, о чём и предупреждал
-// §11; список, который не зависит от того, кто что отметил, честнее.
-const SORTS: { key: Sort; label: string }[] = [
-  { key: "kp", label: "Топ Кинопоиска" },
-  { key: "tmdb", label: "По оценкам TMDB" },
-  { key: "club", label: "По оценкам клуба" },
-  { key: "wanted", label: "Хотят в клубе" },
-  { key: "year", label: "По году" },
-];
+function readView(): 'list' | 'grid' {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list'
+  } catch {
+    return 'list'
+  }
+}
 
-export function Catalog({ onOpen, onOpenTournament }: Props) {
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<Sort>("kp");
-  const [layout, setLayout] = useState<Layout>(rememberedLayout);
-  const [films, setFilms] = useState<FilmBrief[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  // Пришла ли последняя страница целиком: если да, дальше есть что грузить.
-  const [hasMore, setHasMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const requestId = useRef(0);
+export function Catalog({
+  onOpenFilm,
+  votingWeekStart,
+  onOpenVote,
+  refreshKey,
+  banner,
+}: {
+  onOpenFilm: (id: number) => void
+  /** Если идёт голосование — неделя, на которую голосуем */
+  votingWeekStart?: string
+  onOpenVote: () => void
+  /** Меняется, когда карточка фильма поверх что-то поменяла */
+  refreshKey: number
+  /** Плашка идущего турнира — над поиском */
+  banner?: ReactNode
+}) {
+  const [input, setInput] = useState('')
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<SortKey>('kp')
+  const [view, setView] = useState(readView)
+  const [limit, setLimit] = useState(api.PAGE_SIZE)
 
+  // Поиск от 2 символов с задержкой 0,35 с
   useEffect(() => {
-    const id = ++requestId.current;
-    const trimmed = query.trim();
-    setLoading(true);
+    const t = setTimeout(() => setQuery(input.trim().length >= 2 ? input.trim() : ''), 350)
+    return () => clearTimeout(t)
+  }, [input])
 
-    // Пауза перед запросом: поиск ходит в TMDB, дёргать его на каждую букву дорого.
-    const timer = setTimeout(async () => {
-      try {
-        const searching = trimmed.length >= 2;
-        const result = searching ? await searchFilms(trimmed) : await browseFilms(sort);
-        // Ответ на устаревший запрос игнорируем, иначе медленный ранний ответ
-        // перезапишет свежий.
-        if (id === requestId.current) {
-          setFilms(result);
-          // У поиска своя выдача и своя граница — подгружать там нечего.
-          setHasMore(!searching && result.length === CATALOG_PAGE);
-          setError(null);
-        }
-      } catch (e) {
-        if (id === requestId.current) setError(e instanceof Error ? e.message : "Ошибка загрузки");
-      } finally {
-        if (id === requestId.current) setLoading(false);
-      }
-    }, trimmed ? 350 : 0);
+  const { data, error, loading, reload, setData } = useLoad(
+    () => api.getCatalog({ query, sort, limit }),
+    [query, sort, limit, refreshKey],
+  )
 
-    return () => clearTimeout(timer);
-  }, [query, sort]);
-
-  async function loadMore() {
-    if (loadingMore) return;
-    const id = requestId.current;
-    setLoadingMore(true);
+  const changeView = (v: 'list' | 'grid') => {
+    setView(v)
     try {
-      const next = await browseFilms(sort, films.length);
-      // Пока грузили, могли переключить сортировку — тогда ответ уже не к месту.
-      if (id === requestId.current) {
-        setFilms((current) => [...current, ...next]);
-        setHasMore(next.length === CATALOG_PAGE);
-      }
-    } catch (e) {
-      if (id === requestId.current) setError(e instanceof Error ? e.message : "Ошибка загрузки");
-    } finally {
-      setLoadingMore(false);
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      /* приватный режим — не запоминаем */
     }
   }
 
-  function handleMarks(kinds: InterestKind[], updated: FilmBrief) {
-    setFilms((current) =>
-      replaceFilm(
-        current,
-        updated,
-        (film) => film,
-        (film) => ({ ...film, ...updated, my_interests: kinds }),
-      ),
-    );
+  const patch = (id: number, p: Partial<Film>) =>
+    setData((d) => d && { ...d, items: d.items.map((f) => (f.id === id ? { ...f, ...p } : f)) })
+
+  const onMark = (id: number, mark: Mark) => {
+    patch(id, { mark })
+    api.setMark(id, mark).catch(reload)
+  }
+  const onSeen = (id: number, seen: boolean) => {
+    patch(id, { seen })
+    api.setSeen(id, seen).catch(reload)
   }
 
-  // Отметку могли поменять в карточке поверх списка: правим ту же строку,
-  // не перезагружая выдачу — иначе потерялись бы подгруженные страницы.
-  useFilmChanges(handleMarks);
+  const searching = query.length > 0
 
   return (
     <div className="screen">
-      <TournamentBanner onOpen={onOpenTournament} />
+      <ScreenHeader title="Каталог">
+        <Logo />
+      </ScreenHeader>
 
-      <div className="search">
-        <span>🔍</span>
+      {!searching && banner}
+
+      {votingWeekStart && !searching && (
+        <button type="button" className="banner" onClick={onOpenVote}>
+          <span className="stack" style={{ flex: 1, gap: 4 }}>
+            <span className="banner__kicker">Идёт голосование</span>
+            <span className="banner__title">Выберите фильмы и вечера на {weekRange(votingWeekStart)}</span>
+          </span>
+          <span className="circle-badge" style={{ width: 44, height: 44, background: 'var(--c-black)', color: 'var(--c-white)' }}>
+            <Icon name="arrowRight" size={22} strokeWidth={1.6} />
+          </span>
+        </button>
+      )}
+
+      <label className="search">
+        <Icon name="search" size={18} />
+        <span className="sr-only">Поиск по каталогу</span>
         <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          type="search"
           placeholder="Фильм или режиссёр"
-          autoComplete="off"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          enterKeyHint="search"
         />
-        {query && <button onClick={() => setQuery("")}>✕</button>}
-      </div>
+        {input && (
+          <button type="button" className="btn--text muted" aria-label="Очистить поиск" onClick={() => setInput('')} style={{ height: 44 }}>
+            <Icon name="close" size={18} />
+          </button>
+        )}
+      </label>
 
-      {!query.trim() && (
-        <div className="sorts">
-          {/* Порядок выбирают редко и всегда один — трём кнопкам незачем
-              занимать строку целиком, тем более рядом с переключателем вида. */}
-          <select
-            className="field sorts__select"
-            value={sort}
-            onChange={(event) => setSort(event.target.value as Sort)}
-            aria-label="Сортировка"
-          >
-            {SORTS.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <LayoutSwitch
-            layout={layout}
-            onChange={(next) => {
-              setLayout(next);
-              rememberLayout(next);
-            }}
-          />
+      {!searching && (
+        <div className="row row--between">
+          <label className="row" style={{ position: 'relative', minHeight: 44, fontSize: 14, fontWeight: 500 }}>
+            <span className="sr-only">Сортировка</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              style={{ position: 'absolute', inset: 0, opacity: 0 }}
+            >
+              {SORTS.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+            {SORTS.find((s) => s.key === sort)?.label}
+            <span className="muted"><Icon name="chevronDown" size={16} strokeWidth={2} /></span>
+          </label>
+          <div className="segmented">
+            <button type="button" aria-label="Списком" aria-pressed={view === 'list'} onClick={() => changeView('list')}>
+              <Icon name="list" size={18} />
+            </button>
+            <button type="button" aria-label="Плиткой" aria-pressed={view === 'grid'} onClick={() => changeView('grid')}>
+              <Icon name="tiles" size={18} />
+            </button>
+          </div>
         </div>
       )}
 
-      {error && <div className="error">{error}</div>}
-      {loading && <div className="center">Загрузка…</div>}
+      {view === 'list' && <MarkLegend />}
 
-      {!loading && films.length === 0 && (
-        <div className="center">
-          {query.trim()
-            ? "Ничего не нашлось. Если фильма нет и в TMDB — оставьте заявку во вкладке «Ещё»."
-            : "Каталог пока пуст. Найдите первый фильм через поиск."}
+      {error && <ErrorPlate message={error} onRetry={reload} />}
+      {!data && loading && <Loading />}
+
+      {data && data.items.length === 0 && (
+        <Empty>
+          {searching
+            ? 'Ничего не нашлось. Если фильма нет и в TMDB — оставьте заявку в профиле: «Не нашёл фильм».'
+            : 'Каталог пока пуст. Найдите первый фильм через поиск.'}
+        </Empty>
+      )}
+
+      {data && view === 'list' && (
+        <div>
+          {data.items.map((f) => (
+            <FilmRow
+              key={f.id}
+              film={f}
+              onOpen={() => onOpenFilm(f.id)}
+              onMark={(m) => onMark(f.id, m)}
+              onSeen={(v) => onSeen(f.id, v)}
+            />
+          ))}
         </div>
       )}
 
-      {layout === "grid" ? (
-        <PosterGrid films={films} onOpen={onOpen} />
-      ) : (
-        films.map((film) => (
-          <FilmRow
-            key={film.id ?? `tmdb-${film.tmdb_id}`}
-            film={film}
-            onOpen={onOpen}
-            onMarksChange={handleMarks}
-          />
-        ))
+      {data && view === 'grid' && (
+        <div className="poster-grid">
+          {data.items.map((f) => (
+            <Poster key={f.id} film={f} width="100%" onClick={() => onOpenFilm(f.id)} />
+          ))}
+        </div>
       )}
 
-      {hasMore && (
-        <button className="primary" disabled={loadingMore} onClick={loadMore}>
-          {loadingMore ? "Загружаем…" : "Показать ещё"}
+      {data?.hasMore && (
+        <button type="button" className="btn btn--block" onClick={() => setLimit((l) => l + api.PAGE_SIZE)}>
+          Показать ещё
         </button>
       )}
     </div>
-  );
+  )
 }

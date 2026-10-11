@@ -1,0 +1,1779 @@
+/* Стили экранов, перенесённых из прежнего приложения (админка, турнир,
+   друзья, списки, заявки). Сгенерированы из старого index.css: каждое правило
+   ограничено обёрткой .legacy, чтобы не спорить с классами редизайна
+   (.film-row, .mark, .poster и др. там значат другое). Цвета старых
+   переменных перенаправлены на палитру редизайна — ниже, в .legacy.
+   Экраны по одному переезжают в новую вёрстку; когда .legacy опустеет,
+   файл удаляется. */
+
+/* Тёмная тема всегда, независимо от темы Telegram.
+   Раньше цвета брались из --tg-theme-*, и приложение выглядело по-разному в
+   разных клиентах: на телефоне чёрное, на компьютере синеватое. Про кино
+   разговор особый — тёмный зал и тёмный интерфейс, один и тот же везде. */
+
+.legacy {
+  --bg: #0f1012;
+  --text: #f1f3f5;
+  --hint: #8b949e;
+  --link: #57a6ff;
+  --button: #2f6fed;
+  --button-text: #ffffff;
+  --surface: #1a1c20;
+  --border: color-mix(in srgb, var(--hint) 22%, transparent);
+
+  --wishlist: #8b5cf6;
+  --soon: #f59e0b;
+
+  --radius: 12px;
+  --gap: 12px;
+
+  /* Родные элементы — поля даты и времени, выпадающие списки, полосы прокрутки —
+     красит браузер, и без этого они остались бы белыми пятнами. */
+  color-scheme: dark;
+}
+
+.legacy * {
+  box-sizing: border-box;
+}
+
+.legacy {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+.legacy button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+.legacy input {
+  font: inherit;
+  color: inherit;
+}
+
+.legacy .app {
+  /* Место под таб-бар, чтобы последняя карточка не пряталась под ним.
+     Сама панель добавляет себе безопасную зону (см. .tabs), поэтому на
+     устройствах с индикатором дома она выше — учитываем и её. */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.legacy .screen {
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.legacy .search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.legacy .search input {
+  flex: 1;
+  border: none;
+  background: none;
+  outline: none;
+  min-width: 0;
+}
+
+.legacy .search input::placeholder {
+  color: var(--hint);
+}
+
+.legacy .film-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  text-align: left;
+  width: 100%;
+}
+
+.legacy .poster {
+  width: 64px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--border);
+  display: block;
+}
+
+.legacy .poster--empty {
+  display: grid;
+  place-items: center;
+  color: var(--hint);
+  font-size: 22px;
+}
+
+.legacy .film-row__title {
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+
+.legacy .meta {
+  color: var(--hint);
+  font-size: 13px;
+  margin: 0;
+}
+
+.legacy .marks {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.legacy .mark {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--hint);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.legacy .mark:disabled {
+  opacity: 0.5;
+}
+
+.legacy .mark--wishlist.is-on {
+  background: var(--wishlist);
+  border-color: var(--wishlist);
+  color: #fff;
+}
+
+.legacy .mark--soon.is-on {
+  background: var(--soon);
+  border-color: var(--soon);
+  color: #1b1b1b;
+}
+
+/* Таблица ответов опроса. Прокрутка своя, а не у всей страницы: пять колонок
+   в 360 пикселей не помещаются никогда, а горизонтальная прокрутка экрана
+   ломает вертикальную. */
+
+.legacy .table-scroll {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.legacy .answers {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.legacy .answers th, .legacy .answers td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.legacy .answers th {
+  color: var(--hint);
+  font-weight: 600;
+}
+
+/* Свободный ответ идёт своей строкой под оценками: в колонке он обрезался бы
+   ровно там, где начинается самое ценное в опросе. */
+
+.legacy .answers__text {
+  white-space: normal;
+  color: var(--hint);
+  padding-top: 0;
+}
+
+/* У строки с припиской нижней границы нет — её рисует сам ответ. */
+
+.legacy .answers__row--said td {
+  border-bottom: none;
+}
+
+/* Вопрос опроса: тот же размер, что у заголовков, но без верхнего отступа
+   в пол-экрана — их четыре подряд, и форма превращалась бы в лестницу. */
+
+.legacy .survey__question {
+  margin: 14px 0 4px;
+  font-size: 15px;
+}
+
+.legacy .badge {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--hint);
+}
+
+/* «Вы были» на прошедшем показе: тот же зелёный, что у галочки «приду»,
+   чтобы обещанное и состоявшееся читались одним цветом. */
+
+.legacy .badge--came {
+  background: color-mix(in srgb, #16a34a 26%, transparent);
+  color: var(--text);
+}
+
+/* Язык показа — не примечание, а причина прийти или не прийти: серым
+   по серому рядом с названием зала его просто не увидят. */
+
+.legacy .badge--english {
+  margin: 4px 0;
+  background: color-mix(in srgb, var(--link) 18%, transparent);
+  color: var(--text);
+}
+
+.legacy .tabs {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+
+.legacy .tabs button {
+  flex: 1;
+  padding: 12px 4px;
+  color: var(--hint);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.legacy .tabs button.is-active {
+  color: var(--link);
+}
+
+.legacy .tabs .tab-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+
+.legacy .detail__head {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 14px;
+}
+
+.legacy .detail__head .poster {
+  width: 110px;
+}
+
+.legacy .detail h1 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+
+.legacy .ratings {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.legacy .rating {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-width: 78px;
+}
+
+.legacy .rating b {
+  display: block;
+  font-size: 17px;
+}
+
+.legacy .rating span {
+  color: var(--hint);
+  font-size: 11px;
+}
+
+.legacy .overview {
+  white-space: pre-wrap;
+}
+
+.legacy .review {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.legacy .review__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--hint);
+  margin-bottom: 4px;
+}
+
+.legacy .primary {
+  background: var(--button);
+  color: var(--button-text);
+  border-radius: var(--radius);
+  padding: 13px;
+  font-weight: 600;
+  width: 100%;
+}
+
+.legacy .primary:disabled {
+  opacity: 0.6;
+}
+
+/* Два поля одной настройки: день и время, дата и время, число и число.
+   Класс использовался в трёх местах, но описан не был, и поля вставали друг
+   под друга — подписи «слева» и «справа» переставали иметь смысл. */
+
+.legacy .setting__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.legacy .field-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.legacy .field-cell > span {
+  color: var(--hint);
+  font-size: 12px;
+}
+
+.legacy .field {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  outline: none;
+}
+
+.legacy .hint {
+  color: var(--hint);
+  font-size: 13px;
+}
+
+.legacy .error {
+  background: color-mix(in srgb, #e5484d 14%, transparent);
+  color: #e5484d;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.legacy .center {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--hint);
+}
+
+.legacy .link {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.legacy .attribution {
+  color: var(--hint);
+  font-size: 11px;
+  text-align: center;
+  padding: 8px 16px 0;
+}
+
+.legacy .round-head {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.legacy .round-head .meta {
+  margin-top: 2px;
+}
+
+.legacy .round-head .badge {
+  margin-top: 8px;
+  background: color-mix(in srgb, var(--soon) 22%, transparent);
+  color: var(--soon);
+}
+
+.legacy .tabs-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.legacy h3 {
+  margin: 16px 0 0;
+  font-size: 16px;
+}
+
+/* --- Этап 2: выбор фильмов и вечеров --------------------------------------- */
+
+.legacy .choice {
+  position: relative;
+  border: 1px solid transparent;
+  align-items: center;
+  cursor: pointer;
+}
+
+.legacy .choice.is-on {
+  border-color: var(--link);
+  background: color-mix(in srgb, var(--link) 12%, var(--surface));
+}
+
+.legacy .choice__tick {
+  /* Место под галочку занято всегда: иначе строка дёргается при выборе. */
+  min-width: 22px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--link);
+  align-self: center;
+}
+
+.legacy .slot-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  text-align: left;
+  width: 100%;
+  border: 1px solid transparent;
+}
+
+/* Выбранный фильм недели в шорт-листе — той же рамкой, что и остальные
+   выборы в приложении: галочки в углу на тёмном фоне мало. */
+
+.legacy .slot-row.is-on {
+  border-color: var(--link);
+  background: color-mix(in srgb, var(--link) 12%, var(--surface));
+}
+
+.legacy .shortlist-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legacy .film-row.choice {
+  grid-template-columns: 64px 1fr auto;
+}
+
+.legacy .warn {
+  background: color-mix(in srgb, var(--soon) 16%, transparent);
+  color: var(--soon);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+/* --- Матрица «фильм × слот» ------------------------------------------------ */
+
+.legacy .matrix-scroll {
+  overflow-x: auto;
+  /* Инерционный скролл в webview Telegram. */
+  -webkit-overflow-scrolling: touch;
+}
+
+.legacy .matrix {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.legacy .matrix th, .legacy .matrix td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.legacy .matrix thead th {
+  font-weight: 600;
+  color: var(--hint);
+}
+
+.legacy .matrix__sub {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--hint);
+}
+
+.legacy .matrix__film {
+  text-align: left;
+  font-weight: 500;
+  /* Названия длинные — режем, полное видно в подсказке. */
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: sticky;
+  left: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.legacy .matrix__total {
+  font-weight: 600;
+}
+
+.legacy .mark--going.is-on {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+
+.legacy .assign {
+  display: grid;
+  gap: 8px;
+}
+
+.legacy .assign select {
+  appearance: none;
+}
+
+/* --- Этап 4: код и оценка --------------------------------------------------- */
+
+.legacy .code-input {
+  font-size: 28px;
+  letter-spacing: 6px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.legacy .rating-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.legacy .rating-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--hint);
+  font-weight: 600;
+}
+
+.legacy .rating-dot.is-on {
+  background: var(--link);
+  border-color: var(--link);
+  color: #fff;
+}
+
+.legacy .big-code {
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: 10px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding: 20px 0 8px;
+}
+
+.legacy .code-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--link);
+  transition: width 1s linear;
+}
+
+/* --- Аналитика -------------------------------------------------------------- */
+
+.legacy .funnel-row {
+  display: grid;
+  grid-template-columns: 1fr auto 52px;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.legacy .funnel-row:last-child {
+  border-bottom: none;
+}
+
+.legacy .funnel-row > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legacy .funnel-row > span:last-child {
+  text-align: right;
+}
+
+/* --- «Смотрел» в углу карточки --------------------------------------------- */
+
+.legacy .film-row--watchable {
+  position: relative;
+}
+
+.legacy .watched-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--hint);
+  background: var(--bg);
+  white-space: nowrap;
+  /* Над названием: длинные заголовки иначе заезжают под кнопку. */
+  z-index: 2;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.legacy .watched-tag.is-on {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+
+.legacy .watched-tag:disabled {
+  opacity: 0.5;
+}
+
+/* Освобождаем место под кнопку, чтобы заголовок под неё не подлезал. */
+
+.legacy .film-row--watchable .film-row__title, .legacy .film-row--watchable h1 {
+  padding-right: 92px;
+}
+
+/* --- Карточка кликабельна целиком ------------------------------------------ */
+
+.legacy .film-row--clickable {
+  cursor: pointer;
+}
+
+/* --- Карточка поверх списка ------------------------------------------------- */
+
+.legacy .overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Прокрутка не уходит в список под карточкой: докрутив до конца описания,
+     пользователь иначе начинал бы листать выдачу за спиной. */
+  overscroll-behavior: contain;
+  /* Выше таб-бара: он в это время всё равно скрыт, но перекрытие должно быть
+     полным, иначе сквозь него ловятся нажатия. */
+  z-index: 20;
+}
+
+/* Скрытый слой не должен ловить нажатия сквозь тот, что открыт поверх. */
+
+.legacy .overlay[hidden] {
+  display: none;
+}
+
+.legacy .overlay > .screen {
+  max-width: 640px;
+  margin: 0 auto;
+  padding-bottom: 32px;
+}
+
+/* Тот же вид, что у плашки, но это ссылка наружу, а не кнопка внутрь. */
+
+.legacy .notice--link {
+  display: block;
+  margin: 6px 0;
+  text-decoration: none;
+}
+
+.legacy .notice {
+  width: 100%;
+  text-align: left;
+  background: color-mix(in srgb, var(--link) 14%, transparent);
+  color: var(--link);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.legacy .matrix__link {
+  padding: 0;
+  font: inherit;
+  color: var(--link);
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Пригласительная ссылка ------------------------------------------------- */
+
+.legacy .invite {
+  display: grid;
+  gap: 8px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 12px;
+  width: 100%;
+}
+
+.legacy .invite__link {
+  font-size: 13px;
+  /* Ссылка длинная: пусть лучше прокручивается, чем ломает вёрстку. */
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* --- Сворачиваемые разделы -------------------------------------------------- */
+
+.legacy .section {
+  display: contents;
+}
+
+.legacy .section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  color: var(--text);
+}
+
+.legacy .section__title .hint {
+  font-weight: 500;
+}
+
+.legacy .section__chevron {
+  color: var(--hint);
+  font-size: 13px;
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+
+.legacy .section__chevron.is-open {
+  transform: none;
+}
+
+.legacy .section__hint {
+  margin: -2px 0 2px;
+}
+
+/* --- Столбики -------------------------------------------------------------- */
+
+.legacy .bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 96px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.legacy .bars__item {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  min-width: 22px;
+  flex: 1;
+  height: 100%;
+}
+
+.legacy .bars__stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: 100%;
+  height: 100%;
+}
+
+.legacy .bars__bar {
+  background: var(--link);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.legacy .bars__bar--extra {
+  background: var(--soon);
+  border-radius: 3px 3px 0 0;
+}
+
+.legacy .bars__label {
+  color: var(--hint);
+  font-size: 10px;
+  white-space: nowrap;
+  /* Десять подписей в ряд: пусть жмутся, но каждая на своём столбике. */
+  letter-spacing: -0.2px;
+}
+
+/* Столбики с числом над каждым — для оценок: высота без числа не отличает
+   4,2 от 4,4, а в отчёт идёт именно число. */
+
+/* Подзаголовок графика внутри раздела: тише h3, чтобы три графика одного
+   опроса читались как один блок, а не три раздела. */
+
+.legacy .chart-title {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hint);
+}
+
+.legacy .bars--valued {
+  height: 132px;
+}
+
+/* Недель в начале семестра мало, и три столбика во всю ширину читаются
+   как плиты, а не как график. */
+
+.legacy .bars--valued .bars__item {
+  max-width: 52px;
+}
+
+.legacy .bars__stack {
+  min-height: 0;
+}
+
+.legacy .bars__value {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.legacy .bars__note {
+  color: var(--hint);
+  font-size: 9px;
+  white-space: nowrap;
+  margin-top: -3px;
+}
+
+.legacy .back-link {
+  align-self: flex-start;
+}
+
+/* Параметр §13: подпись над полем. */
+
+.legacy .setting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.legacy .setting label {
+  font-size: 14px;
+}
+
+/* Кнопка сохранения не уезжает из виду: список длинный, и после правки внизу
+   пришлось бы прокручивать обратно наверх. Отступ снизу — высота панели
+   вкладок: на восьми пикселях кнопка легла бы прямо на неё. */
+
+.legacy .sticky-actions {
+  position: sticky;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  padding: 8px 0;
+  z-index: 5;
+}
+
+.legacy .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 8px;
+}
+
+.legacy .stat {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px;
+  text-align: center;
+}
+
+/* Профиль сверху: слева три строки, справа распределение оценок. */
+
+.legacy .profile__top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  /* Обе колонки одной высоты: блок оценок, торчащий ниже трёх строк, читается
+     как съехавшая вёрстка. Столбики тянутся, подписи и средняя — нет. */
+  align-items: stretch;
+}
+
+/* Оценок нет — строки занимают всю ширину, а не половину с пустотой рядом. */
+
+.legacy .profile__top--alone {
+  grid-template-columns: 1fr;
+}
+
+.legacy .profile__ratings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px;
+  min-width: 0;
+}
+
+.legacy .stat-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legacy .stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.legacy .stat-row b {
+  font-size: 18px;
+}
+
+.legacy .stat-row span {
+  color: var(--hint);
+  font-size: 13px;
+}
+
+/* Строка, ведущая в свой список. Кнопка снаружи, но выглядит строкой:
+   иначе в своём профиле цифры стояли бы иначе, чем в чужом. */
+
+.legacy .stat-row--door {
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+
+.legacy .stat-row--door:active {
+  background: var(--border);
+}
+
+.legacy .stat-row__arrow {
+  margin-left: auto;
+  align-self: center;
+}
+
+/* Иконка меню в углу профиля: вкладка «Ещё» уехала сюда. */
+
+.legacy .icon-button {
+  align-self: flex-start;
+  margin-left: auto;
+  background: var(--surface);
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  font-size: 17px;
+  color: var(--text);
+  display: grid;
+  place-items: center;
+}
+
+.legacy .bars--compact {
+  /* Тянется на всю оставшуюся высоту колонки — так низ блока совпадает
+     с низом трёх строк рядом. */
+  flex: 1;
+  height: auto;
+  min-height: 46px;
+  gap: 1px;
+  overflow-x: visible;
+}
+
+.legacy .bars--compact .bars__item {
+  min-width: 0;
+  gap: 2px;
+}
+
+/* Десять подписей в половину ширины: мельче и плотнее, но у каждого столбика —
+   иначе половинки приходится отсчитывать глазами от ближайшей целой звезды. */
+
+.legacy .bars--compact .bars__label {
+  font-size: 8px;
+  letter-spacing: -0.4px;
+}
+
+.legacy .stat b {
+  display: block;
+  font-size: 18px;
+}
+
+.legacy .stat span {
+  color: var(--hint);
+  font-size: 12px;
+}
+
+/* --- Плитка постеров ------------------------------------------------------- */
+
+.legacy .poster-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.legacy .poster-grid__item {
+  position: relative;
+  padding: 0;
+  display: block;
+  width: 100%;
+}
+
+.legacy .poster--tile {
+  width: 100%;
+}
+
+.legacy .poster-grid__title {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 4px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--hint);
+  text-align: center;
+}
+
+/* Свободное место в витрине профиля: пунктир говорит, что плитку можно занять,
+   а сплошной фон читался бы как «фильм без постера». */
+
+.legacy .poster--slot {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--hint);
+  font-size: 20px;
+}
+
+.legacy .poster-grid__item--empty:disabled {
+  opacity: 0.6;
+}
+
+/* Переключатель «список / плитка» рядом с сортировками. */
+
+.legacy .layout-switch {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.legacy .layout-switch .mark {
+  padding: 6px 9px;
+  display: grid;
+  place-items: center;
+}
+
+.legacy .layout-switch svg {
+  display: block;
+}
+
+.legacy .sorts {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.legacy .sorts__select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- Люди ------------------------------------------------------------------ */
+
+.legacy .avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--surface);
+  flex: none;
+}
+
+.legacy .avatar--empty {
+  display: grid;
+  place-items: center;
+  color: var(--hint);
+  font-weight: 700;
+}
+
+.legacy .profile__head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.legacy .profile__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.legacy .person-row {
+  align-items: center;
+}
+
+.legacy .person-row__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  min-width: 0;
+}
+
+.legacy .poster-grid__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--bg);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+}
+
+/* --- Звёзды ---------------------------------------------------------------- */
+
+.legacy .stars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.legacy .stars__star {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  font-size: 26px;
+}
+
+.legacy .stars__empty, .legacy .stars__fill {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.legacy .stars__empty {
+  color: var(--border);
+}
+
+/* Половина — обрезанная звезда поверх пустой: символ половины есть не во всех
+   шрифтах, а обрезка работает везде одинаково. */
+
+.legacy .stars__fill {
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--soon);
+}
+
+.legacy .stars__half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: none;
+}
+
+.legacy .stars__half--left {
+  left: 0;
+}
+
+.legacy .stars__half--right {
+  right: 0;
+}
+
+.legacy .stars__value {
+  margin-left: 6px;
+  color: var(--hint);
+  font-size: 14px;
+}
+
+.legacy .rating--club b {
+  color: var(--soon);
+}
+
+.legacy .rate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+/* --- Листание недель ------------------------------------------------------- */
+
+/* Колонки по краям фиксированы, поэтому неделя стоит ровно посередине строки,
+   а не «примерно там»: с гибкими стрелками надпись съезжала, когда одна из них
+   гасла. */
+
+.legacy .week-nav {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+}
+
+.legacy .week-nav > b {
+  text-align: center;
+  font-size: 16px;
+}
+
+.legacy .week-nav__arrow {
+  font-size: 24px;
+  line-height: 1;
+  color: var(--link);
+  padding: 6px 0;
+}
+
+.legacy .week-nav__arrow:disabled {
+  opacity: 0.25;
+}
+
+/* Три плитки — ровно в ряд, без переноса последней на свою строку. */
+
+.legacy .stats-grid--three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* --- Лента ----------------------------------------------------------------- */
+
+/* Экран ленты не прокручивается вовсе: под пальцем здесь карточка, и страница,
+   уезжающая вместе с ней, сбивает жест. Замок ставит сама «Лента» при входе
+   и снимает при уходе — остальные экраны прокручиваются как обычно. */
+
+.legacy .deck {
+  padding: var(--gap);
+  /* Таб-бар висит поверх: последняя строка не должна прятаться под ним. */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Карточка занимает экран целиком: решение принимается по одной, и соседние
+     строки на нём только мешали бы. */
+  height: 100dvh;
+  /* Уезжающая карточка не должна раздвигать страницу вбок: без этого при
+     каждом свайпе появлялась горизонтальная прокрутка и лента «съезжала». */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.legacy .deck__card {
+  position: relative;
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+  flex: 1;
+  /* Без этого карточка не сжимается ниже своего содержимого и выдавливает
+     кнопку «Смотрел» за нижний край экрана. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Жест по карточке целиком отдан свайпу. Пока внутри был прокручиваемый
+     текст, браузер на диагональном движении забирал жест себе (pointercancel),
+     и свайп по зоне описания то срабатывал, то нет. Прокрутки внутри карточки
+     больше нет — забирать нечего. */
+  touch-action: none;
+  user-select: none;
+  will-change: transform;
+}
+
+.legacy .deck__poster {
+  width: 100%;
+  /* Постер забирает всё, что осталось от описания: экраны бывают разной
+     высоты, а фиксированная высота на низком отрезала бы кнопки. */
+  flex: 1 1 auto;
+  min-height: 0;
+  object-fit: cover;
+  object-position: top center;
+  background: var(--border);
+}
+
+.legacy .deck__poster--empty {
+  display: grid;
+  place-items: center;
+  font-size: 42px;
+  color: var(--hint);
+}
+
+.legacy .deck__body {
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Текст занимает столько, сколько ему нужно, а остаток забирает постер:
+     прокручивать внутри карточки нечего, и жест никто не перехватывает. */
+  flex: 0 0 auto;
+}
+
+/* «Смотрел» без оценки: показываем, где её ставят. Мигание — единственный
+   способ обратить внимание, не отнимая у человека решение. */
+
+@keyframes legacy-deck-ask {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.legacy .deck__footer.is-asking .stars {
+  animation: legacy-deck-ask 0.7s ease-in-out 3;
+}
+
+.legacy .deck__footer.is-asking .stars__empty {
+  color: var(--soon);
+}
+
+.legacy .deck__note--asking {
+  color: var(--soon);
+}
+
+.legacy .deck__reason {
+  margin: 0;
+  font-size: 13px;
+  color: var(--link);
+}
+
+.legacy .deck__title {
+  font-size: 20px;
+  margin: 0;
+}
+
+.legacy .deck__ratings {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.legacy .deck__badge--club {
+  background: color-mix(in srgb, var(--soon) 22%, transparent);
+  color: var(--soon);
+}
+
+.legacy .deck__overview {
+  margin: 0;
+  color: var(--hint);
+  font-size: 14px;
+  /* Четыре строки: карточку читают по диагонали, а не изучают. */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* На низком экране описание сжимается первым: без прокрутки внутри карточки
+   иначе не осталось бы места ни постеру, ни кнопке «Подробнее». */
+
+@media (max-height: 720px) {
+  .legacy .deck__overview {
+    -webkit-line-clamp: 2;
+  }
+}
+
+@media (max-height: 620px) {
+  .legacy .deck__overview {
+    display: none;
+  }
+}
+
+/* Флажок с пояснением: у необратимого выбора должна быть подпись, что будет. */
+
+.legacy .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.legacy .check input {
+  margin: 2px 0 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--link);
+  flex: none;
+}
+
+/* Печать поверх карточки: решение видно до того, как палец отпущен. */
+
+.legacy .deck__stamp {
+  position: absolute;
+  top: 16px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.legacy .deck__stamp--like {
+  right: 16px;
+  background: var(--wishlist);
+  color: #fff;
+}
+
+.legacy .deck__stamp--skip {
+  left: 16px;
+  background: var(--border);
+  color: var(--text);
+}
+
+/* Подсказка про свайпы: направления называются словами, а по ходу жеста
+   нужное подсвечивается. */
+
+.legacy .deck__legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--hint);
+}
+
+.legacy .deck__legend .is-on {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.legacy .deck__legend--like.is-on {
+  color: var(--wishlist);
+}
+
+.legacy .deck__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.legacy .deck__note {
+  margin: 0;
+  text-align: center;
+}
+
+/* --- Турниры --------------------------------------------------------------- */
+
+/* Плашка вверху каталога и расписания. Турнир живёт этапами по суткам, и без
+   неё человек, открывший приложение не в тот день, просто о нём не узнает. */
+
+.legacy .tournament-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--soon);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--soon) 14%, transparent);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.legacy .tournament-banner__icon {
+  font-size: 22px;
+}
+
+.legacy .tournament-banner__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legacy .tournament-banner__text b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Пара: два варианта рядом, выбор — одно нажатие по карточке целиком. */
+
+.legacy .duel {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.legacy .duel__vs {
+  align-self: center;
+  color: var(--hint);
+  font-size: 12px;
+}
+
+.legacy .duel__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--surface);
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+.legacy .duel__side--empty {
+  display: grid;
+  place-items: center;
+  color: var(--hint);
+}
+
+/* Свой голос виден всегда — он единственное, что подсвечено, пока этап идёт. */
+
+.legacy .duel__side.is-chosen {
+  border-color: var(--soon);
+}
+
+.legacy .duel__side.is-won {
+  border-color: #16a34a;
+}
+
+.legacy .duel__side:disabled {
+  opacity: 1; /* закрытый этап не «выключен», он просто уже сыгран */
+}
+
+.legacy .duel__poster {
+  width: 100%;
+  max-width: 110px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.legacy .duel__poster--empty {
+  background: var(--border);
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 2;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--hint);
+}
+
+.legacy .duel__title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.legacy .duel__votes {
+  color: var(--hint);
+  font-size: 12px;
+}
+
+.legacy .tournament__winner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, #16a34a 18%, transparent);
+}
+
+/* --- Ачивки ---------------------------------------------------------------- */
+
+/* Четыре трофея с числами: бронза, серебро, золото, платина. */
+
+.legacy .trophies {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.legacy .trophy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 4px;
+  background: var(--surface);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  /* Пустой уровень бледнее: видно, что он есть, но нечем хвастаться. */
+  opacity: 0.45;
+}
+
+/* Открытая вкладка обведена: иначе непонятно, какому трофею принадлежит
+   список под ним. */
+
+.legacy .trophy.is-open {
+  border-color: var(--hint);
+  opacity: 1;
+}
+
+.legacy .trophy.is-on {
+  opacity: 1;
+}
+
+.legacy .achievements__title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.legacy .trophy-icon {
+  display: block;
+  flex: none;
+}
+
+.legacy .trophy b {
+  font-size: 17px;
+}
+
+/* Секретная в списке: без названия и условия, только счётчик. */
+
+.legacy .achievement--secret {
+  opacity: 0.75;
+}
+
+.legacy .achievement {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  /* Неполученная бледнее, но видна: список целей полезнее списка наград. */
+  opacity: 0.55;
+}
+
+.legacy .achievement.is-earned {
+  opacity: 1;
+}
+
+.legacy .achievement__emoji {
+  font-size: 24px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  flex: none;
+}
+
+.legacy .achievement__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.legacy .achievement__check {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+/* --- Опросы в боте ---------------------------------------------------------- */
+
+.legacy .poll-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.legacy .poll-option__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.legacy .poll-option__head b {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.legacy .poll-option__track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.legacy .poll-option__bar {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--hint);
+  min-width: 2px;
+}
+
+/* Лидер — цветом: какой вариант побеждает, видно, не читая чисел. */
+
+.legacy .poll-option__bar--leader {
+  background: var(--link);
+}
+
+.legacy .poll-option__voters summary {
+  color: var(--link);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Палитра редизайна для старых экранов. */
+.legacy {
+  --bg: var(--c-bg);
+  --text: var(--c-text);
+  --hint: var(--c-text-2);
+  --link: var(--c-accent);
+  --button: var(--c-accent);
+  --button-text: var(--c-on-accent);
+  --surface: var(--c-surface);
+  --border: var(--c-line);
+  --wishlist: var(--c-accent);
+  --soon: var(--c-accent);
+  font-family: var(--f-body);
+  color: var(--c-text);
+}

@@ -2358,6 +2358,12 @@ export interface components {
              * @default false
              */
             film_already_rated: boolean;
+            /** Starts At */
+            starts_at: string | null;
+            /** Hall Name */
+            hall_name: string | null;
+            /** Title */
+            title: string | null;
         };
         /**
          * FilmBrief

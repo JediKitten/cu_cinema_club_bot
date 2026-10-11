@@ -13,7 +13,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PYTHON:-$ROOT/backend/venv/bin/python}"
-OUT="$ROOT/miniapp/src/api.gen.ts"
+OUT="$ROOT/miniapp/src/legacy/api.gen.ts"
 # Версия закреплена и ставится мимо package.json: генератор нужен только
 # здесь, а в зависимостях он требовал бы TypeScript 5 вместо нашего 6-го.
 GENERATOR="openapi-typescript@7.13.0"
@@ -38,12 +38,12 @@ npx --yes "$GENERATOR" "$tmp/openapi.json" -o "$tmp/api.gen.ts" --default-non-nu
 
 if [ "${1:-}" = "--check" ]; then
   if ! diff -q "$tmp/final.ts" "$OUT" >/dev/null 2>&1; then
-    echo "miniapp/src/api.gen.ts отстал от бэкенда — запустите scripts/gen-api.sh" >&2
+    echo "miniapp/src/legacy/api.gen.ts отстал от бэкенда — запустите scripts/gen-api.sh" >&2
     diff -u "$OUT" "$tmp/final.ts" | head -40 >&2 || true
     exit 1
   fi
   echo "api.gen.ts совпадает со схемой бэкенда"
 else
   cp "$tmp/final.ts" "$OUT"
-  echo "Обновлён miniapp/src/api.gen.ts"
+  echo "Обновлён miniapp/src/legacy/api.gen.ts"
 fi

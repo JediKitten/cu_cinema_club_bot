@@ -12,7 +12,7 @@ import { Attend } from "./Attend";
  * Виден всем участникам: это память клуба, а не служебная статистика.
  * Ожидаемая явка рядом с фактической показывает, насколько прогноз сошёлся.
  */
-export function History() {
+export function History({ onSurvey }: { onSurvey?(screeningId: number): void } = {}) {
   const openFilm = useOpenFilmById();
   const { data: rows, error } = useLoad(getPastScreenings, []);
   const [survey, setSurvey] = useState<PastScreening | null>(null);
@@ -72,7 +72,10 @@ export function History() {
                   className={`mark ${row.i_answered ? "" : "is-on mark--wishlist"}`}
                   onClick={(event) => {
                     event.stopPropagation();
-                    setSurvey(row);
+                    // В новом приложении опрос — свой экран; старая форма
+                    // остаётся только как запасной путь.
+                    if (onSurvey) onSurvey(row.screening_id);
+                    else setSurvey(row);
                   }}
                 >
                   {row.i_answered ? "Изменить ответы" : "Пройти опрос"}

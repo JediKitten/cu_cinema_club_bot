@@ -6,15 +6,21 @@
     <!-- Тема всегда тёмная. Цвет фона прямо здесь, до загрузки CSS: иначе
          первым кадром вспыхивает белый лист. -->
     <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#000000" />
     <style>
       html,
       body {
-        background: #0f1012;
+        background: #000000;
       }
     </style>
     <title>Киноклуб</title>
     <!-- SDK обязан загрузиться до приложения: из него берётся initData. -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Шрифты редизайна: Unbounded — временная замена фирменного Murs Gothic
+         (см. index.css), Inter — основной текст. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@800;900&family=Inter:wght@400;500;600&display=swap" />
   </head>
   <body>
     <div id="root"></div>

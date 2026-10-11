@@ -1,203 +1,304 @@
-import { useCallback, useEffect, useState } from "react";
-import { login } from "./api";
-import { Catalog } from "./screens/Catalog";
-import { Deck } from "./screens/Deck";
-import { FilmDetail } from "./screens/FilmDetail";
-import { Profile } from "./screens/Profile";
-import { ProfileTab } from "./screens/ProfileTab";
-import { Attend } from "./screens/Attend";
-import { Tournament } from "./screens/Tournament";
-import { Week } from "./screens/Week";
-import { FilmOpenerProvider } from "./filmOpener";
-import { initTelegram } from "./telegram";
-import type { FilmBrief, User } from "./types";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Icon } from './components/Icon'
+import { ErrorPlate, Loading, ScreenHeader, TabBar } from './components/ui'
+import * as server from './legacy/api'
+import { Achievements } from './legacy/components/Achievements'
+import { TournamentBanner } from './legacy/components/TournamentBanner'
+import { FilmOpenerProvider } from './legacy/filmOpener'
+import { Friends } from './legacy/screens/Friends'
+import { History } from './legacy/screens/History'
+import { MyMarks, MyWatched } from './legacy/screens/MyList'
+import { Tournament } from './legacy/screens/Tournament'
+import type { FilmBrief, User } from './legacy/types'
+import * as api from './lib/api'
+import { isTelegram, useBackButton } from './lib/tg'
+import { useLoad } from './lib/useLoad'
+import type { Show, TabId } from './lib/types'
+import { Catalog } from './screens/Catalog'
+import { CheckIn } from './screens/CheckIn'
+import { Favorites } from './screens/Favorites'
+import { Feed } from './screens/Feed'
+import { FilmCard } from './screens/FilmCard'
+import { FilmRequests } from './screens/FilmRequests'
+import { Profile, type ProfileSection } from './screens/Profile'
+import { Schedule } from './screens/Schedule'
+import { Survey } from './screens/Survey'
 
-type Tab = "catalog" | "deck" | "vote" | "profile";
+// Админка нужна единицам — остальные её не скачивают.
+const Admin = lazy(() => import('./legacy/screens/Admin').then((m) => ({ default: m.Admin })))
 
-// Четыре вкладки у всех одинаковые. «Ещё» уехало под иконку в углу профиля,
-// «Клуб», «Мои» и «Друзья» — двери оттуда же: вкладки, которые у разных людей
-// разные, сбивают с толку, а пятая кнопка внизу делала панель тесной.
-const TABS: { key: Tab; icon: string; label: string }[] = [
-  { key: "catalog", icon: "🎞", label: "Каталог" },
-  { key: "deck", icon: "🔥", label: "Лента" },
-  { key: "vote", icon: "📅", label: "Расписание" },
-  { key: "profile", icon: "👤", label: "Профиль" },
-];
+/** Вложенный экран внутри вкладки «Расписание». */
+type ScheduleView =
+  | { kind: 'list' }
+  | { kind: 'checkin'; show: Show }
+  | { kind: 'survey'; showId: number; returnTo: 'schedule' | 'profile' }
+
+/** Что открыто поверх вкладок. Стек: «Назад» снимает верхний слой. */
+type Overlay =
+  | { kind: 'film'; id: number }
+  | { kind: 'profile'; id: number }
+  | { kind: 'tournament'; id: number }
 
 // Статистика по фильму — админам и главному: модератор ведёт показы, а не отбор.
-const STATS_ROLES = new Set(["admin", "superadmin"]);
+const STATS_ROLES = new Set(['admin', 'superadmin'])
 
-function filmFromAddress(): FilmBrief | null {
-  const requested = new URLSearchParams(location.search).get("film");
-  if (!requested || !/^\d+$/.test(requested)) return null;
+/**
+ * Точки входа из бота:
+ *   ?film=<id>                  — карточка фильма поверх каталога
+ *   ?tab=vote&week=<YYYY-MM-DD> — расписание на нужной неделе (бюллетень)
+ *   ?survey=<showId>            — опрос после показа; после ответа — профиль
+ *   ?tab=<catalog|deck|feed|vote|schedule|profile>
+ */
+function readStartParams() {
+  const q = new URLSearchParams(window.location.search)
+  const tabParam = q.get('tab')
+  const film = Number(q.get('film')) || undefined
+  const survey = Number(q.get('survey')) || undefined
+  let tab: TabId = 'catalog'
+  if (tabParam === 'vote' || tabParam === 'schedule' || survey) tab = 'schedule'
+  else if (tabParam === 'feed' || tabParam === 'deck') tab = 'feed'
+  else if (tabParam === 'profile' || tabParam === 'catalog') tab = tabParam
   return {
-    id: Number(requested),
-    tmdb_id: null,
-    title_ru: "",
-    title_orig: null,
-    year: null,
-    poster_url: null,
-    genres: [],
-    directors: [],
-    in_catalog: true,
-    my_interests: [],
-    can_renew_soon: false,
-    soon_expires_at: null,
-    watched: false,
-  };
+    tab,
+    overlays: film ? [{ kind: 'film', id: film } as Overlay] : [],
+    week: q.get('week') ?? undefined,
+    view: survey ? ({ kind: 'survey', showId: survey, returnTo: 'profile' } as ScheduleView) : ({ kind: 'list' } as ScheduleView),
+  }
 }
 
-export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authError, setAuthError] = useState<string | null>(null);
-  // Кнопка под уведомлением открывает приложение адресом ?tab=vote — человек
-  // уже отметил фильмы в чате, и приводить его в каталог значило бы прятать
-  // то, ради чего он нажал.
-  const [tab, setTab] = useState<Tab>(() => {
-    const requested = new URLSearchParams(location.search).get("tab");
-    return TABS.some((item) => item.key === requested) ? (requested as Tab) : "catalog";
-  });
-  // Фильм из поиска ещё не в каталоге — у него есть только tmdb_id.
-  // Бот открывает приложение адресом вида ?film=123 — тогда карточка
-  // открыта с первого кадра.
-  const [openFilm, setOpenFilm] = useState<FilmBrief | null>(filmFromAddress);
-  // Профиль открывается поверх вкладок — как карточка фильма.
-  const [openProfile, setOpenProfile] = useState<number | null>(null);
-  // Турнир — тоже наложение: в него заходят из плашки в каталоге или
-  // расписании и возвращаются туда же.
-  const [openTournament, setOpenTournament] = useState<number | null>(null);
-  // Опрос после показа. Кнопка под напоминанием в боте открывает приложение
-  // адресом ?survey=12 — и человек попадает сразу в форму того показа,
-  // а не в каталог, из которого её ещё надо найти.
-  const [openSurvey, setOpenSurvey] = useState<number | null>(
-    () => {
-      const requested = new URLSearchParams(location.search).get("survey");
-      return requested && /^\d+$/.test(requested) ? Number(requested) : null;
-    },
-  );
+const start = readStartParams()
 
-  // Постоянные обработчики: подписка на кнопку «назад» Telegram живёт в эффекте
-  // с ними в зависимостях, и новая функция на каждый рендер App заставляла её
-  // сниматься и вешаться заново — при каждом переключении вкладки.
-  const closeFilm = useCallback(() => setOpenFilm(null), []);
-  const closeProfile = useCallback(() => setOpenProfile(null), []);
-  const closeTournament = useCallback(() => setOpenTournament(null), []);
-  const closeSurvey = useCallback(() => setOpenSurvey(null), []);
-
-  // Пока открыто наложение, страница под ним не прокручивается: иначе справа
-  // оказываются две полосы прокрутки сразу — его и списка под ним.
-  const overlayOpen =
-    openFilm !== null || openProfile !== null || openTournament !== null || openSurvey !== null;
-  useEffect(() => {
-    document.body.classList.toggle("has-overlay", overlayOpen);
-    return () => document.body.classList.remove("has-overlay");
-  }, [overlayOpen]);
+export function App() {
+  const [user, setUser] = useState<User | null>(null)
+  const [authError, setAuthError] = useState<string>()
 
   useEffect(() => {
-    initTelegram();
-    login()
-      .then(setUser)
-      .catch((e) =>
-        setAuthError(e instanceof Error ? e.message : "Не удалось войти"),
-      );
-  }, []);
+    server.login().then(setUser, (e: unknown) => setAuthError(e instanceof Error ? e.message : 'Не удалось войти'))
+  }, [])
 
   if (authError) {
     return (
-      <div className="center">
-        <p>{authError}</p>
-        <p className="hint">
-          Приложение работает только внутри Telegram: вход подтверждается
-          подписью, которую выдаёт сам мессенджер.
+      <div className="screen">
+        <ErrorPlate message={authError} />
+        <p className="small muted">
+          Приложение работает только внутри Telegram: вход подтверждается подписью, которую выдаёт сам мессенджер.
         </p>
       </div>
-    );
+    )
+  }
+  if (!user) return <Loading text="Входим…" />
+  return <Club me={user} />
+}
+
+function Club({ me }: { me: User }) {
+  const [tab, setTab] = useState<TabId>(start.tab)
+  const [overlays, setOverlays] = useState<Overlay[]>(start.overlays)
+  const [scheduleView, setScheduleView] = useState<ScheduleView>(start.view)
+  const [scheduleWeek, setScheduleWeek] = useState<string | undefined>(start.week)
+  const [profileSection, setProfileSection] = useState<ProfileSection | null>(null)
+  /** Растёт, когда что-то поверх поменяло данные — экран под ним перечитывает их */
+  const [refreshKey, setRefreshKey] = useState(0)
+  const bump = useCallback(() => setRefreshKey((k) => k + 1), [])
+
+  // Неделя, на которую сейчас идёт голосование — для баннера в каталоге
+  const { data: currentSchedule } = useLoad(() => api.getSchedule(), [])
+  const votingWeekStart =
+    currentSchedule?.week.stage === 'vote' ? currentSchedule.week.start : currentSchedule?.week.votingWeekStart
+
+  const push = useCallback((o: Overlay) => setOverlays((stack) => [...stack, o]), [])
+  const pop = useCallback(() => setOverlays((stack) => stack.slice(0, -1)), [])
+  const openFilm = useCallback((id: number) => push({ kind: 'film', id }), [push])
+  const openProfile = useCallback(
+    (id: number) => (id === me.id ? (setOverlays([]), setProfileSection(null), setTab('profile')) : push({ kind: 'profile', id })),
+    [me.id, push],
+  )
+  const openTournament = useCallback((id: number) => push({ kind: 'tournament', id }), [push])
+
+  // Перенесённые экраны открывают фильм по FilmBrief — переводим в id экранов.
+  const openLegacyFilm = useCallback((film: FilmBrief) => {
+    const key = film.id ?? (film.tmdb_id ? -film.tmdb_id : null)
+    if (key !== null) openFilm(key)
+  }, [openFilm])
+
+  const goTab = (t: TabId) => {
+    if (t === tab) {
+      if (t === 'schedule') setScheduleView({ kind: 'list' })
+      if (t === 'profile') setProfileSection(null)
+    }
+    setOverlays([])
+    setTab(t)
   }
 
-  if (!user) return <div className="center">Входим…</div>;
-
-  function open(film: FilmBrief) {
-    if (film.id !== null || film.tmdb_id !== null) setOpenFilm(film);
+  const openVote = () => {
+    setScheduleWeek(votingWeekStart)
+    setScheduleView({ kind: 'list' })
+    setTab('schedule')
   }
+
+  const leaveSurvey = (returnTo: 'schedule' | 'profile') => {
+    setScheduleView({ kind: 'list' })
+    if (returnTo === 'profile') setTab('profile')
+  }
+
+  // Единая системная «Назад»: верхний оверлей → вложенный экран вкладки → ничего
+  let onBack: (() => void) | undefined
+  if (overlays.length) onBack = pop
+  else if (tab === 'schedule' && scheduleView.kind === 'checkin') onBack = () => setScheduleView({ kind: 'list' })
+  else if (tab === 'schedule' && scheduleView.kind === 'survey') {
+    const r = scheduleView.returnTo
+    onBack = () => leaveSurvey(r)
+  } else if (tab === 'profile' && profileSection) onBack = () => setProfileSection(null)
+  useBackButton(onBack)
+
+  const openProfileSection = (s: ProfileSection) => setProfileSection(s)
+
+  const top = overlays.at(-1)
 
   return (
-    <FilmOpenerProvider value={open}>
+    <FilmOpenerProvider value={openLegacyFilm}>
       <div className="app">
-        {/* Вкладка остаётся смонтированной под карточкой: иначе возврат из фильма
-          терял бы поисковый запрос, выдачу и место прокрутки. */}
-        {tab === "catalog" && <Catalog onOpen={open} onOpenTournament={setOpenTournament} />}
-        {tab === "deck" && <Deck onOpen={open} />}
-        {tab === "vote" && <Week onOpenTournament={setOpenTournament} />}
-        {tab === "profile" && (
-          <ProfileTab me={user} onOpenFilm={open} onOpenProfile={setOpenProfile} />
+        {!isTelegram && onBack && (
+          // Только для разработки в браузере: в Telegram эту роль играет системная кнопка
+          <button type="button" className="btn--link row" style={{ padding: '0 16px', gap: 6 }} onClick={onBack}>
+            <Icon name="arrowLeft" size={18} /> Назад (dev)
+          </button>
         )}
 
-        {/* Экраны не размонтируются под тем, что открылось поверх: вернувшись
-            из карточки фильма, человек должен оказаться там же, где был. */}
-        {openProfile !== null && (
-          <div className="overlay" hidden={openFilm !== null}>
-            <Profile
-              userId={openProfile}
-              active={openFilm === null}
-              onBack={closeProfile}
+        {/* Под верхним слоем остальные остаются смонтированными: вернувшись,
+            человек находит экран ровно таким, каким его оставил. */}
+        {overlays.map((o, i) => (
+          <div key={`${o.kind}-${o.id}-${i}`} style={{ display: o === top ? 'contents' : 'none' }}>
+            {o.kind === 'film' && <FilmCard filmId={o.id} onChanged={bump} withStats={STATS_ROLES.has(me.role)} />}
+            {o.kind === 'profile' && (
+              <Profile userId={o.id} onOpenFilm={openFilm} onOpen={() => undefined} refreshKey={refreshKey} />
+            )}
+            {o.kind === 'tournament' && (
+              <div className="legacy">
+                <Tournament id={o.id} onBack={pop} />
+              </div>
+            )}
+          </div>
+        ))}
+
+        <div style={{ display: top ? 'none' : 'contents' }}>
+          {tab === 'catalog' && (
+            <Catalog
+              onOpenFilm={openFilm}
+              votingWeekStart={votingWeekStart}
+              onOpenVote={openVote}
+              refreshKey={refreshKey}
+              banner={
+                <div className="legacy">
+                  <TournamentBanner onOpen={openTournament} />
+                </div>
+              }
             />
-          </div>
-        )}
-
-        {openTournament !== null && openFilm === null && (
-          <div className="overlay">
-            <Tournament id={openTournament} onBack={closeTournament} />
-          </div>
-        )}
-
-        {openSurvey !== null && openFilm === null && (
-          <div className="overlay">
-            <Attend
-              screeningId={openSurvey}
-              onBack={closeSurvey}
-              // Пришли по кнопке из бота — приложение открылось ради опроса
-              // и больше ни за чем. Ответив, человек должен оказаться в своём
-              // профиле, а не в пустом каталоге.
-              onSaved={() => {
-                closeSurvey();
-                setTab("profile");
+          )}
+          {tab === 'feed' && <Feed onOpenFilm={openFilm} />}
+          {tab === 'schedule' && scheduleView.kind === 'list' && (
+            <Schedule
+              weekStart={scheduleWeek}
+              onWeekChange={setScheduleWeek}
+              onOpenFilm={openFilm}
+              onCheckIn={(show) => setScheduleView({ kind: 'checkin', show })}
+            />
+          )}
+          {tab === 'schedule' && scheduleView.kind === 'checkin' && (
+            <CheckIn
+              show={scheduleView.show}
+              onDone={() => setScheduleView({ kind: 'survey', showId: scheduleView.show.id, returnTo: 'schedule' })}
+            />
+          )}
+          {tab === 'schedule' && scheduleView.kind === 'survey' && (
+            <Survey showId={scheduleView.showId} onDone={() => leaveSurvey(scheduleView.returnTo)} />
+          )}
+          {tab === 'profile' && !profileSection && (
+            <Profile userId={me.id} onOpenFilm={openFilm} onOpen={openProfileSection} refreshKey={refreshKey} />
+          )}
+          {tab === 'profile' && profileSection && (
+            <ProfileSectionView
+              section={profileSection}
+              me={me}
+              refreshKey={refreshKey}
+              onOpenFilm={openLegacyFilm}
+              onOpenProfile={openProfile}
+              onSurvey={(id) => {
+                setScheduleView({ kind: 'survey', showId: id, returnTo: 'profile' })
+                setProfileSection(null)
+                setTab('schedule')
               }}
+              onChanged={bump}
             />
-          </div>
-        )}
+          )}
 
-        {openFilm !== null && (
-          // Карточка накрывает список, а не заменяет его: список под ней жив
-          // и вернётся ровно таким, каким был.
-          <div className="overlay">
-            <FilmDetail
-              filmId={openFilm.id}
-              tmdbId={openFilm.tmdb_id}
-              withStats={STATS_ROLES.has(user.role)}
-              onBack={closeFilm}
-            />
-          </div>
-        )}
-
-        {/* Таб-бар прячем в карточке: там навигация — родная кнопка «назад» Telegram. */}
-        {openFilm === null &&
-          openProfile === null &&
-          openTournament === null &&
-          openSurvey === null && (
-          <nav className="tabs">
-            {TABS.map((item) => (
-              <button
-                key={item.key}
-                className={tab === item.key ? "is-active" : ""}
-                onClick={() => setTab(item.key)}
-              >
-                <span className="tab-icon">{item.icon}</span>
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        )}
+          <TabBar active={tab} onChange={goTab} />
+        </div>
       </div>
     </FilmOpenerProvider>
-  );
+  )
+}
+
+const SECTION_TITLE: Record<ProfileSection, string> = {
+  marked: 'Отмеченное',
+  seen: 'Просмотренное',
+  friends: 'Друзья',
+  favorites: 'Любимое',
+  achievements: 'Ачивки',
+  club: 'Управление клубом',
+  history: 'Что уже смотрели',
+  request: 'Не нашёл фильм',
+  requests: 'Мои заявки',
+}
+
+/** Разделы профиля. Часть — перенесённые экраны прежней версии в обёртке
+ *  .legacy (их стили ограничены ею и перекрашены в палитру редизайна). */
+function ProfileSectionView({
+  section,
+  me,
+  refreshKey,
+  onOpenFilm,
+  onOpenProfile,
+  onSurvey,
+  onChanged,
+}: {
+  section: ProfileSection
+  me: User
+  refreshKey: number
+  onOpenFilm: (film: FilmBrief) => void
+  onOpenProfile: (id: number) => void
+  onSurvey: (screeningId: number) => void
+  onChanged: () => void
+}) {
+  const { data: profile } = useLoad(() => api.getProfile(me.id), [me.id, refreshKey])
+
+  if (section === 'favorites') {
+    if (!profile) return <Loading />
+    return <Favorites initial={profile.raw.favourites} onSaved={onChanged} />
+  }
+  if (section === 'request' || section === 'requests') {
+    return <FilmRequests focusForm={section === 'request'} />
+  }
+
+  let body: ReactNode
+  if (section === 'marked') body = <MyMarks onOpen={onOpenFilm} />
+  else if (section === 'seen') body = <MyWatched onOpen={onOpenFilm} />
+  else if (section === 'friends') body = <Friends onOpenProfile={onOpenProfile} />
+  else if (section === 'history') body = <History onSurvey={onSurvey} />
+  else if (section === 'achievements')
+    body = profile ? <div className="screen"><Achievements data={profile.raw.achievements} isMe /></div> : <Loading />
+  else if (section === 'club')
+    body = (
+      <Suspense fallback={<Loading />}>
+        <Admin me={me} />
+      </Suspense>
+    )
+
+  return (
+    <div className="stack" style={{ gap: 0 }}>
+      <div className="screen" style={{ paddingBottom: 0 }}>
+        <ScreenHeader title={SECTION_TITLE[section]} />
+      </div>
+      <div className="legacy">{body}</div>
+    </div>
+  )
 }

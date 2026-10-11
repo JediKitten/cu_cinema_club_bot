@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, RequireModerator
 from app.db import get_session
-from app.models import Attendance, Feedback, Film, FilmRating, Screening, User
+from app.models import Attendance, Feedback, Film, FilmRating, Hall, Screening, Slot, User
 from app.schemas import (
     AttendeeOut,
     CodeOut,
@@ -163,6 +163,8 @@ async def _feedback_out(
 ) -> FeedbackOut:
     screening = await _screening_or_404(session, screening_id)
     film = await session.get(Film, screening.film_id) if screening.film_id else None
+    slot = await session.get(Slot, screening.slot_id)
+    hall = await session.get(Hall, slot.hall_id) if slot else None
 
     came = await session.scalar(
         sa.select(Attendance.id).where(
@@ -216,4 +218,7 @@ async def _feedback_out(
         # поставивший её в каталоге, не должен объяснять то же самое снова.
         # Свою прошлую оценку при этом показываем — менять её никто не мешает.
         film_already_rated=rated is not None,
+        starts_at=slot.starts_at if slot else None,
+        hall_name=hall.name if hall else None,
+        title=screening.title,
     )
