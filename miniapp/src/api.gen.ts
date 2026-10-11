@@ -2219,6 +2219,8 @@ export interface components {
             confirmed: number;
             /** Shortlist */
             shortlist: components["schemas"]["FilmBrief"][];
+            /** Evenings */
+            evenings: components["schemas"]["SlotOut"][];
         };
         /**
          * EventPatch

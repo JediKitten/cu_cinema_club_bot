@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import RequireAdmin, RequireSuperadmin
 from app.db import get_session
-from app.models import Confirmation, Film, Screening, ShortlistItem, Slot
-from app.models.enums import ConfirmationState, UserRole
+from app.models import Confirmation, Film, Hall, Screening, ShortlistItem, Slot
+from app.models.enums import ConfirmationState, ScreeningStatus, UserRole
 from app.schemas import (
     AudienceOut,
     BroadcastIn,
@@ -22,6 +22,7 @@ from app.schemas import (
     FilmBrief,
     RevealIn,
     RoleIn,
+    SlotOut,
     TeamMember,
 )
 from app.services import broadcast as broadcast_service
@@ -89,6 +90,39 @@ async def _shortlist(session: AsyncSession, round_id: int | None) -> list[FilmBr
     return [_brief(film) for film in rows]
 
 
+async def _evenings(session: AsyncSession, event: Screening) -> list[SlotOut]:
+    """Куда показ цикла можно быстро перенести: открытые и незанятые вечера
+    его собственной недели, кроме того, на котором он стоит."""
+    if event.round_id is None:
+        return []
+    taken = sa.select(Screening.slot_id).where(
+        Screening.round_id == event.round_id, Screening.status != ScreeningStatus.CANCELLED
+    )
+    rows = await session.execute(
+        sa.select(Slot, Hall)
+        .join(Hall, Hall.id == Slot.hall_id)
+        .where(
+            Slot.round_id == event.round_id,
+            Slot.blocked.is_(False),
+            Slot.id.not_in(taken),
+            Slot.starts_at > sa.func.now(),
+        )
+        .order_by(Slot.starts_at)
+    )
+    return [
+        SlotOut(
+            id=slot.id,
+            starts_at=slot.starts_at,
+            duration_min=slot.duration_min,
+            blocked=slot.blocked,
+            blocked_reason=slot.blocked_reason,
+            hall_name=hall.name,
+            hall_capacity=hall.capacity,
+        )
+        for slot, hall in rows
+    ]
+
+
 async def _event_out(session: AsyncSession, event: Screening) -> EventOut:
     slot = await session.get(Slot, event.slot_id)
     film = await session.get(Film, event.film_id) if event.film_id else None
@@ -113,6 +147,7 @@ async def _event_out(session: AsyncSession, event: Screening) -> EventOut:
         is_manual=event.is_manual,
         confirmed=confirmed or 0,
         shortlist=await _shortlist(session, event.round_id),
+        evenings=await _evenings(session, event),
     )
 
 

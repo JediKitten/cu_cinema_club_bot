@@ -3,7 +3,6 @@ import {
   ApiError,
   cancelEvent,
   createEvent,
-  getRound,
   listEvents,
   moveScreening,
   searchFilms,
@@ -366,22 +365,12 @@ function EventEditor({ event, onDone }: { event: ClubEvent; onDone(): void }) {
  * уведомление.
  */
 function MoveToEvening({ event, onDone }: { event: ClubEvent; onDone(): void }) {
-  const [slots, setSlots] = useState<Slot[]>([]);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    getRound()
-      .then((round) => setSlots(round?.slots ?? []))
-      // Без списка вечеров переносить некуда — молчим и не показываем блок.
-      .catch(() => setSlots([]));
-  }, []);
-
-  // Сравниваем моменты, а не строки: сервер отдаёт время с микросекундами
-  // и своим смещением, и «тот же вечер» текстом не совпадает сам с собой.
-  const now = new Date(event.starts_at).getTime();
-  const free = slots.filter(
-    (slot) => !slot.blocked && new Date(slot.starts_at).getTime() !== now,
-  );
+  // Свободные вечера недели самого показа сервер присылает вместе с ним.
+  // Раньше брались вечера активного цикла: стоило открыться циклу на
+  // следующую неделю, и кнопки предлагали её даты, а сервер их отвергал.
+  const free = event.evenings;
   if (free.length === 0) return null;
 
   async function move(slot: Slot) {

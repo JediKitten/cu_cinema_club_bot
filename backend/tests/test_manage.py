@@ -939,3 +939,60 @@ async def test_the_same_film_cannot_stand_twice_in_a_week(session):
 
     with pytest.raises(EventError, match="уже стоит"):
         await events.update(session, first.id, boss.id, {"film_id": films[1].id})
+
+
+async def test_quick_move_offers_evenings_of_the_screenings_own_week(client, session):
+    """Кнопки быстрого переноса брали вечера активного цикла. Открылся цикл
+    на следующую неделю — и показу этой недели предлагались её даты, а сервер
+    отвечал «слот не из этого цикла»: перенести показ было невозможно."""
+    from datetime import timedelta
+
+    from app.services import rounds as rounds_service
+    from app.services import schedule as sched
+    from tests.test_schedule import voted_round
+
+    round_, films, slots, boss, _ = await voted_round(session)
+    # Учебный цикл стоит на фиксированной дате в прошлом, а список событий —
+    # только про будущее: сдвигаем его вечера вперёд, сохранив порядок.
+    shift = timedelta(days=(datetime.now(UTC) - slots[0].starts_at).days + 7)
+    for slot in slots:
+        slot.starts_at += shift
+    await session.commit()
+    screening = await sched.assign(session, round_, films[0].id, slots[0].id, boss.id)
+    await sched.publish_schedule(session, round_, boss.id)
+    following = await rounds_service.open_round(
+        session, round_.week_start + timedelta(days=7), boss.id
+    )
+    assert following.id != round_.id
+
+    admin = await login(client, 777001, "Главный")
+    listed = (
+        await client.get(
+            "/api/admin/events", headers={"Authorization": f"Bearer {admin['token']}"}
+        )
+    ).json()
+    event = next(item for item in listed if item["id"] == screening.id)
+    offered = {item["id"] for item in event["evenings"]}
+
+    own_week = {slot.id for slot in slots}
+    assert offered, "у показа должны быть вечера для переноса"
+    assert offered <= own_week, "только вечера его собственной недели"
+    assert slots[0].id not in offered, "вечер, на котором он стоит, не предлагается"
+
+    # И перенос на предложенный вечер проходит.
+    target = sorted(offered)[0]
+    await sched.move_screening(session, screening.id, target, boss.id)
+
+
+def test_moving_and_swapping_at_once_says_both():
+    """Перенос и замена фильма разом. «Показ перенесён» без слова о фильме
+    промолчало бы о главном: человек шёл на другое кино."""
+    text = notify.render(
+        NotificationKind.SCREENING_CHANGED,
+        None,
+        "17.10 в 19:00",
+        {"time_changed": True, "film_changed": True, "was_film": "Джентльмены"},
+    )
+    assert "фильм заменён" in text
+    assert "Вместо: Джентльмены" in text
+    assert "17.10 в 19:00" in text

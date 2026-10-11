@@ -269,6 +269,20 @@ def _screening_cancelled(m: Message) -> str:
 
 
 def _screening_changed(m: Message) -> str:
+    if m.payload.get("time_changed") and m.payload.get("film_changed"):
+        # И день, и фильм разом. Сказать только «перенесён» значило бы
+        # промолчать о главном: человек шёл на другое кино.
+        was = m.text("was_film")
+        instead = f"\nВместо: {was}" if was else ""
+        place = (
+            "Вы записаны — если не сможете или фильм не ваш, отмените в приложении."
+            if m.payload.get("kept")
+            else "Подтверждения сброшены — отметьтесь заново, если придёте."
+        )
+        return (
+            f"🔄 Показ перенесён, фильм заменён\n\n{m.film_line}\n"
+            f"Новое время: {m.when}{instead}\n\n{place}"
+        )
     if m.payload.get("time_changed"):
         if m.payload.get("kept"):
             # Записи оставили: просить отметиться заново там, где человек уже
