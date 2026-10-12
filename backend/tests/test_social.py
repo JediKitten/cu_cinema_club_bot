@@ -3,10 +3,10 @@
 import pytest
 import sqlalchemy as sa
 
-from app.models import Film, Friendship, User
-from app.models.enums import InterestKind
+from app.models import Film, Friendship, Notification, User
+from app.models.enums import InterestKind, NotificationKind
 from app.services import attendance as att
-from app.services import social
+from app.services import notify, social
 from app.services.social import SocialError
 from tests.conftest import SUPERADMIN_TG_ID, login
 from tests.test_analytics import held_screening
@@ -342,3 +342,50 @@ async def test_attendance_is_empty_for_someone_who_never_came(session):
 
     assert profile.attendance.came == 0
     assert profile.attendance.ratio is None
+
+
+async def _follower_notices(session, user_id: int) -> list[Notification]:
+    rows = await session.execute(
+        sa.select(Notification).where(
+            Notification.user_id == user_id, Notification.kind == NotificationKind.NEW_FOLLOWER
+        )
+    )
+    return list(rows.scalars())
+
+
+async def test_following_someone_notifies_them_once(session):
+    """О подписке человек узнаёт сообщением — и только один раз.
+
+    Отписаться и подписаться снова не должно присылать второе сообщение:
+    иначе кнопкой «Добавить» можно было бы спамить.
+    """
+    anya, borya = await two_people(session)
+
+    await social.follow(session, anya.id, borya.id)
+    await social.unfollow(session, anya.id, borya.id)
+    await social.follow(session, anya.id, borya.id)
+
+    notices = await _follower_notices(session, borya.id)
+    assert len(notices) == 1
+    assert notices[0].payload == {"follower_id": anya.id, "name": "Аня", "mutual": False}
+    text = notify.render(NotificationKind.NEW_FOLLOWER, None, "", notices[0].payload)
+    assert "Аня" in text and "добавляет вас в друзья" in text
+    # Подписавшийся сам ничего не получает
+    assert await _follower_notices(session, anya.id) == []
+
+
+async def test_following_back_says_you_are_now_friends(session):
+    anya, borya = await two_people(session)
+    await social.follow(session, anya.id, borya.id)
+
+    await social.follow(session, borya.id, anya.id)
+
+    [notice] = await _follower_notices(session, anya.id)
+    assert notice.payload["mutual"] is True
+    text = notify.render(NotificationKind.NEW_FOLLOWER, None, "", notice.payload)
+    assert "теперь вы друзья" in text
+
+
+def test_follower_name_is_escaped():
+    text = notify.render(NotificationKind.NEW_FOLLOWER, None, "", {"name": "<b>Хакер</b>"})
+    assert "<b>Хакер</b>" not in text and "&lt;b&gt;Хакер" in text

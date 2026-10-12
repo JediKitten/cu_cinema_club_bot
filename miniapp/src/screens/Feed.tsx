@@ -28,7 +28,9 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
   const [leaving, setLeaving] = useState<'left' | 'right'>()
   const [rating, setRating] = useState<number>()
   const [askedToRate, setAskedToRate] = useState(false)
-  const start = useRef<number | null>(null)
+  const start = useRef<{ x: number; y: number } | null>(null)
+  // Палец сдвинулся заметно — это уже не нажатие, даже если вернулся назад
+  const moved = useRef(false)
   const [dragging, setDragging] = useState(false)
 
   const item = data?.[0]
@@ -83,13 +85,24 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
 
   const onDown = (e: PointerEvent<HTMLElement>) => {
     if ((e.target as HTMLElement).closest('button, a')) return
-    start.current = e.clientX
+    start.current = { x: e.clientX, y: e.clientY }
+    moved.current = false
     setDragging(true)
     e.currentTarget.setPointerCapture(e.pointerId)
   }
   const onMove = (e: PointerEvent<HTMLElement>) => {
     if (start.current == null) return
-    setDx(e.clientX - start.current)
+    const x = e.clientX - start.current.x
+    const y = e.clientY - start.current.y
+    if (Math.abs(x) > TAP || Math.abs(y) > TAP) moved.current = true
+    // Ведут вертикально — листают описание, а не смахивают карточку
+    if (Math.abs(y) > Math.abs(x) && Math.abs(y) > TAP && Math.abs(dx) < TAP) {
+      start.current = null
+      setDragging(false)
+      setDx(0)
+      return
+    }
+    setDx(x)
   }
   const onUp = () => {
     if (start.current == null) return
@@ -98,9 +111,15 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
     if (dx > THRESHOLD) finish('right')
     else if (dx < -THRESHOLD) finish('left')
     else {
-      if (Math.abs(dx) < TAP && item) onOpenFilm(item.id)
+      if (!moved.current && item) onOpenFilm(item.id)
       setDx(0)
     }
+  }
+  // Прокрутку описания браузер забирает себе и присылает cancel — это не нажатие
+  const onCancel = () => {
+    start.current = null
+    setDragging(false)
+    setDx(0)
   }
 
   const markSeen = () => {
@@ -146,7 +165,7 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
               onPointerDown={onDown}
               onPointerMove={onMove}
               onPointerUp={onUp}
-              onPointerCancel={onUp}
+              onPointerCancel={onCancel}
               style={{
                 transform: `translateX(${offset}px) rotate(${offset / 20}deg)`,
                 transition: dragging ? 'none' : 'transform 0.22s ease-out',

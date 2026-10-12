@@ -335,12 +335,15 @@ input, textarea { font: inherit; color: inherit; }
 .feed-card__poster { position: relative; flex: 0 0 46%; min-height: 0; background: var(--c-poster); display: flex; flex-direction: column; justify-content: space-between; padding: 14px; }
 .feed-card__poster img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .feed-card__body { flex: 1; min-height: 0; padding: 14px 16px 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
-/* Описание занимает всё оставшееся место и мягко гаснет у нижнего края */
+/* Описание занимает всё оставшееся место, листается и мягко гаснет у нижнего края */
 .feed-card__overview {
-  flex: 1; min-height: 0; overflow: hidden; font-size: 14px; line-height: 1.45; color: #c9c4d2;
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+  padding-bottom: 24px; scrollbar-width: none;
+  font-size: 14px; line-height: 1.45; color: #c9c4d2;
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
 }
+.feed-card__overview::-webkit-scrollbar { display: none; }
 .feed-stamp {
   position: absolute; top: 24px; padding: 6px 12px; border-radius: var(--r-s);
   font-family: var(--f-display); font-weight: 900; font-size: 18px; text-transform: uppercase;

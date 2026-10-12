@@ -24,12 +24,24 @@ def survey_keyboard(screening_id: int | None) -> InlineKeyboardMarkup | None:
     )
 
 
+def profile_keyboard(user_id: int | None) -> InlineKeyboardMarkup | None:
+    """Кнопка в профиль подписавшегося — посмотреть, кто это, и добавить в ответ."""
+    url = common.current_miniapp_url()
+    if not user_id or not url:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[common.app_button("👤 Открыть профиль", f"{url}?user={user_id}")]]
+    )
+
+
 def notify_keyboard(kind: NotificationKind, payload: dict) -> InlineKeyboardMarkup | None:
     """Кнопка приложения там, где сообщение зовёт зайти."""
     if kind == NotificationKind.SHORTLIST_PUBLISHED:
         return shortlist_keyboard(payload)
     if kind == NotificationKind.FEEDBACK_REMINDER:
         return survey_keyboard(payload.get("screening_id"))
+    if kind == NotificationKind.NEW_FOLLOWER:
+        return profile_keyboard(payload.get("follower_id"))
     if kind == NotificationKind.ADMIN_BROADCAST and payload.get("poll"):
         # Рассылка с опросом: варианты — кнопками под сообщением.
         return polls.poll_keyboard(str(payload["poll"]))

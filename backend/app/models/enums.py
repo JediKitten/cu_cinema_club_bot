@@ -161,3 +161,5 @@ class NotificationKind(StrEnum):
     TOURNAMENT_STARTED = "tournament_started"
     TOURNAMENT_ROUND_OPENED = "tournament_round_opened"
     TOURNAMENT_FINISHED = "tournament_finished"
+    # Кто-то добавил вас в друзья: без этого о подписке узнают только случайно.
+    NEW_FOLLOWER = "new_follower"

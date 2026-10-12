@@ -391,6 +391,16 @@ def _admin_broadcast(m: Message) -> str | None:
     return f"📣 <b>Сообщение от клуба</b>\n\n{message}"
 
 
+def _new_follower(m: Message) -> str:
+    name = m.text("name", "Участник клуба")
+    if m.payload.get("mutual"):
+        return f"🤝 <b>{name}</b> добавляет вас в ответ — теперь вы друзья."
+    return (
+        f"👋 <b>{name}</b> добавляет вас в друзья.\n\n"
+        "Добавьте в ответ — и будете видеть отметки и оценки друг друга."
+    )
+
+
 def _film_request_resolved(m: Message) -> str:
     if m.payload.get("approved"):
         return "✅ Ваш фильм добавлен в каталог — можно отмечать."
@@ -418,6 +428,7 @@ TEMPLATES: dict[NotificationKind, Callable[[Message], str | None]] = {
     NotificationKind.ADMIN_AUTOPILOT_SOON: _admin_autopilot_soon,
     NotificationKind.ADMIN_BROADCAST: _admin_broadcast,
     NotificationKind.FILM_REQUEST_RESOLVED: _film_request_resolved,
+    NotificationKind.NEW_FOLLOWER: _new_follower,
 }
 
 

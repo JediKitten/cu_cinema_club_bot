@@ -30,8 +30,14 @@ from app.models import (
     User,
     Watch,
 )
-from app.models.enums import ConfirmationState, FilmStatus, InterestKind, ScreeningStatus
-from app.services import achievements
+from app.models.enums import (
+    ConfirmationState,
+    FilmStatus,
+    InterestKind,
+    NotificationKind,
+    ScreeningStatus,
+)
+from app.services import achievements, notify
 
 # Четыре фильма — ровно строка постеров в профиле. Больше превращает витрину
 # в ещё один список, которых в приложении и так хватает.
@@ -148,8 +154,34 @@ async def follow(session: AsyncSession, viewer_id: int, other_id: int) -> Relati
     )
     if existing is None:
         session.add(Friendship(user_id=viewer_id, friend_id=other_id))
+        await _notify_followed(session, viewer_id, other_id)
         await session.commit()
     return await relation(session, viewer_id, other_id)
+
+
+async def _notify_followed(session: AsyncSession, viewer_id: int, other_id: int) -> None:
+    """Сообщает человеку, что его добавили в друзья.
+
+    Ключ — пара людей, без времени: отписаться и подписаться снова не значит
+    прислать второе уведомление. Иначе кнопкой можно было бы спамить.
+    """
+    viewer = await session.get(User, viewer_id)
+    mutual = await session.scalar(
+        sa.select(Friendship.id).where(
+            Friendship.user_id == other_id, Friendship.friend_id == viewer_id
+        )
+    )
+    await notify.queue(
+        session,
+        other_id,
+        NotificationKind.NEW_FOLLOWER,
+        f"follow:{viewer_id}:{other_id}",
+        {
+            "follower_id": viewer_id,
+            "name": viewer.display_name if viewer else "Участник клуба",
+            "mutual": mutual is not None,
+        },
+    )
 
 
 async def unfollow(session: AsyncSession, viewer_id: int, other_id: int) -> Relation:

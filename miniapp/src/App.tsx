@@ -46,6 +46,7 @@ const STATS_ROLES = new Set(['admin', 'superadmin'])
  *   ?film=<id>                  — карточка фильма поверх каталога
  *   ?tab=vote&week=<YYYY-MM-DD> — расписание на нужной неделе (бюллетень)
  *   ?survey=<showId>            — опрос после показа; после ответа — профиль
+ *   ?user=<id>                  — чужой профиль (из уведомления о подписке)
  *   ?tab=<catalog|deck|feed|vote|schedule|profile>
  */
 function readStartParams() {
@@ -53,13 +54,18 @@ function readStartParams() {
   const tabParam = q.get('tab')
   const film = Number(q.get('film')) || undefined
   const survey = Number(q.get('survey')) || undefined
+  const user = Number(q.get('user')) || undefined
   let tab: TabId = 'catalog'
   if (tabParam === 'vote' || tabParam === 'schedule' || survey) tab = 'schedule'
   else if (tabParam === 'feed' || tabParam === 'deck') tab = 'feed'
+  else if (user) tab = 'profile'
   else if (tabParam === 'profile' || tabParam === 'catalog') tab = tabParam
+  const overlays: Overlay[] = []
+  if (user) overlays.push({ kind: 'profile', id: user })
+  if (film) overlays.push({ kind: 'film', id: film })
   return {
     tab,
-    overlays: film ? [{ kind: 'film', id: film } as Overlay] : [],
+    overlays,
     week: q.get('week') ?? undefined,
     view: survey ? ({ kind: 'survey', showId: survey, returnTo: 'profile' } as ScheduleView) : ({ kind: 'list' } as ScheduleView),
   }
