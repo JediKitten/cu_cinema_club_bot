@@ -141,7 +141,14 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
 
   return (
     <div className="screen" style={{ gap: 12 }}>
-      <ScreenHeader title="Лента" />
+      <div className="row row--between">
+        <ScreenHeader title="Лента" />
+        {feed && feed.left > 0 && (
+          <span className="small muted">
+            осталось <span className="num" style={{ fontWeight: 800, color: 'var(--c-accent)' }}>{feed.left}</span>
+          </span>
+        )}
+      </div>
 
       {error && <ErrorPlate message={error} onRetry={reload} />}
       {!data && loading && <Loading text="Собираем ленту…" />}
@@ -185,16 +192,11 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
           </div>
 
           <div className="stack" style={{ gap: 6 }}>
-            <div className="row row--between xsmall muted">
-              <span>
-                {askedToRate && rating == null
-                  ? 'Поставьте оценку или нажмите «Смотрел» ещё раз'
-                  : 'Уже смотрели? Оцените и отметьте'}
-              </span>
-              <span style={{ flex: 'none' }}>
-                осталось <span className="num" style={{ fontWeight: 800, color: 'var(--c-accent)' }}>{feed!.left}</span>
-              </span>
-            </div>
+            <span className="xsmall muted">
+              {askedToRate && rating == null
+                ? 'Поставьте оценку или нажмите «Смотрел» ещё раз'
+                : 'Уже смотрели? Оцените и отметьте'}
+            </span>
             <div className="row">
               <Stars size="sm" label="Оценка фильма" value={rating} onChange={setRating} />
               <button type="button" className="btn" style={{ flex: 1, minHeight: 48 }} onClick={markSeen}>
