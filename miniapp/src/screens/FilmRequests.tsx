@@ -12,7 +12,7 @@ const STATUS: Record<FilmRequest['status'], string> = {
 }
 
 /** «Не нашёл фильм» и «Мои заявки» — одна страница: форма сверху, история ниже. */
-export function FilmRequests({ focusForm }: { focusForm: boolean }) {
+export function FilmRequests() {
   const { data, error, loading, setData, reload } = useLoad(() => server.myFilmRequests(), [])
   const [title, setTitle] = useState('')
   const [year, setYear] = useState('')
@@ -44,11 +44,11 @@ export function FilmRequests({ focusForm }: { focusForm: boolean }) {
 
   return (
     <div className="screen">
-      <ScreenHeader title={focusForm ? 'Не нашёл фильм' : 'Мои заявки'} />
+      <ScreenHeader title="Мои заявки" />
 
       <section className="stack" style={{ gap: 10 }}>
         <p className="small muted">Если фильма нет ни в каталоге, ни в поиске — оставьте заявку, её разберут модераторы. Ответ придёт в бот.</p>
-        <input className="field" placeholder="Название" value={title} autoFocus={focusForm} onChange={(e) => setTitle(e.target.value)} />
+        <input className="field" placeholder="Название" value={title} onChange={(e) => setTitle(e.target.value)} />
         <input className="field" placeholder="Год (необязательно)" inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))} />
         <input className="field" placeholder="Ссылка или комментарий (необязательно)" value={note} onChange={(e) => setNote(e.target.value)} />
         {sendError && <ErrorPlate message={sendError} />}

@@ -10,7 +10,7 @@ import { haptic } from '../lib/tg'
 import { useLoad } from '../lib/useLoad'
 import type { Role } from '../lib/types'
 
-export type ProfileSection = 'marked' | 'seen' | 'friends' | 'favorites' | 'club' | 'history' | 'request' | 'requests'
+export type ProfileSection = 'marked' | 'seen' | 'friends' | 'favorites' | 'club' | 'history' | 'requests'
 
 const ROLE_LABEL: Record<Role, string> = {
   user: 'участник клуба',
@@ -89,7 +89,6 @@ export function Profile({
   const menu: { icon: IconName; label: string; to: ProfileSection; extra?: string; accent?: boolean; show: boolean }[] = [
     { icon: 'gear', label: 'Модерация клуба', to: 'club', accent: true, show: isMod },
     { icon: 'clock', label: 'Что уже смотрели', to: 'history', show: true },
-    { icon: 'searchPlus', label: 'Не нашёл фильм', to: 'request', show: true },
     { icon: 'doc', label: 'Мои заявки', to: 'requests', show: true, extra: p.pendingRequests ? `${p.pendingRequests} на модерации` : undefined },
   ]
 

@@ -248,7 +248,6 @@ const SECTION_TITLE: Record<ProfileSection, string> = {
   favorites: 'Любимое',
   club: 'Модерация клуба',
   history: 'Что уже смотрели',
-  request: 'Не нашёл фильм',
   requests: 'Мои заявки',
 }
 
@@ -277,8 +276,8 @@ function ProfileSectionView({
     if (!profile) return <Loading />
     return <Favorites initial={profile.raw.favourites} onSaved={onChanged} />
   }
-  if (section === 'request' || section === 'requests') {
-    return <FilmRequests focusForm={section === 'request'} />
+  if (section === 'requests') {
+    return <FilmRequests />
   }
 
   let body: ReactNode
