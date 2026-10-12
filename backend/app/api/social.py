@@ -207,6 +207,7 @@ async def profile(
         attendance=AttendanceStats(
             came=found.attendance.came if found.attendance else 0,
             planned=found.attendance.planned if found.attendance else 0,
+            missed=found.attendance.missed if found.attendance else 0,
             ratio=found.attendance.ratio if found.attendance else None,
             last_at=found.attendance.last_at if found.attendance else None,
             last_film=found.attendance.last_film if found.attendance else None,

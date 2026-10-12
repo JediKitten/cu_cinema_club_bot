@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Poster } from '../components/film'
+import { CheckIcon } from '../components/film'
 import { CheckMark, Empty, ErrorPlate, Loading, ScreenHeader, Ticket } from '../components/ui'
 import * as api from '../lib/api'
 import { eveningDate, showDate, weekRange } from '../lib/format'
@@ -106,7 +107,7 @@ function Stages({ stage }: { stage: WeekStage }) {
             <span>
               {s.label}
               <br />
-              {state === 'done' ? '✓' : s.hint}
+              {state === 'done' ? <CheckIcon size={12} /> : s.hint}
             </span>
           </li>
         )
@@ -205,7 +206,7 @@ function BallotView({ ballot, onOpenFilm, onSaved }: { ballot: Ballot; onOpenFil
 
       <div className="sticky-bar" style={{ position: 'sticky', bottom: -24, margin: '0 calc(-1 * var(--gutter)) -24px' }}>
         <button type="button" className="btn btn--primary btn--lg btn--block" disabled={!dirty || busy} onClick={save}>
-          {dirty ? (busy ? 'Сохраняем…' : 'Сохранить выбор') : 'Сохранено ✓'}
+          {dirty ? (busy ? 'Сохраняем…' : 'Сохранить выбор') : <><CheckIcon />Сохранено</>}
         </button>
       </div>
     </>
@@ -309,7 +310,7 @@ function ShowTicket({ show: s, onOpenFilm, onToggle, onCheckIn }: { show: Show; 
           </span>
           {s.state === 'past' ? (
             <span className={s.myStatus === 'attended' ? 'btn btn--white' : 'btn'} style={{ alignSelf: 'flex-end', minHeight: 32, fontSize: 13 }}>
-              {s.myStatus === 'attended' ? '✓ Вы были' : 'Вы не были'}
+              {s.myStatus === 'attended' ? <><CheckIcon />Вы были</> : 'Вы не были'}
             </span>
           ) : (
             <>
@@ -342,7 +343,7 @@ function ShowTicket({ show: s, onOpenFilm, onToggle, onCheckIn }: { show: Show; 
 function AttendButton({ show: s, onClick }: { show: Show; onClick: () => void }) {
   const full = s.going >= s.capacity
   if (s.myStatus === 'going')
-    return <button type="button" className="btn btn--white" style={{ minHeight: 48 }} aria-pressed onClick={onClick}>✓ Приду</button>
+    return <button type="button" className="btn btn--white" style={{ minHeight: 48 }} aria-pressed onClick={onClick}><CheckIcon />Приду</button>
   if (s.myStatus === 'queued')
     return <button type="button" className="btn btn--dashed" style={{ minHeight: 48 }} aria-pressed onClick={onClick}>В очереди</button>
   return (

@@ -81,6 +81,8 @@ class Attendance_:
 
     came: int = 0
     planned: int = 0
+    # Прошедшие показы, куда записывался, но отметки о приходе нет.
+    missed: int = 0
     last_at: datetime | None = None
     last_film: str | None = None
 
@@ -475,6 +477,27 @@ async def attendance(session: AsyncSession, user_id: int) -> Attendance_:
         or 0
     )
 
+    # Не «planned - came»: пришедший без записи не должен гасить чужой пропуск.
+    missed = (
+        await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(Confirmation)
+            .join(Screening, Screening.id == Confirmation.screening_id)
+            .join(Slot, Slot.id == Screening.slot_id)
+            .where(
+                Confirmation.user_id == user_id,
+                Confirmation.state == ConfirmationState.CONFIRMED,
+                Slot.starts_at < sa.func.now(),
+                Screening.status != ScreeningStatus.CANCELLED,
+                ~sa.exists().where(
+                    AttendanceRecord.screening_id == Confirmation.screening_id,
+                    AttendanceRecord.user_id == user_id,
+                ),
+            )
+        )
+        or 0
+    )
+
     last = (
         await session.execute(
             sa.select(AttendanceRecord.marked_at, Film.title_ru, Screening.title)
@@ -491,6 +514,7 @@ async def attendance(session: AsyncSession, user_id: int) -> Attendance_:
         # Пришедший на показ, куда не записывался (модератор отметил в зале),
         # иначе давал бы «дошёл 150%».
         planned=max(planned, came),
+        missed=missed,
         last_at=last[0] if last else None,
         last_film=(last[1] or last[2]) if last else None,
     )

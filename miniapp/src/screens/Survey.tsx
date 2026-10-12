@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Stars } from '../components/film'
+import { CheckIcon, Stars } from '../components/film'
 import { ErrorPlate, Loading, Ticket } from '../components/ui'
 import * as api from '../lib/api'
 import { showDate } from '../lib/format'
@@ -48,7 +48,7 @@ function SurveyForm({ survey: data, onDone }: { survey: SurveyData; onDone: () =
         top={
           <div className="stack" style={{ padding: 16, gap: 6 }}>
             <div className="row row--between">
-              <span className="banner__kicker" style={{ fontSize: 11 }}>✓ Присутствие отмечено</span>
+              <span className="banner__kicker row" style={{ fontSize: 11, gap: 4 }}><CheckIcon size={12} />Присутствие отмечено</span>
               <span style={{ fontSize: 11 }}>билет #{data.ticketNo}</span>
             </div>
             <h1 className="h-film" style={{ fontSize: 24 }}>{data.show.film?.title ?? data.show.title}</h1>

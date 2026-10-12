@@ -56,6 +56,7 @@ const PATHS: Record<string, ReactNode> = {
     </>
   ),
   check: <path d="M5 12l5 5 9-10" />,
+  renew: <path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" />,
   eye: (
     <>
       <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" />

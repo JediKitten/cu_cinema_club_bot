@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Trophy } from "./Trophy";
 import type { Achievements as Data, AchievementStep, AchievementTier } from "../types";
+import { Tick } from "./Tick";
 
 const ORDER: AchievementTier[] = ["bronze", "silver", "gold", "platinum"];
 
@@ -45,7 +46,7 @@ function Row({ step, hidden = false }: { step: AchievementStep; hidden?: boolean
           </span>
         )}
       </span>
-      {earned && <span className="achievement__check">✓</span>}
+      {earned && <span className="achievement__check"><Tick gap={false} /></span>}
     </div>
   );
 }

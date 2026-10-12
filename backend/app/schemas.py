@@ -342,6 +342,8 @@ class AttendanceStats(Schema):
 
     came: int = 0
     planned: int = 0
+    # Записывался, но не пришёл.
+    missed: int = 0
     # Доля дошедших от собиравшихся. Пусто, пока ходить было не на что.
     ratio: float | None = None
     last_at: datetime | None = None

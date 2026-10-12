@@ -3,6 +3,7 @@ import { ApiError, addInterest, removeInterest } from "../api";
 import { haptic, showMessage } from "../telegram";
 import { markButtons } from "../marks";
 import type { FilmBrief, InterestKind } from "../types";
+import { Tick } from "./Tick";
 
 type Props = {
   film: FilmBrief;
@@ -25,12 +26,9 @@ const SHORT: Record<InterestKind, string> = {
 
 /** Кнопки состояния фильма (§4, уточнение клуба).
  *
- * Состояний три и они взаимоисключающие, поэтому показываем не «обе кнопки
- * всегда», а те, что имеют смысл сейчас:
- *   ничего      → обе кнопки;
- *   «Желаемое»  → только оно (нажать — снять);
- *   «Ближайшее» → только оно (нажать — снять);
- *   срок вышел  → «Желаемое» (чем отметка стала) и предложение продлить.
+ * Состояния взаимоисключающие, но обе кнопки видны всегда: нажатие на
+ * вторую переключает отметку, на нажатую — снимает. Истёкшее «Ближайшее»
+ * показывается как «Желаемое» с предложением продлить.
  *
  * «Просмотрено» стоит особняком: оно не отменяет желания сходить снова.
  */
@@ -73,7 +71,7 @@ export function MarkButtons({ film, kinds, onChange, full = false }: Props) {
           disabled={busy}
           onClick={(event) => press(kind, event)}
         >
-          {active ? "✓ " : ""}
+          {active ? <Tick /> : ""}
           {renew ? "Снова в ближайшее" : full ? LABEL[kind] : SHORT[kind]}
         </button>
       ))}

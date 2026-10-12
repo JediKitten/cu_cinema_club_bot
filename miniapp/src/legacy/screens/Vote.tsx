@@ -5,6 +5,7 @@ import { dayLabel, timeLabel } from "../dates";
 import { useOpenFilm } from "../filmOpener";
 import { haptic } from "../telegram";
 import type { Ballot } from "../types";
+import { Tick } from "../components/Tick";
 
 const same = (left: number[], right: number[]): boolean =>
   left.length === right.length && left.every((id) => right.includes(id));
@@ -154,7 +155,7 @@ export function Vote() {
                 {[film.year, film.directors.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}
               </p>
             </div>
-            <span className="choice__tick">{on ? "✓" : ""}</span>
+            <span className="choice__tick">{on ? <Tick gap={false} /> : ""}</span>
           </button>
         );
       })}
@@ -181,7 +182,7 @@ export function Vote() {
                 {timeLabel(slot.starts_at)} · {slot.hall_name}
               </p>
             </div>
-            <span className="choice__tick">{on ? "✓" : ""}</span>
+            <span className="choice__tick">{on ? <Tick gap={false} /> : ""}</span>
           </button>
         );
       })}
@@ -190,7 +191,7 @@ export function Vote() {
           пришлось бы прокручивать обратно наверх. */}
       <div className="sticky-actions">
         <button className="primary" disabled={busy || !dirty} onClick={() => void save()}>
-          {dirty ? "Сохранить выбор" : "Сохранено ✓"}
+          {dirty ? "Сохранить выбор" : <>Сохранено <Tick gap={false} /></>}
         </button>
       </div>
     </>

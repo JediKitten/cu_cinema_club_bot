@@ -10,8 +10,9 @@ describe('nextMark', () => {
     expect(nextMark('wish', 'wish')).toBe('none')
     expect(nextMark('wish', 'soon')).toBe('soon')
   })
-  it('«Ближайшее» снимается повторным нажатием', () => {
+  it('из «Ближайшего»: вторая снимает, первая переключает в «Желаемое»', () => {
     expect(nextMark('soon', 'soon')).toBe('none')
+    expect(nextMark('soon', 'wish')).toBe('wish')
   })
   it('истёкшее «Ближайшее» продлевается', () => {
     expect(nextMark('wish_expired', 'soon')).toBe('soon')
@@ -20,19 +21,14 @@ describe('nextMark', () => {
 })
 
 describe('markButtons', () => {
-  it('при «Ближайшем» видна только одна кнопка', () => {
+  it('при «Ближайшем» обе кнопки на месте, нажата вторая', () => {
     const b = markButtons('soon')
-    expect(b.wish.visible).toBe(false)
-    expect(b.soon).toMatchObject({ visible: true, pressed: true, label: 'Ближайшее' })
+    expect(b.wish).toMatchObject({ pressed: false, label: 'Желаемое' })
+    expect(b.soon).toMatchObject({ pressed: true, label: 'Ближайшее' })
   })
-  it('истёкшее показывает «Снова в ближайшее»', () => {
+  it('истёкшее предлагает продлить «Ближайшее»', () => {
     const b = markButtons('wish_expired')
     expect(b.wish.pressed).toBe(true)
-    expect(b.soon.label).toBe('Снова в ближайшее')
-  })
-  it('в карточке — полные подписи', () => {
-    const b = markButtons('none', 'card')
-    expect(b.wish.label).toBe('Хочу посмотреть')
-    expect(b.soon.label).toBe('Готов в ближайшие 2 недели')
+    expect(b.soon).toMatchObject({ pressed: false, renew: true, label: 'Ближайшее' })
   })
 })

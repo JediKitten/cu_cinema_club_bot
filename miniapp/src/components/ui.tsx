@@ -97,5 +97,5 @@ export function Ticket({
 /* ---------- Чекбокс-строка ---------- */
 
 export function CheckMark({ on }: { on: boolean }) {
-  return <span className="checkbox">{on && <Icon name="check" size={16} strokeWidth={2.6} />}</span>
+  return <span className="checkbox">{on && <Icon name="check" size={16} strokeWidth={2.4} />}</span>
 }

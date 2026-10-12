@@ -17,6 +17,10 @@ interface TgWebApp {
   setHeaderColor(color: string): void
   setBackgroundColor(color: string): void
   setBottomBarColor?(color: string): void
+  platform: string
+  isVersionAtLeast(version: string): boolean
+  requestFullscreen?(): void
+  disableVerticalSwipes?(): void
   showAlert(message: string, cb?: () => void): void
   showConfirm(message: string, cb?: (ok: boolean) => void): void
   openLink(url: string): void
@@ -48,6 +52,17 @@ export function initTelegram(): void {
   if (!wa) return
   wa.ready()
   wa.expand()
+  // Свайп вниз по ленте или списку не должен сворачивать приложение
+  if (wa.isVersionAtLeast('7.7')) wa.disableVerticalSwipes?.()
+  // На телефоне — на весь экран, без шапки Telegram. На компьютере
+  // полноэкранное окно только мешает, там остаётся обычный вид.
+  if (/^(ios|android)/.test(wa.platform) && wa.isVersionAtLeast('8.0')) {
+    try {
+      wa.requestFullscreen?.()
+    } catch {
+      // старый клиент — остаёмся в развёрнутом виде
+    }
+  }
   wa.setHeaderColor('#000000')
   wa.setBackgroundColor('#000000')
   wa.setBottomBarColor?.('#000000')

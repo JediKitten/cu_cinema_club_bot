@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Icon, type IconName } from '../components/Icon'
 import { AchievementTierList } from '../legacy/components/Achievements'
-import { Poster } from '../components/film'
+import { Trophy } from '../legacy/components/Trophy'
+import { CheckIcon, Poster } from '../components/film'
 import { ErrorPlate, Loading } from '../components/ui'
 import * as api from '../lib/api'
-import { maxIndex, num } from '../lib/format'
+import { maxIndex, num, plural } from '../lib/format'
 import { haptic } from '../lib/tg'
 import { useLoad } from '../lib/useLoad'
 import type { Role } from '../lib/types'
@@ -16,14 +17,6 @@ const ROLE_LABEL: Record<Role, string> = {
   moderator: 'модератор',
   admin: 'админ',
   superadmin: 'главный администратор',
-}
-
-const ACTION: Record<string, string> = {
-  rating: 'оценил',
-  review: 'написал отзыв',
-  wishlist: 'хочет посмотреть',
-  soon: 'готов пойти в ближайшее время',
-  watched: 'посмотрел',
 }
 
 const AXIS = ['0,5', '1', '1,5', '2', '2,5', '3', '3,5', '4', '4,5', '5']
@@ -70,13 +63,15 @@ export function Profile({
     }
   }
 
-  const friendLabel = p.relation.friends
-    ? '✓ В друзьях'
-    : p.relation.following
-      ? '✓ Вы подписаны'
-      : p.relation.follower
-        ? 'Добавить в ответ'
-        : 'Добавить в друзья'
+  const friendLabel = p.relation.friends ? (
+    <><CheckIcon />В друзьях</>
+  ) : p.relation.following ? (
+    <><CheckIcon />Вы подписаны</>
+  ) : p.relation.follower ? (
+    'Добавить в ответ'
+  ) : (
+    'Добавить в друзья'
+  )
 
   const stats: { n: number; label: string; to: ProfileSection }[] = [
     { n: p.counts.marks, label: 'отметок', to: 'marked' },
@@ -84,15 +79,15 @@ export function Profile({
     { n: p.counts.friends, label: 'друзей', to: 'friends' },
   ]
 
-  const medals: { key: 'bronze' | 'silver' | 'gold' | 'platinum'; label: string; color?: string }[] = [
-    { key: 'bronze', label: 'Бронза', color: 'var(--c-bronze)' },
-    { key: 'silver', label: 'Серебро', color: 'var(--c-silver)' },
-    { key: 'gold', label: 'Золото', color: 'var(--c-gold)' },
-    { key: 'platinum', label: 'Платина', color: 'var(--c-accent)' },
+  const medals: { key: 'bronze' | 'silver' | 'gold' | 'platinum'; label: string }[] = [
+    { key: 'bronze', label: 'Бронза' },
+    { key: 'silver', label: 'Серебро' },
+    { key: 'gold', label: 'Золото' },
+    { key: 'platinum', label: 'Платина' },
   ]
 
   const menu: { icon: IconName; label: string; to: ProfileSection; extra?: string; accent?: boolean; show: boolean }[] = [
-    { icon: 'gear', label: 'Управление клубом', to: 'club', accent: true, show: isMod },
+    { icon: 'gear', label: 'Модерация клуба', to: 'club', accent: true, show: isMod },
     { icon: 'clock', label: 'Что уже смотрели', to: 'history', show: true },
     { icon: 'searchPlus', label: 'Не нашёл фильм', to: 'request', show: true },
     { icon: 'doc', label: 'Мои заявки', to: 'requests', show: true, extra: p.pendingRequests ? `${p.pendingRequests} на модерации` : undefined },
@@ -205,7 +200,7 @@ export function Profile({
                 }}
                 style={n ? undefined : { color: 'var(--c-text-3)' }}
               >
-                <span className={`cup__medal${n ? '' : ' cup__medal--empty'}`} style={n ? { background: m.color } : undefined} />
+                <Trophy tier={m.key} size={34} muted={!n} />
                 <span className="num" style={{ fontSize: 18 }}>{n}</span>
                 <span className="xsmall" style={{ color: n ? 'var(--c-text-2)' : undefined, fontSize: 11 }}>{m.label}</span>
               </button>
@@ -227,41 +222,18 @@ export function Profile({
 
       {p.attendance && (
         <section className="stack" style={{ gap: 12 }}>
-          <div className="section-head">
-            <h2 className="h-section">Ходит в клуб</h2>
-            <span className="small" style={{ color: 'var(--c-accent)', fontWeight: 600 }}>дошёл {p.attendance.percent}%</span>
-          </div>
-          <div className="grid-3">
+          <h2 className="h-section">Ходит в клуб</h2>
+          <div className="grid-2">
             {[
-              [p.attendance.attended, 'был на показах'],
-              [p.attendance.planned, 'собирался'],
-              [p.attendance.missed, 'не дошёл'],
+              [p.attendance.attended, plural(p.attendance.attended, ['посещение', 'посещения', 'посещений'])],
+              [p.attendance.missed, plural(p.attendance.missed, ['пропуск', 'пропуска', 'пропусков'])],
             ].map(([n, label]) => (
-              <div key={label} className="card stack" style={{ padding: 12, gap: 4 }}>
-                <span className="num" style={{ fontSize: 20 }}>{n}</span>
+              <div key={label} className="card tile">
+                <span className="num tile__value">{n}</span>
                 <span className="xsmall muted">{label}</span>
               </div>
             ))}
           </div>
-        </section>
-      )}
-
-      {p.raw.recent.length > 0 && (
-        <section className="stack" style={{ gap: 12 }}>
-          <h2 className="h-section">Недавнее</h2>
-          {p.raw.recent.map((item, i) => (
-            <div key={i} className="film-row">
-              <Poster film={{ title: item.film_title, posterUrl: item.film_poster ?? undefined }} width={48} height={72} onClick={() => onOpenFilm(item.film_id)} />
-              <button type="button" className="film-row__title" style={{ flex: 1 }} onClick={() => onOpenFilm(item.film_id)}>
-                <span className="film-row__name">{item.film_title}</span>
-                <span className="film-row__meta">
-                  {ACTION[item.kind] ?? item.kind}
-                  {item.rating != null && ` · ${num(item.rating)} ★`}
-                </span>
-                {item.text && <span className="film-row__meta">{item.text}</span>}
-              </button>
-            </div>
-          ))}
         </section>
       )}
 

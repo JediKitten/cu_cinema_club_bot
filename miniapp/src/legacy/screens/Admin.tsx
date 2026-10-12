@@ -27,6 +27,7 @@ import { Poster } from "../components/FilmRow";
 import { askConfirm, haptic, showMessage } from "../telegram";
 import { plural } from "../plural";
 import type { RankRow, Rankings, Round, ScreeningRecord, Slot, User } from "../types";
+import { Tick } from "../components/Tick";
 
 type Tab = "weight" | "coverage";
 
@@ -355,7 +356,7 @@ export function Admin({ me }: { me: User }) {
                         toggle(row.film_id);
                       }}
                     >
-                      {chosen ? "✓ В шорт-листе" : "В шорт-лист"}
+                      {chosen ? <><Tick />В шорт-листе</> : "В шорт-лист"}
                     </button>
                     {autopilot.has(row.film_id) && <span className="badge">выбор автопилота</span>}
                   </div>

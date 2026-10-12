@@ -1,6 +1,6 @@
 import { useId, type MouseEvent } from 'react'
 import { Icon } from './Icon'
-import { markButtons, nextMark, type MarkSize } from '../lib/marks'
+import { markButtons, nextMark } from '../lib/marks'
 import { starFills } from '../lib/format'
 import { haptic } from '../lib/tg'
 import type { FilmShort, Mark } from '../lib/types'
@@ -32,34 +32,48 @@ export function Poster({
 
 export function MarkButtons({
   mark,
-  size = 'row',
+  block = false,
   onChange,
 }: {
   mark: Mark
-  size?: MarkSize
+  /** Растянуть кнопки на всю ширину (карточка фильма) */
+  block?: boolean
   onChange: (next: Mark) => void
 }) {
-  const b = markButtons(mark, size)
-  const cls = size === 'card' ? 'mark mark--lg' : 'mark'
+  const b = markButtons(mark)
   const press = (action: 'wish' | 'soon') => {
     haptic.select()
     onChange(nextMark(mark, action))
   }
   const btn = (kind: 'wish' | 'soon') => {
     const s = b[kind]
-    if (!s.visible) return null
     return (
-      <button key={kind} type="button" className={cls} data-variant={kind} aria-pressed={s.pressed} onClick={() => press(kind)}>
-        {s.pressed ? <Icon name="check" size={15} strokeWidth={2.4} /> : <span className={`mark__dot mark__dot--${kind}`} />}
+      <button
+        key={kind}
+        type="button"
+        className={block ? 'mark mark--block' : 'mark'}
+        data-variant={kind}
+        aria-pressed={s.pressed}
+        aria-label={s.renew ? 'Снова в ближайшее — ещё на 2 недели' : undefined}
+        onClick={() => press(kind)}
+      >
+        {s.pressed ? (
+          <CheckIcon />
+        ) : s.renew ? (
+          <Icon name="renew" size={14} strokeWidth={2} />
+        ) : (
+          <span className={`mark__dot mark__dot--${kind}`} />
+        )}
         {s.label}
       </button>
     )
   }
-  return size === 'card' ? (
-    <div className="grid-2">{btn('wish')}{btn('soon')}</div>
-  ) : (
-    <div className="row">{btn('wish')}{btn('soon')}</div>
-  )
+  return <div className={block ? 'grid-2' : 'row'}>{btn('wish')}{btn('soon')}</div>
+}
+
+/** Галочка — одна на всё приложение: отметки, «Смотрел», «Приду», чекбоксы */
+export function CheckIcon({ size = 14 }: { size?: number }) {
+  return <Icon name="check" size={size} strokeWidth={2.4} />
 }
 
 /** Подпись-легенда к отметкам — объясняет главную механику клуба на месте. */
@@ -74,18 +88,18 @@ export function MarkLegend() {
 
 /* ---------- «Смотрел» ---------- */
 
-export function SeenToggle({ seen, onChange }: { seen: boolean; onChange: (v: boolean) => void }) {
+export function SeenToggle({ seen, onChange, onPoster = false }: { seen: boolean; onChange: (v: boolean) => void; onPoster?: boolean }) {
   return (
     <button
       type="button"
-      className="seen-toggle"
+      className={onPoster ? 'seen-toggle seen-toggle--poster' : 'seen-toggle'}
       aria-pressed={seen}
       onClick={() => {
         haptic.select()
         onChange(!seen)
       }}
     >
-      <Icon name={seen ? 'check' : 'eye'} size={14} strokeWidth={seen ? 2.2 : 1.8} />
+      {seen ? <CheckIcon /> : <Icon name="eye" size={14} strokeWidth={1.8} />}
       Смотрел
     </button>
   )

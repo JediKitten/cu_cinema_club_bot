@@ -1858,6 +1858,11 @@ export interface components {
              * @default 0
              */
             planned: number;
+            /**
+             * Missed
+             * @default 0
+             */
+            missed: number;
             /** Ratio */
             ratio: number | null;
             /** Last At */

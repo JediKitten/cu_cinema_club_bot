@@ -4,6 +4,7 @@ import { Poster } from "../components/FilmRow";
 import { StarRating } from "../components/StarRating";
 import { haptic, showMessage } from "../telegram";
 import type { DiscussionSkip, FeedbackState } from "../types";
+import { Tick } from "../components/Tick";
 
 /** Оценки ездят полубаллами (1..10), а показываются звёздами (0,5..5). */
 const toStars = (half: number | null) => (half === null ? null : half / 2);
@@ -147,7 +148,7 @@ export function Attend({
         </>
       ) : (
         <>
-          <p className="badge">✓ Присутствие отмечено</p>
+          <p className="badge"><Tick />Присутствие отмечено</p>
 
           {/* Зачем это нужно — прямым текстом. Без объяснения просьба
               отвечать честно читается как вежливая формальность. */}

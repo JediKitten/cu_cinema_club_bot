@@ -16,8 +16,11 @@ describe("markButtons", () => {
     ]);
   });
 
-  it("при «Ближайшем» второй кнопки нет: оно само станет «Желаемым» по сроку", () => {
-    expect(markButtons("soon", false)).toEqual([{ kind: "soon", active: true, renew: false }]);
+  it("при «Ближайшем» «Желаемое» не пропадает: им можно переключиться", () => {
+    expect(markButtons("soon", false)).toEqual([
+      { kind: "wishlist", active: false, renew: false },
+      { kind: "soon", active: true, renew: false },
+    ]);
   });
 
   it("по истечении срока показывает «Желаемое» и предлагает продлить", () => {

@@ -11,6 +11,7 @@ import {
 import { askConfirm, showMessage } from "../telegram";
 import { Section } from "./Section";
 import type { ClubEvent, EventChanges, FilmBrief, Slot } from "../types";
+import { Tick } from "./Tick";
 
 type Draft = {
   date: string;
@@ -128,7 +129,7 @@ function EventFields({
                 <p className="film-row__title">{item.title_ru}</p>
                 <p className="meta">{item.year}</p>
               </div>
-              <span>{draft.film?.id === item.id ? "✓" : ""}</span>
+              <span>{draft.film?.id === item.id ? <Tick gap={false} /> : ""}</span>
             </button>
           ))}
         </div>

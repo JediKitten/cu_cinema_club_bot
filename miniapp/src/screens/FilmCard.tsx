@@ -37,12 +37,8 @@ export function FilmCard({ filmId, onChanged, withStats = false }: { filmId: num
         style={{ width: '100%', height: 420, borderRadius: 20, padding: 16, position: 'relative', alignItems: 'stretch', flexDirection: 'column', justifyContent: 'space-between' }}
       >
         {film.posterUrl && <img src={film.posterUrl} alt="" style={{ position: 'absolute', inset: 0, margin: 0, width: '100%', height: '100%' }} />}
-        {film.seen && (
-          <span className="chip chip--solid" style={{ alignSelf: 'flex-end', position: 'relative', background: 'var(--c-black)', color: 'var(--c-accent)', fontFamily: 'var(--f-body)', fontSize: 12, textTransform: 'none' }}>
-            <Icon name="check" size={14} strokeWidth={2.4} />
-            Просмотрено
-          </span>
-        )}
+        {/* «Смотрел» — одна кнопка на постере, а не чип плюс переключатель под ним */}
+        <SeenToggle onPoster seen={film.seen} onChange={(seen) => patch({ seen }, api.setSeen(film.id, seen))} />
       </div>
 
       {film.invitedBy && (
@@ -52,10 +48,7 @@ export function FilmCard({ filmId, onChanged, withStats = false }: { filmId: num
       )}
 
       <div className="stack">
-        <div className="row row--between" style={{ alignItems: 'flex-start' }}>
-          <h1 className="h-film">{film.title}</h1>
-          <SeenToggle seen={film.seen} onChange={(seen) => patch({ seen }, api.setSeen(film.id, seen))} />
-        </div>
+        <h1 className="h-film" style={{ overflowWrap: 'anywhere' }}>{film.title}</h1>
         <p className="small muted" style={{ fontSize: 14 }}>
           {meta}
           {film.genres.length > 0 && <><br />{film.genres.join(', ')}</>}
@@ -64,7 +57,7 @@ export function FilmCard({ filmId, onChanged, withStats = false }: { filmId: num
       </div>
 
       <div className="stack" style={{ gap: 10 }}>
-        <MarkButtons mark={film.mark} size="card" onChange={(mark) => patch({ mark }, api.setMark(film.id, mark))} />
+        <MarkButtons mark={film.mark} block onChange={(mark) => patch({ mark }, api.setMark(film.id, mark))} />
         <p className="small muted">
           «Ближайшее» весит втрое больше при сборе шорт-листа и через 2 недели само станет «Желаемым».
         </p>
@@ -143,9 +136,9 @@ export function FilmCard({ filmId, onChanged, withStats = false }: { filmId: num
 
 function RatingTile({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: boolean }) {
   return (
-    <div className={`card card--pad stack${accent ? ' card--accent' : ''}`} style={{ gap: 4 }}>
-      <span className={`xsmall${accent ? '' : ' muted'}`} style={{ fontWeight: 600 }}>{label}</span>
-      <span className="num" style={{ fontSize: 26 }}>{value}</span>
+    <div className={`card tile${accent ? ' card--accent' : ''}`}>
+      <span className={`xsmall tile__label${accent ? '' : ' muted'}`}>{label}</span>
+      <span className="num tile__value">{value}</span>
       <span className={`xsmall${accent ? '' : ' muted'}`}>{sub}</span>
     </div>
   )

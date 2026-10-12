@@ -396,11 +396,11 @@ export async function getProfile(userId: number): Promise<Profile> {
       total: a.bronze + a.silver + a.gold + a.platinum,
     },
     attendance:
-      p.attendance.came + p.attendance.planned > 0
+      p.attendance.came + p.attendance.missed > 0
         ? {
             attended: p.attendance.came,
             planned: p.attendance.planned,
-            missed: Math.max(p.attendance.planned - p.attendance.came, 0),
+            missed: p.attendance.missed,
             percent: Math.round((p.attendance.ratio ?? 0) * 100),
           }
         : undefined,

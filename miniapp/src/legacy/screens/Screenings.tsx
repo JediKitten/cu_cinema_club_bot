@@ -6,6 +6,7 @@ import { useOpenFilm } from "../filmOpener";
 import { downloadFile, haptic, showMessage } from "../telegram";
 import type { Schedule, Screening } from "../types";
 import { Attend } from "./Attend";
+import { Tick } from "../components/Tick";
 
 /** Сеанс уже начался — значит, пора отмечаться, а не подтверждать.
  *  Точное окно проверяет сервер; здесь только момент показа кнопки. */
@@ -166,7 +167,7 @@ export function Screenings({
                     сказать, чем дело кончилось: были вы или нет. */}
                 {over ? (
                   <span className={`badge ${screening.i_attended ? "badge--came" : ""}`}>
-                    {screening.i_attended ? "✓ Вы были" : "Вы не были"}
+                    {screening.i_attended ? <><Tick />Вы были</> : "Вы не были"}
                   </span>
                 ) : (
                   <button
@@ -177,7 +178,7 @@ export function Screenings({
                       void toggle(screening);
                     }}
                   >
-                    {going ? "✓ Приду" : queued ? "В очереди" : full ? "Встать в очередь" : "Приду"}
+                    {going ? <><Tick />Приду</> : queued ? "В очереди" : full ? "Встать в очередь" : "Приду"}
                   </button>
                 )}
                 {started(screening) && !over && (

@@ -164,7 +164,9 @@ function Club({ me }: { me: User }) {
         )}
 
         {/* Под верхним слоем остальные остаются смонтированными: вернувшись,
-            человек находит экран ровно таким, каким его оставил. */}
+            человек находит экран ровно таким, каким его оставил.
+            Листается только экран внутри .app__main — таб-бар всегда внизу. */}
+        <main className="app__main">
         {overlays.map((o, i) => (
           <div key={`${o.kind}-${o.id}-${i}`} style={{ display: o === top ? 'contents' : 'none' }}>
             {o.kind === 'film' && <FilmCard filmId={o.id} onChanged={bump} withStats={STATS_ROLES.has(me.role)} />}
@@ -172,7 +174,7 @@ function Club({ me }: { me: User }) {
               <Profile userId={o.id} onOpenFilm={openFilm} onOpen={() => undefined} refreshKey={refreshKey} />
             )}
             {o.kind === 'tournament' && (
-              <div className="legacy">
+              <div className="legacy scroll">
                 <Tournament id={o.id} onBack={pop} />
               </div>
             )}
@@ -230,8 +232,10 @@ function Club({ me }: { me: User }) {
             />
           )}
 
-          <TabBar active={tab} onChange={goTab} />
         </div>
+        </main>
+
+        {!top && <TabBar active={tab} onChange={goTab} />}
       </div>
     </FilmOpenerProvider>
   )
@@ -242,7 +246,7 @@ const SECTION_TITLE: Record<ProfileSection, string> = {
   seen: 'Просмотренное',
   friends: 'Друзья',
   favorites: 'Любимое',
-  club: 'Управление клубом',
+  club: 'Модерация клуба',
   history: 'Что уже смотрели',
   request: 'Не нашёл фильм',
   requests: 'Мои заявки',
@@ -290,8 +294,8 @@ function ProfileSectionView({
     )
 
   return (
-    <div className="stack" style={{ gap: 0 }}>
-      <div className="screen" style={{ paddingBottom: 0 }}>
+    <div className="scroll">
+      <div className="screen" style={{ paddingBottom: 0, overflow: 'visible' }}>
         <ScreenHeader title={SECTION_TITLE[section]} />
       </div>
       <div className="legacy">{body}</div>

@@ -14,8 +14,8 @@ export type MarkView = {
  * «Ближайшее»: собравшемуся пойти на давно желаемый фильм иначе пришлось бы
  * сначала снимать отметку и лишь потом ставить новую.
  *
- * «Ближайшее» второй кнопки не показывает: оно само становится «Желаемым»
- * по истечении срока, и тогда рядом появляется предложение продлить.
+ * При «Ближайшем» «Желаемое» тоже остаётся: нажатие переключает отметку,
+ * сервер сам снимает прежнюю.
  */
 export function markButtons(current: InterestKind | null, canRenewSoon: boolean): MarkView[] {
   if (current === null) {
@@ -33,5 +33,8 @@ export function markButtons(current: InterestKind | null, canRenewSoon: boolean)
     ];
   }
 
-  return [{ kind: current, active: true, renew: false }];
+  return [
+    { kind: "wishlist", active: false, renew: false },
+    { kind: "soon", active: true, renew: false },
+  ];
 }

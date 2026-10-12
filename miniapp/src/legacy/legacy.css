@@ -162,7 +162,7 @@
 .legacy .mark--wishlist.is-on {
   background: var(--wishlist);
   border-color: var(--wishlist);
-  color: #fff;
+  color: var(--button-text);
 }
 
 .legacy .mark--soon.is-on {
@@ -593,7 +593,7 @@
 .legacy .rating-dot.is-on {
   background: var(--link);
   border-color: var(--link);
-  color: #fff;
+  color: var(--button-text);
 }
 
 .legacy .big-code {
@@ -1454,7 +1454,7 @@
 .legacy .deck__stamp--like {
   right: 16px;
   background: var(--wishlist);
-  color: #fff;
+  color: var(--button-text);
 }
 
 .legacy .deck__stamp--skip {
@@ -1776,4 +1776,18 @@
   --soon: var(--c-accent);
   font-family: var(--f-body);
   color: var(--c-text);
+}
+
+/* Галочка из новых экранов внутри строки старого. */
+.legacy .legacy-tick {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+
+/* Кнопки-отметки в старых экранах (друзья, списки): текст белый, а не серый —
+   на чёрном фоне серая подпись читалась как неактивная. */
+.legacy .mark {
+  color: var(--c-text);
+  border-color: var(--c-line-strong);
 }

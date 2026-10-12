@@ -324,6 +324,7 @@ async def test_profile_shows_attendance_of_club_screenings(session):
     assert profile.attendance.came == 1
     assert profile.attendance.planned == 1
     assert profile.attendance.ratio == 1.0
+    assert profile.attendance.missed == 0
     assert profile.attendance.last_at is not None
     assert profile.attendance.last_film
 
@@ -331,6 +332,7 @@ async def test_profile_shows_attendance_of_club_screenings(session):
     missed = await social.profile(session, voters[1].id, voters[1].id)
     assert missed.attendance.came == 0
     assert missed.attendance.planned == 1
+    assert missed.attendance.missed == 1
     assert missed.attendance.ratio == 0.0
 
 

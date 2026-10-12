@@ -12,6 +12,7 @@ import { ROLE_LABEL } from "../roles";
 import type { FilmBrief } from "../types";
 import type { ProfileDoor } from "./ProfileTab";
 import { useLoad, useSearch } from "../useLoad";
+import { Tick } from "../components/Tick";
 
 const MAX_FAVOURITES = 4;
 
@@ -203,9 +204,9 @@ export function Profile({
             onClick={toggleFriend}
           >
             {profile.relation_friends
-              ? "✓ В друзьях"
+              ? <><Tick />В друзьях</>
               : profile.relation_following
-                ? "✓ Вы подписаны"
+                ? <><Tick />Вы подписаны</>
                 : profile.relation_follower
                   ? "Добавить в ответ"
                   : "Добавить в друзья"}

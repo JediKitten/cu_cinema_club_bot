@@ -7,6 +7,7 @@ import { haptic, showMessage } from "../telegram";
 import { Avatar } from "./Profile";
 import type { Circle, FeedItem, PersonBrief } from "../types";
 import { useSearch } from "../useLoad";
+import { Tick } from "../components/Tick";
 
 const ACTION: Record<FeedItem["kind"], string> = {
   rating: "оценил",
@@ -87,9 +88,9 @@ export function Friends({ onOpenProfile }: { onOpenProfile(id: number): void }) 
             onClick={() => toggle(person)}
           >
             {person.friends
-              ? "✓ В друзьях"
+              ? <><Tick />В друзьях</>
               : person.following
-                ? "✓ Добавлен"
+                ? <><Tick />Добавлен</>
                 : person.follower
                   ? "Добавить в ответ"
                   : "Добавить"}

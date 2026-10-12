@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ApiError, getInvite } from "../api";
 import { haptic, shareLink, showMessage } from "../telegram";
 import type { FilmCard } from "../types";
+import { Tick } from "./Tick";
 
 /** Позвать друзей на конкретный фильм.
  *
@@ -72,7 +73,7 @@ export function InviteButton({ film }: { film: FilmCard }) {
 
       <div className="marks">
         <button className={`mark ${copied ? "mark--going is-on" : ""}`} onClick={copy}>
-          {copied ? "✓ Скопировано" : "Скопировать"}
+          {copied ? <><Tick />Скопировано</> : "Скопировать"}
         </button>
         <button
           className="mark"

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ApiError, setWatched } from "../api";
 import { haptic, showMessage } from "../telegram";
 import type { FilmBrief, InterestKind } from "../types";
+import { Tick } from "./Tick";
 
 /** «Просмотрено» — в углу карточки, отдельно от кнопок состояния.
  *
@@ -45,7 +46,7 @@ export function WatchedButton({
       onClick={toggle}
       title={film.watched ? "Отмечено как просмотренное" : "Отметить просмотренным"}
     >
-      {film.watched ? "✓ Смотрел" : "Смотрел"}
+      {film.watched ? <><Tick />Смотрел</> : "Смотрел"}
     </button>
   );
 }
