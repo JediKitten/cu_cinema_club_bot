@@ -10,6 +10,7 @@ import type { FeedItem } from '../lib/types'
 
 const THRESHOLD = 100 // px до срабатывания свайпа
 const TAP = 6 // px: меньше — это нажатие, а не свайп
+const REFILL_AT = 8 // карточек в очереди, при которых подгружаем следующую порцию
 
 /**
  * Лента — быстрая разметка свайпами: вправо — в «Желаемое», влево — «Не моё».
@@ -17,7 +18,12 @@ const TAP = 6 // px: меньше — это нажатие, а не свайп
  * Нажатие на карточку открывает фильм.
  */
 export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
-  const { data, error, loading, reload, setData } = useLoad(() => api.getFeed(), [])
+  const { data: feed, error, loading, reload, setData: setFeed } = useLoad(() => api.getFeed(), [])
+  const data = feed?.items
+  const [refilling, setRefilling] = useState(false)
+  // Длина очереди, на которой дозагрузка упала: не долбим сервер повторами,
+  // следующая попытка — после очередного свайпа.
+  const failedAt = useRef<number | null>(null)
   const [dx, setDx] = useState(0)
   const [leaving, setLeaving] = useState<'left' | 'right'>()
   const [rating, setRating] = useState<number>()
@@ -36,8 +42,31 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
     })
   }, [data])
 
+  // Сервер отдаёт ленту порциями: когда очередь подходит к концу, а
+  // неразмеченное ещё есть, подгружаем следующую, не повторяя лежащие карточки.
+  useEffect(() => {
+    if (!feed || refilling || feed.items.length > REFILL_AT || feed.left <= feed.items.length) return
+    if (failedAt.current === feed.items.length) return
+    setRefilling(true)
+    api
+      .getFeed(feed.items.map((f) => f.id))
+      .then((next) =>
+        setFeed((cur) => {
+          if (!cur) return cur
+          const have = new Set(cur.items.map((f) => f.id))
+          const items = [...cur.items, ...next.items.filter((f) => !have.has(f.id))]
+          // Свайпы, ещё летящие на сервер, он пока не учёл — берём меньшее
+          return { items, left: Math.max(items.length, Math.min(cur.left, next.left)) }
+        }),
+      )
+      .catch(() => {
+        failedAt.current = feed.items.length
+      })
+      .finally(() => setRefilling(false))
+  }, [feed, refilling, setFeed])
+
   const advance = () => {
-    setData((d) => d?.slice(1))
+    setFeed((f) => f && { items: f.items.slice(1), left: Math.max(f.left - 1, 0) })
     setDx(0)
     setLeaving(undefined)
     setRating(undefined)
@@ -97,7 +126,7 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
 
       {error && <ErrorPlate message={error} onRetry={reload} />}
       {!data && loading && <Loading text="Собираем ленту…" />}
-      {data && !item && <Empty>Лента кончилась — вы разметили весь каталог. Загляните позже.</Empty>}
+      {feed && !item && (feed.left > 0 ? <Loading text="Подгружаем ещё…" /> : <Empty>Лента кончилась — вы разметили весь каталог. Загляните позже.</Empty>)}
 
       {item && (
         <>
@@ -144,7 +173,7 @@ export function Feed({ onOpenFilm }: { onOpenFilm: (id: number) => void }) {
                   : 'Уже смотрели? Оцените и отметьте'}
               </span>
               <span style={{ flex: 'none' }}>
-                осталось <span className="num" style={{ fontWeight: 800, color: 'var(--c-accent)' }}>{data.length}</span>
+                осталось <span className="num" style={{ fontWeight: 800, color: 'var(--c-accent)' }}>{feed!.left}</span>
               </span>
             </div>
             <div className="row">

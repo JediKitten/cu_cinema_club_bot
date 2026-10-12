@@ -182,9 +182,14 @@ export async function rateFilm(filmId: number, rating: number | undefined): Prom
 
 // ---------- лента ----------
 
-export async function getFeed(): Promise<FeedItem[]> {
-  const deck = await server.getDeck()
-  return deck.cards.map((card) => {
+/**
+ * Порция ленты. `left` — сколько всего фильмов человек ещё не разметил
+ * (включая эту порцию), а не размер порции. `holding` — карточки, которые
+ * уже лежат в очереди на экране: дозагрузка не должна выдать их снова.
+ */
+export async function getFeed(holding: number[] = []): Promise<{ items: FeedItem[]; left: number }> {
+  const deck = await server.getDeck(holding)
+  const items = deck.cards.map((card): FeedItem => {
     const brief: ServerFilm = {
       ...stubFilm({ id: card.id, tmdb_id: null }),
       title_ru: card.title_ru,
@@ -208,6 +213,7 @@ export async function getFeed(): Promise<FeedItem[]> {
       },
     }
   })
+  return { items, left: deck.left }
 }
 
 /** Свайп в ленте: right — в «Желаемое», left — «Не моё» (больше не показывать). */
