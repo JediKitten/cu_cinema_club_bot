@@ -24,9 +24,13 @@ class FilmNotInShortlist(VotingError):
     а кнопка осталась в старом сообщении."""
 
 
-def ensure_open(round_: Round | None) -> Round:
+def ensure_open(round_: Round | None, *, preview: bool = False) -> Round:
+    """Голосование открыто. `preview` — главный админ смотрит бюллетень,
+    пока шорт-лист ещё на проверке и никому больше не виден."""
     if round_ is None:
         raise VotingError("Сейчас голосования нет")
+    if preview and round_.stage == RoundStage.SHORTLIST_REVIEW:
+        return round_
     if round_.stage != RoundStage.SLOT_VOTING:
         raise VotingError("Голосование закрыто")
     return round_
@@ -76,7 +80,7 @@ async def my_availability(session: AsyncSession, round_: Round, user_id: int) ->
 
 
 async def toggle_vote(
-    session: AsyncSession, round_: Round, user_id: int, film_id: int
+    session: AsyncSession, round_: Round, user_id: int, film_id: int, *, preview: bool = False
 ) -> tuple[bool, list[int]]:
     """Переключает один голос. Возвращает («теперь отмечен», весь выбор).
 
@@ -84,7 +88,7 @@ async def toggle_vote(
     и переписывать ради него весь набор значило бы потерять соседний голос,
     если два нажатия пришли одновременно: тапают по кнопкам быстро и подряд.
     """
-    ensure_open(round_)
+    ensure_open(round_, preview=preview)
 
     allowed = {film.id for film in await shortlist_films(session, round_)}
     if film_id not in allowed:
@@ -111,10 +115,15 @@ async def toggle_vote(
 
 
 async def set_votes(
-    session: AsyncSession, round_: Round, user_id: int, film_ids: list[int]
+    session: AsyncSession,
+    round_: Round,
+    user_id: int,
+    film_ids: list[int],
+    *,
+    preview: bool = False,
 ) -> list[int]:
     """Заменяет выбор фильмов целиком: голосование — это состояние, а не история."""
-    ensure_open(round_)
+    ensure_open(round_, preview=preview)
 
     allowed = {film.id for film in await shortlist_films(session, round_)}
     unknown = [film_id for film_id in film_ids if film_id not in allowed]
@@ -133,9 +142,14 @@ async def set_votes(
 
 
 async def set_availability(
-    session: AsyncSession, round_: Round, user_id: int, slot_ids: list[int]
+    session: AsyncSession,
+    round_: Round,
+    user_id: int,
+    slot_ids: list[int],
+    *,
+    preview: bool = False,
 ) -> list[int]:
-    ensure_open(round_)
+    ensure_open(round_, preview=preview)
 
     allowed = {slot.id for slot in await open_slots(session, round_)}
     unknown = [slot_id for slot_id in slot_ids if slot_id not in allowed]
@@ -230,4 +244,23 @@ async def build_matrix(session: AsyncSession, round_: Round) -> Matrix:
         )
         or 0
     )
+
+    if round_.fixed_slot:
+        # Время назначено заранее, вечер никто не выбирает: каждый голос за
+        # фильм — это и согласие прийти в единственный открытый вечер.
+        everyone = (
+            await session.scalar(
+                sa.select(sa.func.count(sa.distinct(FilmVote.user_id))).where(
+                    FilmVote.round_id == round_.id
+                )
+            )
+            or 0
+        )
+        matrix.cells = {
+            (film_id, slot_id): matrix.film_votes.get(film_id, 0)
+            for film_id in matrix.film_ids
+            for slot_id in matrix.slot_ids
+        }
+        matrix.slot_free = {slot_id: everyone for slot_id in matrix.slot_ids}
+        matrix.voters_without_evening = 0
     return matrix

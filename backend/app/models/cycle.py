@@ -49,6 +49,11 @@ class Round(Base, CreatedAtMixin):
     in_english: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
     # Если все вечера заблокированы — показов на неделе нет (§3).
     skipped_reason: Mapped[str | None] = mapped_column(sa.Text)
+    # Особая неделя (Хэллоуин и т. п.): плашка над бюллетенем и в анонсе.
+    theme_note: Mapped[str | None] = mapped_column(sa.Text)
+    # Время показа назначено заранее: клуб выбирает только фильм. Голос за
+    # фильм тогда сам считается согласием на единственный открытый вечер.
+    fixed_slot: Mapped[bool] = mapped_column(default=False, server_default=sa.false())
 
 
 class ShortlistItem(Base):

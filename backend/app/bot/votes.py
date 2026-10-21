@@ -18,6 +18,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.bot import common
 from app.db import SessionLocal
 from app.models import Round, User
+from app.models.enums import UserRole
 from app.services import voting
 
 # Длинное название Telegram обрежет и сам, но по-своему — посреди слова
@@ -118,9 +119,13 @@ async def vote_button(callback: CallbackQuery) -> None:
                 await callback.answer("Сначала напишите боту /start", show_alert=True)
                 return
             round_ = await session.get(Round, round_id)
+            # Главный админ проверяет анонс до публикации — его кнопки работают
+            preview = user.role == UserRole.SUPERADMIN
             try:
-                voting.ensure_open(round_)
-                now_on, chosen = await voting.toggle_vote(session, round_, user.id, film_id)
+                voting.ensure_open(round_, preview=preview)
+                now_on, chosen = await voting.toggle_vote(
+                    session, round_, user.id, film_id, preview=preview
+                )
                 gone = False
             except voting.FilmNotInShortlist:
                 # Фильм убрали из шорт-листа после публикации, а кнопка

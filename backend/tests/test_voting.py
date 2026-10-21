@@ -228,3 +228,113 @@ async def test_button_is_dead_after_voting_closes(session):
 
     with pytest.raises(VotingError, match="закрыто"):
         await voting.toggle_vote(session, round_, voter.id, films[0].id)
+
+
+async def _special_week(session):
+    """Хэллоуин: время назначено заранее, клуб выбирает только фильм."""
+    boss = await admin(session)
+    round_ = await rounds_service.open_round(session, date(2026, 9, 7), boss.id)
+    films = [await make_film(session, f"Хоррор {i}") for i in range(3)]
+    slots = list(
+        (await session.execute(sa.select(Slot).where(Slot.round_id == round_.id))).scalars()
+    )
+    for slot in slots[1:]:
+        slot.blocked = True
+    round_.theme_note = "🎃 Особый показ на Хэллоуин"
+    round_.fixed_slot = True
+    await session.commit()
+    await set_shortlist(session, round_, [f.id for f in films], boss.id)
+    return round_, films, slots[0], boss
+
+
+async def test_fixed_slot_counts_a_film_vote_as_coming_that_evening(session):
+    """Вечер никто не выбирает — голос за фильм и есть согласие прийти."""
+    round_, films, slot, boss = await _special_week(session)
+    await rounds_service.publish_shortlist(session, round_, boss.id)
+    first, second = await make_user(session, "Первый"), await make_user(session, "Второй")
+    await session.commit()
+
+    await voting.set_votes(session, round_, first.id, [films[0].id, films[1].id])
+    await voting.set_votes(session, round_, second.id, [films[0].id])
+
+    matrix = await voting.build_matrix(session, round_)
+    assert matrix.slot_ids == [slot.id]
+    assert matrix.cell(films[0].id, slot.id) == 2
+    assert matrix.cell(films[1].id, slot.id) == 1
+    assert matrix.slot_free == {slot.id: 2}
+    assert matrix.voters_without_evening == 0
+
+
+async def test_fixed_slot_week_is_scheduled_without_a_quorum(session):
+    """Особый показ проходит в любом случае: победитель встаёт в свой вечер,
+    даже если голосов меньше обычного кворума."""
+    from app.services import autopilot
+
+    round_, films, slot, boss = await _special_week(session)
+    await rounds_service.publish_shortlist(session, round_, boss.id)
+    voter = await make_user(session, "Единственный")
+    await session.commit()
+    await voting.set_votes(session, round_, voter.id, [films[2].id])
+
+    [assignment] = await autopilot.propose_schedule(session, round_)
+    assert (assignment.film_id, assignment.slot_id) == (films[2].id, slot.id)
+
+
+async def test_special_week_announcement_names_the_theme_and_the_time(session):
+    from app.models import Notification
+    from app.models.enums import NotificationKind
+    from app.services import notify
+
+    round_, _, _, boss = await _special_week(session)
+    await make_user(session, "Зритель")
+    await session.commit()
+    await rounds_service.publish_shortlist(session, round_, boss.id)
+
+    payload = (
+        await session.execute(
+            sa.select(Notification.payload)
+            .where(Notification.kind == NotificationKind.SHORTLIST_PUBLISHED)
+            .limit(1)
+        )
+    ).scalar_one()
+    assert payload["theme"] == "🎃 Особый показ на Хэллоуин"
+    # Первый вечер недели 7 сентября — понедельник, 19:00 по Москве
+    assert payload["fixed_at"] == "понедельник, 7 сентября, 19:00"
+    text = notify.render(NotificationKind.SHORTLIST_PUBLISHED, None, "", payload)
+    assert "Особый показ на Хэллоуин" in text
+    assert "время уже назначено" in text
+    assert "вечера" not in text  # выбирать вечера не предлагаем
+
+
+async def test_only_the_superadmin_previews_the_ballot_before_publishing(session):
+    round_, films, _, boss = await _special_week(session)
+    assert round_.stage == RoundStage.SHORTLIST_REVIEW
+
+    with pytest.raises(VotingError, match="закрыто"):
+        voting.ensure_open(round_)
+    voting.ensure_open(round_, preview=True)
+
+    await voting.set_votes(session, round_, boss.id, [films[0].id], preview=True)
+    assert await voting.my_votes(session, round_, boss.id) == [films[0].id]
+
+
+async def test_ballot_preview_is_for_the_superadmin_only(client, session):
+    from tests.conftest import SUPERADMIN_TG_ID, login
+
+    boss = await login(client, SUPERADMIN_TG_ID, "Главный")
+    viewer = await login(client, 777450, "Зритель")
+    round_, _, slot, _ = await _special_week(session)
+
+    seen = await client.get(
+        "/api/round/ballot", headers={"Authorization": f"Bearer {boss['token']}"}
+    )
+    assert seen.status_code == 200
+    body = seen.json()
+    assert body["preview"] is True and body["fixed_slot"] is True
+    assert body["theme_note"] == "🎃 Особый показ на Хэллоуин"
+    assert [s["id"] for s in body["slots"]] == [slot.id]
+
+    hidden = await client.get(
+        "/api/round/ballot", headers={"Authorization": f"Bearer {viewer['token']}"}
+    )
+    assert hidden.status_code == 409

@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentUser, RequireModerator
 from app.db import get_session
-from app.models import AutopilotProposal, Film, Hall, Round, Screening, Slot
-from app.models.enums import ScreeningStatus
+from app.models import AutopilotProposal, Film, Hall, Round, Screening, Slot, User
+from app.models.enums import RoundStage, ScreeningStatus, UserRole
 from app.schemas import (
     Assignment,
     AvailabilityIn,
@@ -57,14 +57,28 @@ async def _slot_out(session: AsyncSession, slots: list[Slot]) -> list[SlotOut]:
     ]
 
 
-async def _open_round(session: AsyncSession) -> Round:
+def _previewing(round_: Round | None, user: User) -> bool:
+    """Главный админ видит бюллетень, пока шорт-лист ещё на проверке:
+    проверить, как всё выглядит, до того как это увидят все."""
+    return (
+        user.role == UserRole.SUPERADMIN
+        and round_ is not None
+        and round_.stage == RoundStage.SHORTLIST_REVIEW
+    )
+
+
+async def _open_round(session: AsyncSession, user: User) -> tuple[Round, bool]:
+    round_ = await rounds_service.active_round(session)
+    preview = _previewing(round_, user)
     try:
-        return voting.ensure_open(await rounds_service.active_round(session))
+        return voting.ensure_open(round_, preview=preview), preview
     except VotingError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
-async def _ballot(session: AsyncSession, round_: Round, user_id: int) -> BallotOut:
+async def _ballot(
+    session: AsyncSession, round_: Round, user_id: int, preview: bool = False
+) -> BallotOut:
     films = await voting.shortlist_films(session, round_)
     slots = await voting.open_slots(session, round_)
     return BallotOut(
@@ -75,6 +89,9 @@ async def _ballot(session: AsyncSession, round_: Round, user_id: int) -> BallotO
         my_film_ids=await voting.my_votes(session, round_, user_id),
         my_slot_ids=await voting.my_availability(session, round_, user_id),
         in_english=round_.in_english,
+        theme_note=round_.theme_note,
+        fixed_slot=round_.fixed_slot,
+        preview=preview,
     )
 
 
@@ -82,19 +99,20 @@ async def _ballot(session: AsyncSession, round_: Round, user_id: int) -> BallotO
 async def ballot(
     user: CurrentUser, session: Annotated[AsyncSession, Depends(get_session)]
 ) -> BallotOut:
-    return await _ballot(session, await _open_round(session), user.id)
+    round_, preview = await _open_round(session, user)
+    return await _ballot(session, round_, user.id, preview)
 
 
 @router.put("/votes", response_model=BallotOut)
 async def set_votes(
     body: VotesIn, user: CurrentUser, session: Annotated[AsyncSession, Depends(get_session)]
 ) -> BallotOut:
-    round_ = await _open_round(session)
+    round_, preview = await _open_round(session, user)
     try:
-        await voting.set_votes(session, round_, user.id, body.film_ids)
+        await voting.set_votes(session, round_, user.id, body.film_ids, preview=preview)
     except VotingError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
-    return await _ballot(session, round_, user.id)
+    return await _ballot(session, round_, user.id, preview)
 
 
 @router.put("/availability", response_model=BallotOut)
@@ -103,12 +121,12 @@ async def set_availability(
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BallotOut:
-    round_ = await _open_round(session)
+    round_, preview = await _open_round(session, user)
     try:
-        await voting.set_availability(session, round_, user.id, body.slot_ids)
+        await voting.set_availability(session, round_, user.id, body.slot_ids, preview=preview)
     except VotingError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
-    return await _ballot(session, round_, user.id)
+    return await _ballot(session, round_, user.id, preview)
 
 
 @router.get("/matrix", response_model=MatrixOut, tags=["round"])

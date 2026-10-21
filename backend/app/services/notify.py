@@ -233,6 +233,14 @@ def _shortlist_published(m: Message) -> str:
         if m.payload.get("reminder")
         else "🗳 <b>Голосование открыто!</b>"
     )
+    # Особая неделя: тема и уже назначенное время — до списка фильмов, чтобы
+    # человек сразу понимал, о каком показе речь.
+    theme = f"\n\n<b>{m.text('theme')}</b>" if m.payload.get("theme") else ""
+    fixed_at = m.text("fixed_at")
+    if fixed_at:
+        theme += (
+            f"\n📅 <b>Показ: {fixed_at}</b> — время уже назначено, выбираем только фильм."
+        )
     if m.payload.get("updated"):
         # Поправленный список. Главное для того, кто уже голосовал: что стало
         # с его голосами. За оставшиеся фильмы они целы — это видно по
@@ -242,11 +250,14 @@ def _shortlist_published(m: Message) -> str:
             "Голоса за оставшиеся фильмы сохранились — они отмечены галочками. "
             "Голоса за убранные сняты."
         )
-    return (
-        f"{head}\n\nФильмы недели:\n{listed}{language}\n\n"
-        "Отметьте кнопками, на какие фильмы пошли бы, — а вечера, "
+    action = (
+        "Отметьте кнопками, на какие фильмы пошли бы."
+        if fixed_at
+        else "Отметьте кнопками, на какие фильмы пошли бы, — а вечера, "
         "когда вы свободны, выберите в приложении."
     )
+    heading = "Выбираем из:" if fixed_at else "Фильмы недели:"
+    return f"{head}{theme}\n\n{heading}\n{listed}{language}\n\n{action}"
 
 
 def _schedule_published(m: Message) -> str:

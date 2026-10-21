@@ -1937,6 +1937,18 @@ export interface components {
              * @default false
              */
             in_english: boolean;
+            /** Theme Note */
+            theme_note: string | null;
+            /**
+             * Fixed Slot
+             * @default false
+             */
+            fixed_slot: boolean;
+            /**
+             * Preview
+             * @default false
+             */
+            preview: boolean;
         };
         /** BlockSlotIn */
         BlockSlotIn: {

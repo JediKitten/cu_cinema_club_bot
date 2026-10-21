@@ -141,7 +141,7 @@ function BallotView({ ballot, onOpenFilm, onSaved }: { ballot: Ballot; onOpenFil
     setBusy(true)
     setError(undefined)
     try {
-      const b = await api.saveBallot(ballot.weekStart, sel.films, sel.evenings)
+      const b = await api.saveBallot(ballot.weekStart, sel.films, sel.evenings, ballot.fixedSlot)
       drafts.delete(ballot.weekStart)
       haptic.notify('success')
       onSaved(b)
@@ -153,11 +153,28 @@ function BallotView({ ballot, onOpenFilm, onSaved }: { ballot: Ballot; onOpenFil
     }
   }
 
-  const needEvening = sel.films.length > 0 && sel.evenings.length === 0
+  const needEvening = !ballot.fixedSlot && sel.films.length > 0 && sel.evenings.length === 0
+  const fixedAt = ballot.fixedSlot && ballot.evenings[0] ? eveningDate(ballot.evenings[0].startsAt) : undefined
 
   return (
     <>
-      <p className="small muted">Выберите фильмы и вечера — расписание соберём из ответов.</p>
+      {ballot.preview && (
+        <p className="warn">Предпросмотр — голосование видите только вы. Остальные увидят его после публикации шорт-листа.</p>
+      )}
+      {(ballot.theme || fixedAt) && (
+        <div className="banner" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+          {ballot.theme && <span className="banner__title" style={{ fontWeight: 700 }}>{ballot.theme}</span>}
+          {fixedAt && (
+            <span style={{ fontSize: 14, lineHeight: 1.35 }}>
+              Время уже назначено: <b>{fixedAt.weekday} {fixedAt.text}</b>
+. Выбирать вечер не нужно — голосуем только за фильм.
+            </span>
+          )}
+        </div>
+      )}
+      <p className="small muted">
+        {ballot.fixedSlot ? 'Отметьте фильмы, на которые пошли бы, — покажем тот, что наберёт больше голосов.' : 'Выберите фильмы и вечера — расписание соберём из ответов.'}
+      </p>
       {ballot.english && <div className="lang-tag">EN · показ этой недели на английском</div>}
 
       <section>
@@ -183,7 +200,7 @@ function BallotView({ ballot, onOpenFilm, onSaved }: { ballot: Ballot; onOpenFil
         })}
       </section>
 
-      <section>
+      {!ballot.fixedSlot && <section>
         <h2 className="h-section" style={{ fontSize: 14, marginBottom: 6 }}>Когда свободны</h2>
         {ballot.evenings.filter((e) => !e.closed).map((e) => {
           const on = sel.evenings.includes(e.id)
@@ -200,7 +217,7 @@ function BallotView({ ballot, onOpenFilm, onSaved }: { ballot: Ballot; onOpenFil
           )
         })}
         {needEvening && <p className="warn" style={{ marginTop: 6 }}>Отметьте хотя бы один вечер — иначе голос за фильмы не учтётся.</p>}
-      </section>
+      </section>}
 
       {error && <ErrorPlate message={error} />}
 

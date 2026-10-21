@@ -286,6 +286,9 @@ async function ballotOf(weekStart: string): Promise<Ballot | undefined> {
       selectedFilmIds: b.my_film_ids,
       selectedEveningIds: b.my_slot_ids,
       closesAt: '',
+      theme: b.theme_note ?? undefined,
+      fixedSlot: b.fixed_slot,
+      preview: b.preview,
     }
   } catch {
     return undefined
@@ -306,14 +309,17 @@ export async function getSchedule(weekStart?: string): Promise<ScheduleWeek> {
       hasNext: s.has_next,
       votingWeekStart: s.voting_week ?? undefined,
     },
-    ballot: stage === 'vote' ? await ballotOf(s.week_start) : undefined,
+    // На проверке шорт-листа бюллетень видит только главный админ
+    // (предпросмотр); остальным сервер ответит отказом, и неделя покажется как есть.
+    ballot: stage === 'vote' || s.stage === 'shortlist_review' ? await ballotOf(s.week_start) : undefined,
     shows: s.screenings.map(showOf),
   }
 }
 
-export async function saveBallot(weekStart: string, filmIds: number[], eveningIds: number[]): Promise<Ballot> {
+export async function saveBallot(weekStart: string, filmIds: number[], eveningIds: number[], fixedSlot = false): Promise<Ballot> {
   await server.saveVotes(filmIds)
-  await server.saveAvailability(eveningIds)
+  // Время назначено — вечер не выбирают, голос за фильм и есть согласие прийти
+  if (!fixedSlot) await server.saveAvailability(eveningIds)
   const ballot = await ballotOf(weekStart)
   if (!ballot) throw new server.ApiError(409, 'Голосование закрыто')
   return ballot

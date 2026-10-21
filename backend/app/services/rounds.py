@@ -369,6 +369,7 @@ async def announce_shortlist_update(
 
     # Метка времени в ключе: вторая правка за неделю — это второе
     # обновление, и дедупликация не должна его проглотить.
+    theme = await theme_payload(session, round_)
     stamp = int(datetime.now(UTC).timestamp())
     queued = 0
     for user_id in await _audience(session):
@@ -384,6 +385,7 @@ async def announce_shortlist_update(
                 "in_english": round_.in_english,
                 "updated": True,
                 "chosen": chosen.get(user_id, []),
+                **theme,
             },
         ):
             queued += 1
@@ -456,6 +458,40 @@ async def set_in_english(
     return round_
 
 
+MONTHS_GENITIVE = (
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+WEEKDAYS = ("понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье")
+
+
+def human_moment(value: datetime, tz_name: str) -> str:
+    """«пятница, 30 октября, 21:00» — для сообщений людям."""
+    local = value.astimezone(ZoneInfo(tz_name))
+    return (
+        f"{WEEKDAYS[local.weekday()]}, {local.day} {MONTHS_GENITIVE[local.month - 1]}, "
+        f"{local:%H:%M}"
+    )
+
+
+async def theme_payload(session: AsyncSession, round_: Round) -> dict:
+    """Тема особой недели и назначенное время — для анонса голосования."""
+    out: dict = {}
+    if round_.theme_note:
+        out["theme"] = round_.theme_note
+    if round_.fixed_slot:
+        slot = await session.scalar(
+            sa.select(Slot)
+            .where(Slot.round_id == round_.id, Slot.blocked.is_(False))
+            .order_by(Slot.starts_at)
+            .limit(1)
+        )
+        if slot is not None:
+            tz = str((await SettingsService(session).all())["display_timezone"])
+            out["fixed_at"] = human_moment(slot.starts_at, tz)
+    return out
+
+
 async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int) -> Round:
     """Открывает этап 2: список зафиксирован, идёт голосование по фильмам и вечерам."""
     if round_.stage == RoundStage.COLLECTING:
@@ -493,6 +529,7 @@ async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int)
     # Не только названия: в сообщении у каждого фильма своя кнопка, и ей
     # нужен id, чтобы нажатие стало голосом, не открывая приложение.
     listed = await _listed_films(session, round_)
+    theme = await theme_payload(session, round_)
     for user_id in await _audience(session):
         await notify.queue(
             session,
@@ -506,6 +543,7 @@ async def publish_shortlist(session: AsyncSession, round_: Round, actor_id: int)
                 "week_start": round_.week_start.isoformat(),
                 "films": listed,
                 "in_english": round_.in_english,
+                **theme,
             },
         )
 

@@ -87,6 +87,12 @@ export interface Ballot {
   selectedEveningIds: number[]
   /** До какого момента открыто голосование */
   closesAt: string
+  /** Особая неделя: плашка над бюллетенем */
+  theme?: string
+  /** Время назначено заранее — выбираем только фильм, вечеров не выбираем */
+  fixedSlot?: boolean
+  /** Предпросмотр для главного админа: остальным бюллетень ещё не виден */
+  preview?: boolean
 }
 
 export type ShowState = 'upcoming' | 'live' | 'past' | 'cancelled'

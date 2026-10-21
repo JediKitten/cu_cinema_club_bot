@@ -77,6 +77,10 @@ async def propose_schedule(session: AsyncSession, round_: Round) -> list[Assignm
     values = await SettingsService(session).all()
     minimum = int(values["min_attendance"])
     per_week = int(values["screenings_per_week"])
+    if round_.fixed_slot:
+        # Особый показ с назначенным временем проходит в любом случае —
+        # кворум здесь только помешал бы. Нужен хотя бы один голос.
+        minimum = 1
 
     matrix = await voting.build_matrix(session, round_)
     films = matrix.film_ids
