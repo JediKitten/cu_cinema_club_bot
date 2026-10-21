@@ -45,6 +45,7 @@ def vote_keyboard(
     films: list[tuple[int, str]],
     chosen: set[int],
     week_start: str | None = None,
+    fixed: bool = False,
 ) -> InlineKeyboardMarkup:
     """Кнопка на фильм плюс — когда выбран хоть один — вход в приложение.
 
@@ -63,7 +64,8 @@ def vote_keyboard(
     ]
 
     url = common.current_miniapp_url()
-    if chosen and url:
+    # Время назначено заранее — вечера выбирать не нужно, голос уже учтён
+    if chosen and url and not fixed:
         # Неделя в адресе обязательна: без неё приложение открывает расписание
         # текущей недели, и до бюллетеня остаётся ещё одно нажатие — ровно то,
         # ради избавления от которого кнопки и заводили.
@@ -92,7 +94,9 @@ def shortlist_keyboard(payload: dict) -> InlineKeyboardMarkup | None:
     # переключает голос, и без них нажатие на уже выбранный фильм снимало бы
     # голос, хотя человек думал, что голосует.
     chosen = {int(film_id) for film_id in payload.get("chosen") or []}
-    return vote_keyboard(int(round_id), films, chosen, payload.get("week_start"))
+    return vote_keyboard(
+        int(round_id), films, chosen, payload.get("week_start"), fixed=bool(payload.get("fixed_at"))
+    )
 
 
 router = Router(name="votes")
@@ -137,17 +141,16 @@ async def vote_button(callback: CallbackQuery) -> None:
                 await callback.answer(str(exc), show_alert=True)
                 return
 
-            films = [
-                (film.id, film.title_ru) for film in await voting.shortlist_films(session, round_)
-            ]
+            films = voting.labelled(await voting.shortlist_films(session, round_))
             week_start = round_.week_start.isoformat()
+            fixed = round_.fixed_slot
 
     # Сообщение может оказаться недоступным — например, человек его удалил.
     # Голос при этом уже засчитан, и жаловаться не на что.
     if isinstance(callback.message, Message):
         try:
             await callback.message.edit_reply_markup(
-                reply_markup=vote_keyboard(round_id, films, set(chosen), week_start)
+                reply_markup=vote_keyboard(round_id, films, set(chosen), week_start, fixed=fixed)
             )
         except TelegramBadRequest:
             # Клавиатура уже такая же — для человека ничего не произошло.
@@ -159,7 +162,7 @@ async def vote_button(callback: CallbackQuery) -> None:
         )
     elif not now_on:
         await callback.answer("Убрал из выбранных")
-    elif len(chosen) == 1:
+    elif len(chosen) == 1 and not fixed:
         # Первая галочка — тот момент, когда про вечера уместно сказать
         # словами: кнопка под сообщением только что появилась, и без
         # подсказки её легко принять за часть списка фильмов.

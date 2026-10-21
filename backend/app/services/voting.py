@@ -48,6 +48,26 @@ async def shortlist_films(session: AsyncSession, round_: Round) -> list[Film]:
     return list(rows)
 
 
+def labelled(films: list[Film]) -> list[tuple[int, str]]:
+    """Названия для списка и кнопок: у тёзок — с годом.
+
+    Две «Семейки Аддамс» в одном шорт-листе без года не различить ни в
+    сообщении, ни на кнопке под ним.
+    """
+    seen: dict[str, int] = {}
+    for film in films:
+        seen[film.title_ru] = seen.get(film.title_ru, 0) + 1
+    return [
+        (
+            film.id,
+            f"{film.title_ru} ({film.year})"
+            if seen[film.title_ru] > 1 and film.year
+            else film.title_ru,
+        )
+        for film in films
+    ]
+
+
 async def open_slots(session: AsyncSession, round_: Round) -> list[Slot]:
     """Заблокированные вечера не показываем: назначить на них показ нельзя,
     и отмечаться в них бессмысленно."""

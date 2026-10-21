@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     AuditLog,
-    Film,
     FilmVote,
     Hall,
     Round,
@@ -24,7 +23,7 @@ from app.models import (
     User,
 )
 from app.models.enums import NotificationKind, RoundStage, ShortlistSource
-from app.services import notify
+from app.services import notify, voting
 from app.services.settings import SettingsService
 
 DAYS_IN_WEEK = 7
@@ -405,17 +404,8 @@ async def announce_shortlist_update(
 
 async def _listed_films(session: AsyncSession, round_: Round) -> list[dict]:
     """Фильмы шорт-листа для сообщения: у каждого своя кнопка, и ей нужен id."""
-    return [
-        {"id": film_id, "title": title}
-        for film_id, title in (
-            await session.execute(
-                sa.select(Film.id, Film.title_ru)
-                .join(ShortlistItem, ShortlistItem.film_id == Film.id)
-                .where(ShortlistItem.round_id == round_.id)
-                .order_by(ShortlistItem.position)
-            )
-        ).all()
-    ]
+    films = await voting.shortlist_films(session, round_)
+    return [{"id": film_id, "title": title} for film_id, title in voting.labelled(films)]
 
 
 async def _audience(session: AsyncSession) -> list[int]:

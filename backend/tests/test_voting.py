@@ -338,3 +338,27 @@ async def test_ballot_preview_is_for_the_superadmin_only(client, session):
         "/api/round/ballot", headers={"Authorization": f"Bearer {viewer['token']}"}
     )
     assert hidden.status_code == 409
+
+
+def test_namesakes_get_a_year_on_buttons_and_in_the_list():
+    from app.models import Film
+
+    films = [
+        Film(id=1, title_ru="Семейка Аддамс", year=2019),
+        Film(id=2, title_ru="Тайна Коко", year=2017),
+        Film(id=3, title_ru="Семейка Аддамс", year=1991),
+    ]
+    assert voting.labelled(films) == [
+        (1, "Семейка Аддамс (2019)"),
+        (2, "Тайна Коко"),
+        (3, "Семейка Аддамс (1991)"),
+    ]
+
+
+def test_fixed_week_buttons_do_not_ask_for_evenings():
+    from app.bot.votes import vote_keyboard
+
+    regular = vote_keyboard(1, [(5, "Фильм")], {5}, "2026-10-26")
+    fixed = vote_keyboard(1, [(5, "Фильм")], {5}, "2026-10-26", fixed=True)
+    assert len(regular.inline_keyboard) == 2
+    assert len(fixed.inline_keyboard) == 1
